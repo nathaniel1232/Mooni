@@ -272,5 +272,7 @@ struct PetScreenView: View {
 }
 
 #Preview {
-    PetScreenView().environmentObject(AppState.preview)
+    PetScreenView(showPaywall: .constant(false))
+        .environmentObject(AppState.preview)
+        .environmentObject(SubscriptionManager.shared)
 }

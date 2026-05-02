@@ -431,5 +431,7 @@ private struct StartSleepSheet: View {
 }
 
 #Preview {
-    HomeView().environmentObject(AppState.preview)
+    HomeView(showPaywall: .constant(false))
+        .environmentObject(AppState.preview)
+        .environmentObject(SubscriptionManager.shared)
 }

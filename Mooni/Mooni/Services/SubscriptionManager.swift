@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import RevenueCat
 
 @MainActor
@@ -20,7 +21,7 @@ final class SubscriptionManager: ObservableObject {
     func configure() {
         Purchases.logLevel = .error
         Purchases.configure(withAPIKey: "test_ZLGdnSIgtxLglPKmaWsNnGXtYvn")
-        Purchases.shared.delegate = PurchasesDelegate.shared
+        Purchases.shared.delegate = MooniPurchasesDelegate.shared
         Task { await refreshAll() }
     }
 
@@ -88,8 +89,8 @@ final class SubscriptionManager: ObservableObject {
 
 // MARK: - Purchases Delegate
 
-private final class PurchasesDelegate: NSObject, PurchasesDelegate, @unchecked Sendable {
-    static let shared = PurchasesDelegate()
+private final class MooniPurchasesDelegate: NSObject, RevenueCat.PurchasesDelegate, @unchecked Sendable {
+    static let shared = MooniPurchasesDelegate()
     private override init() {}
 
     func purchases(_ purchases: Purchases, receivedUpdated customerInfo: CustomerInfo) {
