@@ -22,6 +22,7 @@ struct RootView: View {
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var subscriptionManager: SubscriptionManager
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selection: Tab = .home
     @State private var showPaywall = false
 
@@ -52,6 +53,12 @@ struct MainTabView: View {
             MorningCheckInView()
         }
         .mooniPaywall(isPresented: $showPaywall)
+        .task { await appState.importHealthKitSleep() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await appState.importHealthKitSleep() }
+            }
+        }
     }
 }
 

@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C550B5AD2FA9D54D0067E4A5 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = ABCD11012FA679F10001B773 /* RevenueCat */; };
+		C550B5AE2FA9D54D0067E4A5 /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = ABCD11022FA679F10001B773 /* RevenueCatUI */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		782C88912FA679F10001B773 /* Mooni.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mooni.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,34 +28,12 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C550B5AE2FA9D54D0067E4A5 /* RevenueCatUI in Frameworks */,
+				C550B5AD2FA9D54D0067E4A5 /* RevenueCat in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		ABCD11002FA679F10001B773 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 5.0.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		ABCD11012FA679F10001B773 /* RevenueCat */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = ABCD11002FA679F10001B773 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
-			productName = RevenueCat;
-		};
-		ABCD11022FA679F10001B773 /* RevenueCatUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = ABCD11002FA679F10001B773 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
-			productName = RevenueCatUI;
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXGroup section */
 		782C88882FA679F00001B773 = {
@@ -120,15 +103,15 @@
 			);
 			mainGroup = 782C88882FA679F00001B773;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				ABCD11002FA679F10001B773 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 782C88922FA679F10001B773 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				782C88902FA679F10001B773 /* Mooni */,
-			);
-			packageReferences = (
-				ABCD11002FA679F10001B773 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
 			);
 		};
 /* End PBXProject section */
@@ -280,11 +263,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Mooni/Mooni.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 5GH8R98RBG;
+				DEVELOPMENT_TEAM = R94ZG8TL44;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Mooni reads your sleep data from Apple Health to track bedtime and wake time automatically, so you don't have to log nights manually.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Mooni does not write to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -295,7 +281,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Nathaniel-Fiskaa.Mooni";
+				PRODUCT_BUNDLE_IDENTIFIER = com.sabaiduka.mooni;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -312,11 +298,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Mooni/Mooni.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 5GH8R98RBG;
+				DEVELOPMENT_TEAM = R94ZG8TL44;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Mooni reads your sleep data from Apple Health to track bedtime and wake time automatically, so you don't have to log nights manually.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Mooni does not write to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -327,7 +316,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Nathaniel-Fiskaa.Mooni";
+				PRODUCT_BUNDLE_IDENTIFIER = com.sabaiduka.mooni;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -361,6 +350,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		ABCD11002FA679F10001B773 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		ABCD11012FA679F10001B773 /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ABCD11002FA679F10001B773 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCat;
+		};
+		ABCD11022FA679F10001B773 /* RevenueCatUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ABCD11002FA679F10001B773 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCatUI;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 782C88892FA679F00001B773 /* Project object */;
 }

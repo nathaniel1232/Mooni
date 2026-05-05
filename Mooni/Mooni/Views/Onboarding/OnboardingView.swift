@@ -8,8 +8,10 @@ struct OnboardingView: View {
     @State private var bedtime: Date = Date.todayAt(hour: 22, minute: 30)
     @State private var wakeTime: Date = Date.todayAt(hour: 7, minute: 0)
     @State private var factsVisible = false
+    @StateObject private var health = HealthKitManager.shared
+    @State private var requestingHealth = false
 
-    private let totalSteps = 8
+    private let totalSteps = 9
 
     var body: some View {
         ZStack {
@@ -30,6 +32,7 @@ struct OnboardingView: View {
                     petNameStep.tag(5)
                     goalStep.tag(6)
                     scheduleStep.tag(7)
+                    healthKitStep.tag(8)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .animation(.easeInOut(duration: 0.35), value: step)
@@ -408,6 +411,93 @@ struct OnboardingView: View {
         .padding(.horizontal, 24)
     }
 
+    // MARK: - Step 9: HealthKit
+
+    private var healthKitStep: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(MooniColor.danger.opacity(0.14))
+                    .frame(width: 110, height: 110)
+                    .blur(radius: 18)
+                Image(systemName: "heart.text.square.fill")
+                    .font(.system(size: 58))
+                    .foregroundStyle(
+                        LinearGradient(colors: [Color.pink, MooniColor.danger],
+                                       startPoint: .top, endPoint: .bottom)
+                    )
+            }
+
+            VStack(spacing: 10) {
+                Text("Track Sleep Automatically")
+                    .font(MooniFont.display(28))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                Text("Let Mooni read your sleep from Apple Health.\nNo manual logging needed.")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(spacing: 10) {
+                healthBenefitRow(icon: "moon.zzz.fill", title: "Auto-detect bedtime & wake-up",
+                                 detail: "Pulled nightly from Apple Watch or iPhone")
+                healthBenefitRow(icon: "lock.shield.fill", title: "Private & on-device",
+                                 detail: "Mooni only reads — never writes — sleep data")
+                healthBenefitRow(icon: "iphone.gen3", title: "Works without a Watch",
+                                 detail: "Use iPhone Sleep schedule in the Health app")
+            }
+            .opacity(factsVisible ? 1 : 0)
+            .offset(y: factsVisible ? 0 : 14)
+
+            if health.authState == .authorized {
+                Label("Connected to Apple Health", systemImage: "checkmark.seal.fill")
+                    .font(MooniFont.caption(13))
+                    .foregroundColor(MooniColor.success)
+            } else if health.authState == .denied {
+                Text("Permission denied. You can enable it later in Settings → Health.")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.warning)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            } else if health.authState == .unavailable {
+                Text("HealthKit isn't available on this device. You can log nights manually.")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 22)
+    }
+
+    private func healthBenefitRow(icon: String, title: String, detail: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(MooniColor.accent)
+                .frame(width: 36, height: 36)
+                .background(MooniColor.accent.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(MooniFont.title(14))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text(detail)
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
     // MARK: - Reusable Row Builders
 
     private func sleepFactRow(icon: String, color: Color, title: String, detail: String) -> some View {
@@ -533,19 +623,52 @@ struct OnboardingView: View {
                 }
                 .frame(maxWidth: 100)
             }
-            PrimaryButton(title: step == totalSteps - 1 ? "Begin Journey" : "Continue") {
-                if step == totalSteps - 1 {
-                    appState.completeOnboarding(
-                        name: petName.trimmingCharacters(in: .whitespaces).isEmpty ? "Lumi" : petName,
-                        goalHours: goalHours,
-                        bedtime: bedtime,
-                        wakeTime: wakeTime
-                    )
-                } else {
-                    withAnimation { step += 1 }
-                }
+            PrimaryButton(title: primaryButtonTitle) {
+                handlePrimaryTap()
             }
+            .disabled(requestingHealth)
         }
+    }
+
+    private var primaryButtonTitle: String {
+        if step == totalSteps - 1 {
+            return health.authState == .authorized ? "Begin Journey" : "Connect Apple Health"
+        }
+        return "Continue"
+    }
+
+    private func handlePrimaryTap() {
+        // Final step: HealthKit
+        if step == totalSteps - 1 {
+            // If not yet authorized & available, ask for permission first; otherwise finish.
+            if health.authState == .notDetermined && health.isAvailable {
+                requestingHealth = true
+                Task {
+                    await health.requestAuthorization()
+                    requestingHealth = false
+                    if health.authState == .authorized {
+                        await appState.importHealthKitSleep()
+                    }
+                    finishOnboarding()
+                }
+            } else {
+                if health.authState == .authorized {
+                    Task { await appState.importHealthKitSleep() }
+                }
+                finishOnboarding()
+            }
+            return
+        }
+        withAnimation { step += 1 }
+    }
+
+    private func finishOnboarding() {
+        appState.completeOnboarding(
+            name: petName.trimmingCharacters(in: .whitespaces).isEmpty ? "Lumi" : petName,
+            goalHours: goalHours,
+            bedtime: bedtime,
+            wakeTime: wakeTime
+        )
     }
 
     private var progressBar: some View {

@@ -291,6 +291,44 @@ final class AppState: ObservableObject {
         showMorningCheckIn = false
     }
 
+    // MARK: - HealthKit import
+
+    /// Pulls recent sleep samples from HealthKit and converts new nights into SleepEntry rows.
+    func importHealthKitSleep() async {
+        let intervals = await HealthKitManager.shared.fetchNightlySleep(days: 14)
+        guard !intervals.isEmpty else { return }
+
+        for interval in intervals {
+            let dayKey = interval.end.dayKey
+            // Skip if we already have an entry for that wake-day
+            if entries.contains(where: { $0.dayKey == dayKey }) { continue }
+
+            // Auto-generated entry — neutral quality/mood until the user does morning check-in.
+            var entry = SleepEntry(
+                bedtime: interval.start,
+                wakeTime: interval.end,
+                quality: .good,
+                mood: .okay,
+                notes: "Imported from Health"
+            )
+            let breakdown = SleepScoreCalculator.score(
+                for: entry,
+                goalHours: goalHours,
+                targetBedtime: targetBedtime,
+                targetWakeTime: targetWakeTime
+            )
+            entry.score = breakdown.total
+            entry.energyEarned = SleepScoreCalculator.energyReward(for: entry, score: entry.score)
+            entries.append(entry)
+
+            // Reward the most recent night automatically; older imports only fill history.
+            if dayKey == Date().dayKey {
+                applyReward(energy: entry.energyEarned, score: entry.score)
+                showMorningCheckIn = true   // user can refine quality/mood
+            }
+        }
+    }
+
     // MARK: - Persistence
     private func persistPet() {
         if let data = try? JSONEncoder().encode(pet) {

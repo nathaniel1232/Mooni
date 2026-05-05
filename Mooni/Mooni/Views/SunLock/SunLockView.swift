@@ -30,14 +30,10 @@ struct SunLockView: View {
         }
         .onAppear { detector.start() }
         .onDisappear { detector.stop() }
-        .onChange(of: detector.confidence) { _, value in
+        .onChange(of: detector.confidence) { (_: Double, value: Double) in
             if value >= 1.0 && !didPass {
                 didPass = true
                 UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 700_000_000)
-                    appState.passSunLock()
-                }
             }
         }
     }

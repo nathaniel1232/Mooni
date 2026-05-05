@@ -84,7 +84,7 @@ struct HomeView: View {
 
     private var petHero: some View {
         VStack(spacing: 12) {
-            DreamSpiritView(pet: appState.pet, size: 180)
+            DreamSpiritView(pet: appState.pet, size: 190)
                 .padding(.vertical, 8)
 
             Text("\(appState.pet.name) \(appState.pet.mood.message)")
@@ -92,8 +92,34 @@ struct HomeView: View {
                 .foregroundColor(MooniColor.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 20)
+
+            #if DEBUG
+            Button {
+                cycleMood()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("DEV: \(appState.pet.mood.label)")
+                        .font(MooniFont.caption(11))
+                }
+                .foregroundColor(.white.opacity(0.85))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.10))
+                .clipShape(Capsule())
+            }
+            #endif
         }
     }
+
+    #if DEBUG
+    private func cycleMood() {
+        let order: [Pet.Mood] = [.rested, .good, .tired, .low]
+        let next = order.firstIndex(of: appState.pet.mood).map { (order[($0 + 1) % order.count]) } ?? .good
+        appState.pet.mood = next
+    }
+    #endif
 
     private var moodCard: some View {
         MooniCard {
