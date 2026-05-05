@@ -15,6 +15,8 @@ struct PetScreenView: View {
                 ScrollView {
                     VStack(spacing: 22) {
                         petHero
+                        evolutionCard
+                        personalityCard
                         levelCard
                         nextUnlockCard
                         kindPicker
@@ -56,6 +58,86 @@ struct PetScreenView: View {
             Text(appState.pet.mood.label)
                 .font(MooniFont.title(16))
                 .foregroundColor(MooniColor.accent)
+        }
+    }
+
+    // MARK: - Evolution
+    private var evolutionCard: some View {
+        let stages = Pet.EvolutionStage.allCases
+        let currentIdx = stages.firstIndex(of: appState.pet.stage) ?? 0
+        let consistency = appState.bedtimeConsistencyDays
+        let nextStage: Pet.EvolutionStage? = currentIdx + 1 < stages.count ? stages[currentIdx + 1] : nil
+        let toGo = nextStage.map { max(0, $0.consistencyRequired - consistency) }
+
+        return MooniCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Evolution", systemImage: "arrow.up.right.circle.fill")
+                        .font(MooniFont.title(15))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Spacer()
+                    Text(appState.pet.stage.label)
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.accent)
+                }
+
+                HStack(spacing: 6) {
+                    ForEach(Array(stages.enumerated()), id: \.element) { idx, stage in
+                        Capsule()
+                            .fill(idx <= currentIdx ? MooniColor.accent : Color.white.opacity(0.12))
+                            .frame(height: 6)
+                        if idx < stages.count - 1 {
+                            Rectangle().fill(Color.clear).frame(width: 0)
+                        }
+                    }
+                }
+
+                if let next = nextStage, let togo = toGo {
+                    Text(togo == 0
+                         ? "Ready to evolve into \(next.label) — keep your streak!"
+                         : "\(togo) more consistent night\(togo == 1 ? "" : "s") until \(next.label).")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                } else {
+                    Text("Maxed out — \(appState.pet.name) is in their \(appState.pet.stage.label).")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                }
+
+                if !subscriptionManager.isPro {
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 11))
+                        Text("Adult, Dream form & Legendary forms unlock with Pro.")
+                            .font(MooniFont.caption(11))
+                    }
+                    .foregroundColor(MooniColor.textMuted)
+                }
+            }
+        }
+    }
+
+    // MARK: - Personality
+    private var personalityCard: some View {
+        let p = appState.petPersonality
+        return MooniCard {
+            HStack(spacing: 14) {
+                Image(systemName: p.icon)
+                    .font(.system(size: 22))
+                    .foregroundColor(MooniColor.accentSoft)
+                    .frame(width: 44, height: 44)
+                    .background(MooniColor.accentSoft.opacity(0.16))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(p.label)
+                        .font(MooniFont.title(15))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text(p.description)
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                }
+                Spacer()
+            }
         }
     }
 

@@ -2,47 +2,139 @@ import Foundation
 import SwiftUI
 
 struct Pet: Codable {
-    enum Mood: String, Codable {
-        case rested, good, tired, low
+    // MARK: - Mood
+    /// Expanded mood set used by the new pet system. The legacy 4-state cases
+    /// (rested/good/tired/low) are kept as aliases via `legacyBucket` so existing
+    /// view code keeps working until it's migrated.
+    enum Mood: String, Codable, CaseIterable {
+        case energized
+        case cozy
+        case calm
+        case sleepy
+        case groggy
+        case restless
+        case recovering
+        case excited
+        case proud
+
+        // Legacy aliases — older code referenced these directly.
+        case rested
+        case good
+        case tired
+        case low
 
         var label: String {
             switch self {
-            case .rested: return "Rested"
-            case .good:   return "Calm"
-            case .tired:  return "Sleepy"
-            case .low:    return "Low energy"
+            case .energized:  return "Energized"
+            case .cozy:       return "Cozy"
+            case .calm:       return "Calm"
+            case .sleepy:     return "Sleepy"
+            case .groggy:     return "Groggy"
+            case .restless:   return "Restless"
+            case .recovering: return "Recovering"
+            case .excited:    return "Excited"
+            case .proud:      return "Proud"
+            case .rested:     return "Rested"
+            case .good:       return "Calm"
+            case .tired:      return "Sleepy"
+            case .low:        return "Low energy"
             }
         }
 
         var message: String {
             switch self {
-            case .rested: return "feels fully recharged."
-            case .good:   return "had a good night."
-            case .tired:  return "is a little tired today. Let's recover tonight."
-            case .low:    return "needs a gentle night. Try a calmer bedtime routine."
+            case .energized:  return "is bouncing with energy."
+            case .cozy:       return "feels warm and cozy."
+            case .calm:       return "had a peaceful night."
+            case .sleepy:     return "is a little sleepy today."
+            case .groggy:     return "is groggy — let's wind down earlier tonight."
+            case .restless:   return "had a restless night."
+            case .recovering: return "is recovering from sleep debt."
+            case .excited:    return "is excited for tonight!"
+            case .proud:      return "is proud of your streak."
+            case .rested:     return "feels fully recharged."
+            case .good:       return "had a good night."
+            case .tired:      return "is a little tired today. Let's recover tonight."
+            case .low:        return "needs a gentle night. Try a calmer bedtime routine."
+            }
+        }
+
+        /// Bucket used by the legacy DreamSpiritView image picker.
+        var legacyBucket: Mood {
+            switch self {
+            case .energized, .excited, .proud, .rested:
+                return .rested
+            case .cozy, .calm, .recovering, .good:
+                return .good
+            case .sleepy, .tired:
+                return .tired
+            case .groggy, .restless, .low:
+                return .low
             }
         }
 
         static func from(score: Int) -> Mood {
             switch score {
-            case 85...:  return .rested
-            case 70..<85: return .good
-            case 50..<70: return .tired
-            default:     return .low
+            case 90...:    return .energized
+            case 80..<90:  return .cozy
+            case 70..<80:  return .calm
+            case 60..<70:  return .sleepy
+            case 45..<60:  return .groggy
+            default:       return .restless
             }
         }
     }
 
-    var name: String = "Lumi"
+    // MARK: - Evolution stage
+    enum EvolutionStage: String, Codable, CaseIterable {
+        case egg
+        case baby
+        case young
+        case adult
+        case dream
+        case legendary
+
+        var label: String {
+            switch self {
+            case .egg:       return "Egg"
+            case .baby:      return "Baby"
+            case .young:     return "Young"
+            case .adult:     return "Adult"
+            case .dream:     return "Dream form"
+            case .legendary: return "Legendary"
+            }
+        }
+
+        /// Consistent days needed to reach this stage.
+        var consistencyRequired: Int {
+            switch self {
+            case .egg:       return 0
+            case .baby:      return 3
+            case .young:     return 10
+            case .adult:     return 25
+            case .dream:     return 60
+            case .legendary: return 120
+            }
+        }
+    }
+
+    // MARK: - Stored
+    var name: String = "Nova"
+    var species: PetSpecies = .fox
+    var room: PetRoom = .moonBedroom
+    var stage: EvolutionStage = .baby
+
     var level: Int = 1
     var dreamEnergy: Int = 0
-    var mood: Mood = .good
+    var mood: Mood = .calm
     var lastSleepScore: Int? = nil
+
     var unlockedItems: Set<String> = ["default_color", "hat_nightcap"]
     var equippedHat: String? = "hat_nightcap"
     var equippedColor: String = "default_color"
     var equippedBackground: String? = nil
 
+    // MARK: - Derived
     var energyForNextLevel: Int {
         100 + (level - 1) * 50
     }
@@ -50,8 +142,19 @@ struct Pet: Codable {
     var levelProgress: Double {
         min(1.0, Double(dreamEnergy) / Double(energyForNextLevel))
     }
+
+    /// Returns the highest stage reached for the given consistency-day count.
+    static func stage(forConsistencyDays days: Int) -> EvolutionStage {
+        let ordered: [EvolutionStage] = [.egg, .baby, .young, .adult, .dream, .legendary]
+        var current: EvolutionStage = .egg
+        for stage in ordered where days >= stage.consistencyRequired {
+            current = stage
+        }
+        return current
+    }
 }
 
+// MARK: - Unlockables (unchanged catalog kept as-is)
 struct UnlockableItem: Identifiable, Codable, Hashable {
     enum Kind: String, Codable {
         case hat, color, background, animation

@@ -16,6 +16,10 @@ final class AppState: ObservableObject {
         static let targetWakeHour = "mooni.targetWakeHour"
         static let targetWakeMinute = "mooni.targetWakeMinute"
         static let lastMorningPrompt = "mooni.lastMorningPrompt"
+        static let sleepGoal = "mooni.sleepGoal"
+        static let weekendWakeHour = "mooni.weekendWakeHour"
+        static let weekendWakeMinute = "mooni.weekendWakeMinute"
+        static let dreamStars = "mooni.dreamStars"
     }
 
     // MARK: - Published state
@@ -46,6 +50,27 @@ final class AppState: ObservableObject {
     @Published var showMorningCheckIn: Bool = false
     @Published var lastEarnedEnergy: Int? = nil
     @Published var lastLevelUp: Int? = nil
+
+    /// Primary goal the user picked during onboarding. Drives personalized copy.
+    @Published var sleepGoal: SleepGoal? {
+        didSet { UserDefaults.standard.set(sleepGoal?.rawValue, forKey: Key.sleepGoal) }
+    }
+
+    /// Optional separate weekend wake time (defaults to weekday wake time if nil).
+    @Published var weekendWakeTime: Date? {
+        didSet {
+            if let t = weekendWakeTime {
+                let comps = Calendar.current.dateComponents([.hour, .minute], from: t)
+                UserDefaults.standard.set(comps.hour ?? 8, forKey: Key.weekendWakeHour)
+                UserDefaults.standard.set(comps.minute ?? 0, forKey: Key.weekendWakeMinute)
+            }
+        }
+    }
+
+    /// Currency earned by completing nightly bedtime quests.
+    @Published var dreamStars: Int {
+        didSet { UserDefaults.standard.set(dreamStars, forKey: Key.dreamStars) }
+    }
 
     // MARK: - Init
     init() {
@@ -91,6 +116,23 @@ final class AppState: ObservableObject {
         self.targetBedtime = Date.todayAt(hour: bedHour, minute: bedMin)
         self.targetWakeTime = Date.todayAt(hour: wakeHour, minute: wakeMin)
 
+        // Sleep goal
+        if let raw = defaults.string(forKey: Key.sleepGoal) {
+            self.sleepGoal = SleepGoal(rawValue: raw)
+        } else {
+            self.sleepGoal = nil
+        }
+
+        // Weekend wake (optional)
+        if let wh = defaults.object(forKey: Key.weekendWakeHour) as? Int,
+           let wm = defaults.object(forKey: Key.weekendWakeMinute) as? Int {
+            self.weekendWakeTime = Date.todayAt(hour: wh, minute: wm)
+        } else {
+            self.weekendWakeTime = nil
+        }
+
+        self.dreamStars = defaults.integer(forKey: Key.dreamStars)
+
         // Reset routine completion if it's a new day
         rolloverRoutineIfNeeded()
         // Maybe surface morning check-in
@@ -102,6 +144,21 @@ final class AppState: ObservableObject {
 
     var recentEntries: [SleepEntry] {
         Array(entries.sorted(by: { $0.wakeTime > $1.wakeTime }).prefix(7))
+    }
+
+    /// Sleep debt (last 7 days, in hours).
+    var currentSleepDebt: Double {
+        SleepInsights.sleepDebt(entries: entries, goalHours: goalHours, days: 7)
+    }
+
+    /// Derived personality based on sleep behavior.
+    var petPersonality: Personality {
+        Personality.derive(
+            entries: entries,
+            targetBedtime: targetBedtime,
+            consistencyDays: bedtimeConsistencyDays,
+            debt: currentSleepDebt
+        )
     }
 
     var bedtimeConsistencyDays: Int {
@@ -127,12 +184,43 @@ final class AppState: ObservableObject {
     // MARK: - Onboarding
     func completeOnboarding(name: String, goalHours: Double, bedtime: Date, wakeTime: Date) {
         var newPet = pet
-        newPet.name = name.isEmpty ? "Lumi" : name
+        newPet.name = name.isEmpty ? "Nova" : name
         self.pet = newPet
         self.goalHours = goalHours
         self.targetBedtime = bedtime
         self.targetWakeTime = wakeTime
         self.hasCompletedOnboarding = true
+    }
+
+    /// Full onboarding completion used by the new 14-screen flow.
+    func completeOnboarding(
+        species: PetSpecies,
+        name: String,
+        goal: SleepGoal,
+        goalHours: Double,
+        bedtime: Date,
+        wakeTime: Date,
+        weekendWake: Date?,
+        room: PetRoom
+    ) {
+        var newPet = pet
+        newPet.species = species
+        newPet.room = room
+        newPet.name = name.trimmingCharacters(in: .whitespaces).isEmpty ? species.defaultName : name
+        newPet.mood = .calm
+        newPet.stage = .baby
+        self.pet = newPet
+        self.sleepGoal = goal
+        self.goalHours = goalHours
+        self.targetBedtime = bedtime
+        self.targetWakeTime = wakeTime
+        self.weekendWakeTime = weekendWake
+        self.hasCompletedOnboarding = true
+    }
+
+    /// Awards Dream Stars (the lightweight nightly currency).
+    func addDreamStars(_ amount: Int) {
+        dreamStars = max(0, dreamStars + amount)
     }
 
     // MARK: - Logging
@@ -198,6 +286,24 @@ final class AppState: ObservableObject {
             p.unlockedItems.insert(item.id)
         }
 
+        // Recompute evolution stage based on consistency days, capped at `young`
+        // for free users (Adult / Dream / Legendary are Pro-only) and never regressing.
+        var nextStage = Pet.stage(forConsistencyDays: bedtimeConsistencyDays)
+        let order = Pet.EvolutionStage.allCases
+        if !SubscriptionManager.shared.isPro {
+            let cap: Pet.EvolutionStage = .young
+            if let nextIdx = order.firstIndex(of: nextStage),
+               let capIdx = order.firstIndex(of: cap),
+               nextIdx > capIdx {
+                nextStage = cap
+            }
+        }
+        if let nextIdx = order.firstIndex(of: nextStage),
+           let curIdx = order.firstIndex(of: p.stage),
+           nextIdx > curIdx {
+            p.stage = nextStage
+        }
+
         self.pet = p
         self.lastEarnedEnergy = energy
         self.lastLevelUp = leveledTo
@@ -241,10 +347,16 @@ final class AppState: ObservableObject {
 
     func setHabits(_ habits: [RoutineHabit]) {
         var r = routine
-        r.habits = habits
-        // prune completion
-        r.completedToday = r.completedToday.intersection(Set(habits.map { $0.id }))
+        // Free users are capped to 4 habits per night; Pro users are unlimited.
+        let capped = SubscriptionManager.shared.isPro ? habits : Array(habits.prefix(4))
+        r.habits = capped
+        r.completedToday = r.completedToday.intersection(Set(capped.map { $0.id }))
         self.routine = r
+    }
+
+    /// Maximum habits the current user is allowed to have in their nightly routine.
+    var maxHabits: Int {
+        SubscriptionManager.shared.isPro ? Int.max : 4
     }
 
     private func rolloverRoutineIfNeeded() {

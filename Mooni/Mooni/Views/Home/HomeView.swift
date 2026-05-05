@@ -87,7 +87,7 @@ struct HomeView: View {
             DreamSpiritView(pet: appState.pet, size: 190)
                 .padding(.vertical, 8)
 
-            Text("\(appState.pet.name) \(appState.pet.mood.message)")
+            Text("\(appState.pet.name): \(dailyMessage)")
                 .font(MooniFont.body(15))
                 .foregroundColor(MooniColor.textSecondary)
                 .multilineTextAlignment(.center)
@@ -295,6 +295,17 @@ struct HomeView: View {
                 }
             }
             .transition(.opacity.combined(with: .move(edge: .bottom)))
+        )
+    }
+
+    private var dailyMessage: String {
+        PetMessageGenerator.dailyMessage(
+            for: appState.pet,
+            entries: appState.entries,
+            targetBedtime: appState.targetBedtime,
+            consistencyDays: appState.bedtimeConsistencyDays,
+            debt: appState.currentSleepDebt,
+            isPro: subscriptionManager.isPro
         )
     }
 

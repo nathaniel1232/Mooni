@@ -7,31 +7,40 @@ struct DreamSpiritView: View {
     @State private var floating = false
     @State private var sparkle = false
 
-    private var bodyColor: Color { UnlockableItem.color(for: pet.equippedColor) }
+    /// If the user is on the default color, fall back to the species tint so
+    /// the three starter pets read as visually distinct before per-species art ships.
+    private var bodyColor: Color {
+        if pet.equippedColor == "default_color" {
+            return pet.species.tint
+        }
+        return UnlockableItem.color(for: pet.equippedColor)
+    }
 
     private var spiritImageName: String {
-        switch pet.mood {
+        switch pet.mood.legacyBucket {
         case .rested: return "spirit_dream"
         case .good:   return "spirit_awake"
         case .tired:  return "spirit_tired"
         case .low:    return "spirit_sleep"
+        default:      return "spirit_awake"
         }
     }
 
     // Per-mood image scale to compensate for asset size differences.
     private var imageScale: CGFloat {
-        switch pet.mood {
+        switch pet.mood.legacyBucket {
         case .low: return 1.70   // spirit_sleep renders smaller — boost it
         default:   return 1.30
         }
     }
 
     private var glowIntensity: Double {
-        switch pet.mood {
+        switch pet.mood.legacyBucket {
         case .rested: return 1.0
         case .good:   return 0.75
         case .tired:  return 0.50
         case .low:    return 0.30
+        default:      return 0.75
         }
     }
 
@@ -64,7 +73,7 @@ struct DreamSpiritView: View {
                 .frame(width: size * 0.55, height: size * 0.55)
                 .blur(radius: 10)
 
-            if pet.mood == .rested {
+            if pet.mood.legacyBucket == .rested {
                 sparkles
             }
 

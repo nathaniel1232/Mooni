@@ -27,7 +27,7 @@ struct MainTabView: View {
     @State private var showPaywall = false
 
     enum Tab: Hashable {
-        case home, log, pet, routine
+        case home, report, quest, pet, profile
     }
 
     var body: some View {
@@ -36,17 +36,21 @@ struct MainTabView: View {
                 .tabItem { Label("Home", systemImage: "moon.stars.fill") }
                 .tag(Tab.home)
 
-            SleepLogView()
-                .tabItem { Label("Sleep", systemImage: "bed.double.fill") }
-                .tag(Tab.log)
+            SleepReportView(showPaywall: $showPaywall)
+                .tabItem { Label("Report", systemImage: "chart.bar.fill") }
+                .tag(Tab.report)
+
+            BedtimeQuestView(showPaywall: $showPaywall)
+                .tabItem { Label("Quest", systemImage: "checklist") }
+                .tag(Tab.quest)
 
             PetScreenView(showPaywall: $showPaywall)
-                .tabItem { Label("Spirit", systemImage: "sparkles") }
+                .tabItem { Label("Pet", systemImage: "pawprint.fill") }
                 .tag(Tab.pet)
 
-            RoutineView()
-                .tabItem { Label("Routine", systemImage: "checklist") }
-                .tag(Tab.routine)
+            ProfileView(showPaywall: $showPaywall)
+                .tabItem { Label("Profile", systemImage: "person.crop.circle.fill") }
+                .tag(Tab.profile)
         }
         .tint(MooniColor.accent)
         .sheet(isPresented: $appState.showMorningCheckIn) {
