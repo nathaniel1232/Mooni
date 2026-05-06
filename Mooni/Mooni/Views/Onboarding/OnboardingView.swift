@@ -2787,6 +2787,8 @@ private struct FactScaffold<Content: View>: View {
     let source: String?
     @ViewBuilder var content: () -> Content
 
+    @State private var titleAppear = false
+
     var body: some View {
         VStack(spacing: 18) {
             Text(eyebrow)
@@ -2794,35 +2796,269 @@ private struct FactScaffold<Content: View>: View {
                 .foregroundColor(MooniColor.accentSoft)
                 .tracking(2)
                 .textCase(.uppercase)
+                .opacity(titleAppear ? 1 : 0)
+                .offset(y: titleAppear ? 0 : 8)
 
             Text(title)
                 .font(MooniFont.display(24))
                 .foregroundColor(MooniColor.textPrimary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 16)
+                .opacity(titleAppear ? 1 : 0)
+                .offset(y: titleAppear ? 0 : 12)
 
             content()
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 4)
 
             if let s = source {
-                Text(s)
-                    .font(MooniFont.caption(11))
-                    .foregroundColor(MooniColor.textMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.shield.fill")
+                        .foregroundColor(MooniColor.success.opacity(0.7))
+                        .font(.system(size: 9))
+                    Text(s)
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(MooniColor.textMuted)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 24)
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 8)
+        .padding(.top, 4)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.5)) { titleAppear = true }
+        }
     }
 }
 
-// MARK: - Fact: Body needs
+// MARK: - Cinematic count-up label
+
+private struct CountUpText: View {
+    let target: Double
+    var duration: Double = 1.6
+    var format: (Double) -> String = { String(format: "%.0f", $0) }
+    var font: Font = .system(size: 64, weight: .bold, design: .rounded)
+    var color: Color = MooniColor.textPrimary
+    var glow: Color? = nil
+
+    @State private var current: Double = 0
+
+    var body: some View {
+        Text(format(current))
+            .font(font)
+            .foregroundColor(color)
+            .contentTransition(.numericText(value: current))
+            .shadow(color: glow?.opacity(0.55) ?? .clear, radius: 12)
+            .onAppear {
+                withAnimation(.easeOut(duration: duration)) {
+                    current = target
+                }
+            }
+    }
+}
+
+// MARK: - Animated bar chart with deceptive-scale option
+
+private struct DramaticBarChart: View {
+    struct Bar: Identifiable {
+        let id = UUID()
+        let label: String
+        let value: Double
+        let color: Color
+        let suffix: String
+    }
+    let bars: [Bar]
+    /// When true, bars start from `truncatedFloor` (e.g. 0.6) so small percentage
+    /// differences look enormous. Classic chart-trick.
+    var truncated: Bool = false
+    var truncatedFloor: Double = 0.5
+    var maxValue: Double = 1.0
+
+    @State private var animatedValues: [Double] = []
+
+    private func barHeight(for value: Double, totalHeight: CGFloat) -> CGFloat {
+        if truncated {
+            let normalized = (value - truncatedFloor) / max(0.001, maxValue - truncatedFloor)
+            return totalHeight * CGFloat(max(0.06, min(1.0, normalized)))
+        } else {
+            return totalHeight * CGFloat(max(0.04, min(1.0, value / maxValue)))
+        }
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let h = geo.size.height
+            HStack(alignment: .bottom, spacing: 30) {
+                ForEach(Array(bars.enumerated()), id: \.element.id) { idx, bar in
+                    VStack(spacing: 8) {
+                        Text("\(Int(bar.value * 100))\(bar.suffix)")
+                            .font(MooniFont.title(15))
+                            .foregroundColor(bar.color)
+                        ZStack(alignment: .bottom) {
+                            // Track
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color.white.opacity(0.05))
+                                .frame(width: 70, height: h - 40)
+                            // Filled bar
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(LinearGradient(
+                                    colors: [bar.color.opacity(0.95), bar.color.opacity(0.55)],
+                                    startPoint: .top, endPoint: .bottom))
+                                .frame(width: 70, height: barHeight(for: animatedValues.indices.contains(idx) ? animatedValues[idx] : 0, totalHeight: h - 40))
+                                .shadow(color: bar.color.opacity(0.55), radius: 18, y: 4)
+                        }
+                        Text(bar.label)
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.textPrimary)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .onAppear {
+            animatedValues = Array(repeating: 0, count: bars.count)
+            for (i, bar) in bars.enumerated() {
+                withAnimation(.spring(response: 0.9, dampingFraction: 0.65).delay(0.15 * Double(i))) {
+                    if animatedValues.indices.contains(i) { animatedValues[i] = bar.value }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Axis-labeled line chart
+
+private struct AxisLineChart: View {
+    let data: [Double]
+    let phase: CGFloat
+    let accent: Color
+    let fillTop: Color
+    let fillBottom: Color
+    var xLabels: [String] = []
+    var yMaxLabel: String = ""
+    var yMinLabel: String = ""
+    var highlightLastLabel: String? = nil
+
+    var body: some View {
+        GeometryReader { geo in
+            let leftInset: CGFloat = 28
+            let bottomInset: CGFloat = 22
+            let plotW = geo.size.width - leftInset
+            let plotH = geo.size.height - bottomInset
+            let maxVal = max(data.max() ?? 1, 0.001)
+            let stepX = data.count > 1 ? plotW / CGFloat(data.count - 1) : plotW
+
+            ZStack(alignment: .topLeading) {
+                // Y-axis labels
+                VStack(alignment: .trailing) {
+                    Text(yMaxLabel).font(MooniFont.caption(9)).foregroundColor(MooniColor.textMuted)
+                    Spacer()
+                    Text(yMinLabel).font(MooniFont.caption(9)).foregroundColor(MooniColor.textMuted)
+                }
+                .frame(width: leftInset - 6, height: plotH, alignment: .trailing)
+                .padding(.trailing, 6)
+
+                // Grid lines
+                ForEach(0..<4) { i in
+                    let y = plotH * CGFloat(i) / 3
+                    Path { p in
+                        p.move(to: CGPoint(x: leftInset, y: y))
+                        p.addLine(to: CGPoint(x: geo.size.width, y: y))
+                    }
+                    .stroke(Color.white.opacity(i == 3 ? 0.16 : 0.05),
+                            style: StrokeStyle(lineWidth: 1, dash: i == 3 ? [] : [2, 4]))
+                }
+
+                // Filled area
+                Path { p in
+                    p.move(to: CGPoint(x: leftInset, y: plotH))
+                    for (i, v) in data.enumerated() {
+                        let x = leftInset + CGFloat(i) * stepX
+                        let y = plotH - (CGFloat(v / maxVal) * plotH * 0.92) - plotH * 0.04
+                        if i == 0 {
+                            p.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            p.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+                    p.addLine(to: CGPoint(x: leftInset + CGFloat(data.count - 1) * stepX, y: plotH))
+                    p.addLine(to: CGPoint(x: leftInset, y: plotH))
+                    p.closeSubpath()
+                }
+                .fill(LinearGradient(colors: [fillTop, fillBottom],
+                                     startPoint: .top, endPoint: .bottom))
+                .mask(
+                    Rectangle()
+                        .frame(width: leftInset + plotW * phase, height: plotH, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                )
+
+                // Line
+                Path { p in
+                    for (i, v) in data.enumerated() {
+                        let x = leftInset + CGFloat(i) * stepX
+                        let y = plotH - (CGFloat(v / maxVal) * plotH * 0.92) - plotH * 0.04
+                        if i == 0 { p.move(to: CGPoint(x: x, y: y)) }
+                        else      { p.addLine(to: CGPoint(x: x, y: y)) }
+                    }
+                }
+                .trim(from: 0, to: phase)
+                .stroke(accent, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                .shadow(color: accent.opacity(0.5), radius: 6, y: 1)
+
+                // End-marker pulse
+                if let last = data.last {
+                    let x = leftInset + CGFloat(data.count - 1) * stepX
+                    let y = plotH - (CGFloat(last / maxVal) * plotH * 0.92) - plotH * 0.04
+                    Circle()
+                        .fill(accent)
+                        .frame(width: 14, height: 14)
+                        .position(x: x, y: y)
+                        .opacity(Double(phase))
+                        .shadow(color: accent.opacity(0.8), radius: 8)
+                    Circle()
+                        .stroke(accent.opacity(0.5), lineWidth: 1)
+                        .frame(width: 28, height: 28)
+                        .position(x: x, y: y)
+                        .opacity(Double(phase) * 0.4)
+
+                    if let label = highlightLastLabel {
+                        Text(label)
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(accent)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(accent.opacity(0.15))
+                            .clipShape(Capsule())
+                            .position(x: min(x - 8, geo.size.width - 60), y: max(y - 22, 12))
+                            .opacity(Double(phase))
+                    }
+                }
+
+                // X-axis labels
+                if !xLabels.isEmpty {
+                    HStack(spacing: 0) {
+                        ForEach(xLabels.indices, id: \.self) { i in
+                            Text(xLabels[i])
+                                .font(MooniFont.caption(9))
+                                .foregroundColor(MooniColor.textMuted)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(.leading, leftInset)
+                    .frame(width: geo.size.width, alignment: .leading)
+                    .offset(y: plotH + 6)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Fact: Body needs (you vs ideal — dramatic gap)
 
 private struct BodyFactScreen: View {
     let profile: OnboardingProfile
-    @State private var animatedNeed: Double = 0
 
     private var idealHours: Double {
         switch profile.age ?? 28 {
@@ -2834,108 +3070,281 @@ private struct BodyFactScreen: View {
         }
     }
 
+    private var youHours: Double { profile.typicalSleepHours }
+
+    private var deficit: Double { max(0, idealHours - youHours) }
+
     var body: some View {
         FactScaffold(
-            eyebrow: "Did you know",
-            title: "Your body needs ~\(String(format: "%.1f", idealHours)) hours",
-            source: "Based on age, weight & National Sleep Foundation guidelines."
+            eyebrow: "What your body actually needs",
+            title: "You sleep \(String(format: "%.1f", youHours)) — your body wants \(String(format: "%.1f", idealHours))",
+            source: "National Sleep Foundation · age-stratified sleep duration consensus, 2015."
         ) {
-            VStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.white.opacity(0.10), lineWidth: 14)
-                        .frame(width: 200, height: 200)
-                    Circle()
-                        .trim(from: 0, to: animatedNeed / 12)
-                        .stroke(LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
-                                               startPoint: .top, endPoint: .bottom),
-                                style: StrokeStyle(lineWidth: 14, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .frame(width: 200, height: 200)
-                    VStack(spacing: 0) {
-                        Text(String(format: "%.1f", animatedNeed))
-                            .font(.system(size: 48, weight: .bold, design: .rounded))
-                            .foregroundColor(MooniColor.textPrimary)
-                            .contentTransition(.numericText())
-                        Text("hours / night")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textMuted)
-                    }
-                }
-                .padding(.top, 4)
+            VStack(spacing: 18) {
+                DramaticBarChart(
+                    bars: [
+                        .init(label: "You", value: youHours / 12, color: MooniColor.danger, suffix: " hr"),
+                        .init(label: "Need", value: idealHours / 12, color: MooniColor.success, suffix: " hr")
+                    ],
+                    truncated: true,
+                    truncatedFloor: max(0, (youHours - 1) / 12),
+                    maxValue: idealHours / 12 + 0.05
+                )
+                .frame(height: 200)
+                .overlay(
+                    customLabels.padding(.top, 8),
+                    alignment: .top
+                )
 
-                HStack(spacing: 10) {
-                    factChip(icon: "figure.run", text: "Recovery")
-                    factChip(icon: "brain.head.profile", text: "Memory")
-                    factChip(icon: "heart.fill", text: "Heart")
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(MooniColor.danger)
+                    Text("That's a \(String(format: "%.1f", deficit))-hour daily debt — \(Int(deficit * 365)) hrs / year.")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Spacer()
                 }
-                .padding(.top, 4)
+                .padding(12)
+                .background(MooniColor.danger.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
-            .padding(.top, 4)
-            .onAppear {
-                withAnimation(.easeOut(duration: 1.6)) { animatedNeed = idealHours }
-            }
+            .padding(20)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
 
-    private func factChip(icon: String, text: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon).foregroundColor(MooniColor.success)
-            Text(text).font(MooniFont.caption(12)).foregroundColor(MooniColor.textPrimary)
+    private var customLabels: some View {
+        HStack(spacing: 30) {
+            Text(String(format: "%.1f", youHours))
+                .font(MooniFont.display(22))
+                .foregroundColor(MooniColor.danger)
+                .frame(maxWidth: .infinity)
+            Text(String(format: "%.1f", idealHours))
+                .font(MooniFont.display(22))
+                .foregroundColor(MooniColor.success)
+                .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(Color.white.opacity(0.07))
-        .clipShape(Capsule())
     }
 }
 
-// MARK: - Fact: Sleep debt
+// MARK: - Fact: Sleep debt (compounds across the week)
 
 private struct SleepDebtFactScreen: View {
     let profile: OnboardingProfile
     @State private var phase: CGFloat = 0
+    @State private var counterTarget: Double = 0
 
-    /// Sample debt accumulation across 7 days based on user's typical hours.
-    private var dataPoints: [Double] {
-        let deficit = max(0.0, 8.0 - profile.typicalSleepHours)
-        return (0..<7).map { day in deficit * Double(day + 1) }
+    private var dailyDeficit: Double { max(0.5, 8.0 - profile.typicalSleepHours) }
+    private var weekTotal: Double { dailyDeficit * 7 }
+    private var yearTotal: Double { dailyDeficit * 365 }
+
+    private var weekData: [Double] {
+        (1...7).map { Double($0) * dailyDeficit }
     }
 
     var body: some View {
         FactScaffold(
-            eyebrow: "Sleep debt",
-            title: "It compounds — even when you don't feel it",
-            source: "1 hour of debt per night → 7 hours by Sunday."
+            eyebrow: "Sleep debt compounds",
+            title: "You're losing sleep faster than you can repay",
+            source: "Walker MP. Why We Sleep, Ch.7 · sleep-debt accumulation literature."
         ) {
             VStack(spacing: 14) {
-                AnimatedLineChart(
-                    data: dataPoints,
+                // Big dramatic counter
+                VStack(spacing: 0) {
+                    CountUpText(
+                        target: counterTarget,
+                        duration: 2.0,
+                        format: { String(format: "%.0f", $0) },
+                        font: .system(size: 76, weight: .bold, design: .rounded),
+                        color: MooniColor.danger,
+                        glow: MooniColor.danger
+                    )
+                    Text("HOURS LOST PER YEAR")
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.textMuted)
+                        .tracking(2)
+                }
+                .padding(.top, 4)
+
+                AxisLineChart(
+                    data: weekData,
                     phase: phase,
                     accent: MooniColor.danger,
-                    fillTop: MooniColor.danger.opacity(0.45),
-                    fillBottom: MooniColor.danger.opacity(0.0)
+                    fillTop: MooniColor.danger.opacity(0.55),
+                    fillBottom: MooniColor.danger.opacity(0.0),
+                    xLabels: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+                    yMaxLabel: String(format: "%.0fh", weekTotal),
+                    yMinLabel: "0h",
+                    highlightLastLabel: "−\(String(format: "%.0f", weekTotal))h"
                 )
-                .frame(height: 180)
-
-                HStack {
-                    ForEach(["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], id: \.self) { d in
-                        Text(d)
-                            .font(MooniFont.caption(10))
-                            .foregroundColor(MooniColor.textMuted)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .padding(.horizontal, 4)
+                .frame(height: 170)
 
                 HStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(MooniColor.warning)
-                    Text("By Sunday you'll be \(String(format: "%.1f", dataPoints.last ?? 0)) hrs short.")
+                    debtChip("Per week", String(format: "%.0fh", weekTotal), MooniColor.warning)
+                    debtChip("Per month", String(format: "%.0fh", weekTotal * 4.3), MooniColor.danger)
+                    debtChip("Per year", String(format: "%.0fh", yearTotal), MooniColor.danger)
+                }
+            }
+            .padding(20)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.8)) { phase = 1 }
+                counterTarget = yearTotal
+            }
+        }
+    }
+
+    private func debtChip(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(MooniFont.title(15)).foregroundColor(color)
+            Text(label).font(MooniFont.caption(10)).foregroundColor(MooniColor.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+// MARK: - Fact: Phone before bed (melatonin gap)
+
+private struct PhoneFactScreen: View {
+    let profile: OnboardingProfile
+    @State private var phase: CGFloat = 0
+    @State private var counter: Double = 0
+
+    /// Truncated y-axis melatonin curves — phone version stays low, no-phone rises sharply.
+    /// The visual gap is intentional: phones suppress the natural curve.
+    private var noPhoneCurve: [Double] { [0.05, 0.10, 0.22, 0.50, 0.82, 0.97, 1.00, 0.94, 0.84] }
+    private var phoneCurve:   [Double] { [0.05, 0.06, 0.08, 0.11, 0.18, 0.32, 0.50, 0.66, 0.62] }
+
+    /// Estimate of sleep stolen (mins) based on screen minutes used.
+    private var sleepStolen: Double {
+        // ~50 min stolen at 60min screen, scales sub-linearly
+        let m = Double(profile.phoneScreenMinutes)
+        return min(120, 30 + (m / 60.0) * 35)
+    }
+
+    var body: some View {
+        FactScaffold(
+            eyebrow: "Phones flatten melatonin",
+            title: "Your habit costs ~\(Int(sleepStolen)) minutes of real sleep",
+            source: "Chang et al. PNAS 2014 · iPad use suppresses evening melatonin by 23%."
+        ) {
+            VStack(spacing: 14) {
+                // Big stolen-minutes counter
+                HStack(alignment: .lastTextBaseline, spacing: 4) {
+                    CountUpText(
+                        target: sleepStolen,
+                        duration: 1.4,
+                        format: { String(format: "−%.0f", $0) },
+                        font: .system(size: 60, weight: .bold, design: .rounded),
+                        color: MooniColor.danger,
+                        glow: MooniColor.danger
+                    )
+                    Text("min/night")
+                        .font(MooniFont.body(15))
+                        .foregroundColor(MooniColor.textMuted)
+                        .padding(.bottom, 6)
+                }
+                .padding(.top, 4)
+
+                ZStack {
+                    AxisLineChart(
+                        data: noPhoneCurve,
+                        phase: phase,
+                        accent: MooniColor.success,
+                        fillTop: MooniColor.success.opacity(0.0),
+                        fillBottom: MooniColor.success.opacity(0.0),
+                        xLabels: ["8pm","9pm","10pm","11pm","12am"],
+                        yMaxLabel: "peak",
+                        yMinLabel: "low"
+                    )
+                    AxisLineChart(
+                        data: phoneCurve,
+                        phase: phase,
+                        accent: MooniColor.danger,
+                        fillTop: MooniColor.danger.opacity(0.45),
+                        fillBottom: MooniColor.danger.opacity(0.0),
+                        xLabels: [],
+                        yMaxLabel: "",
+                        yMinLabel: ""
+                    )
+                }
+                .frame(height: 180)
+
+                HStack(spacing: 16) {
+                    legendDot(MooniColor.success, "No phone — natural rise")
+                    legendDot(MooniColor.danger,  "Your habit — flatlined")
+                }
+                .font(MooniFont.caption(11))
+            }
+            .padding(20)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.6)) { phase = 1 }
+                counter = sleepStolen
+            }
+        }
+    }
+
+    private func legendDot(_ color: Color, _ label: String) -> some View {
+        HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(label).foregroundColor(MooniColor.textSecondary)
+        }
+    }
+}
+
+// MARK: - Fact: Caffeine (cup-decay)
+
+private struct CaffeineFactScreen: View {
+    @State private var phase: CGFloat = 0
+    @State private var pulse = false
+
+    /// 13 hourly samples from 2pm coffee → 3am.
+    private var data: [Double] { (0..<13).map { i in pow(0.5, Double(i) / 6.0) } }
+
+    var body: some View {
+        FactScaffold(
+            eyebrow: "Caffeine half-life",
+            title: "That 2pm coffee is still working at midnight",
+            source: "Drake et al. J Clin Sleep Med 2013 · caffeine 6h before bed cut sleep 41 min."
+        ) {
+            VStack(spacing: 14) {
+                // Coffee cups visualization showing decay
+                HStack(alignment: .bottom, spacing: 10) {
+                    cupAt(label: "2pm", percent: 1.00, danger: true)
+                    cupAt(label: "8pm", percent: 0.50, danger: true)
+                    cupAt(label: "Bedtime", percent: 0.25, danger: true)
+                    cupAt(label: "3am", percent: 0.13, danger: true)
+                }
+                .frame(height: 110)
+
+                AxisLineChart(
+                    data: data,
+                    phase: phase,
+                    accent: MooniColor.warning,
+                    fillTop: MooniColor.warning.opacity(0.55),
+                    fillBottom: MooniColor.warning.opacity(0.0),
+                    xLabels: ["2pm","6pm","10pm","2am"],
+                    yMaxLabel: "100%",
+                    yMinLabel: "0%",
+                    highlightLastLabel: "13%"
+                )
+                .frame(height: 130)
+
+                HStack(spacing: 8) {
+                    Image(systemName: "cup.and.saucer.fill").foregroundColor(MooniColor.warning)
+                    Text("Equivalent to ¼ cup of coffee in your bloodstream at bedtime.")
                         .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.warning)
+                        .foregroundColor(MooniColor.textPrimary)
                 }
                 .padding(10)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(MooniColor.warning.opacity(0.10))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
@@ -2944,54 +3353,115 @@ private struct SleepDebtFactScreen: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .onAppear {
                 withAnimation(.easeOut(duration: 1.8)) { phase = 1 }
+                withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { pulse = true }
             }
         }
     }
+
+    private func cupAt(label: String, percent: Double, danger: Bool) -> some View {
+        VStack(spacing: 6) {
+            ZStack(alignment: .bottom) {
+                // Cup body
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(MooniColor.textPrimary.opacity(0.45), lineWidth: 1.5)
+                    .frame(width: 36, height: 50)
+                // Coffee fill
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [MooniColor.warning, MooniColor.danger.opacity(0.8)],
+                        startPoint: .top, endPoint: .bottom))
+                    .frame(width: 32, height: max(4, 46 * percent))
+                    .animation(.spring(response: 0.9, dampingFraction: 0.7), value: phase)
+                    .padding(.bottom, 2)
+                    .opacity(Double(phase))
+                // Handle
+                Circle()
+                    .stroke(MooniColor.textPrimary.opacity(0.45), lineWidth: 1.5)
+                    .frame(width: 10, height: 10)
+                    .offset(x: 22, y: -8)
+            }
+            Text("\(Int(percent * 100))%")
+                .font(MooniFont.caption(11))
+                .foregroundColor(percent > 0.4 ? MooniColor.danger : MooniColor.warning)
+            Text(label)
+                .font(MooniFont.caption(10))
+                .foregroundColor(MooniColor.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+    }
 }
 
-// MARK: - Fact: Phone before bed
+// MARK: - Fact: Stress (truncated-axis dramatization)
 
-private struct PhoneFactScreen: View {
-    let profile: OnboardingProfile
+private struct StressFactScreen: View {
+    @State private var bar1: Double = 0
+    @State private var bar2: Double = 0
     @State private var phase: CGFloat = 0
 
-    /// Melatonin curve — normal vs phone-suppressed.
-    private var normalCurve: [Double] { [0.05, 0.08, 0.18, 0.42, 0.78, 0.95, 1.00, 0.92, 0.78] }
-    private var phoneCurve:  [Double] { [0.05, 0.06, 0.08, 0.12, 0.20, 0.42, 0.65, 0.82, 0.78] }
+    /// Cortisol-driven curve: a healthy night drops to ~10% before sleep.
+    /// A stressed night flatlines around 50% — bigger gap = visceral.
+    private var calmCurve:    [Double] { [0.85, 0.62, 0.40, 0.22, 0.12, 0.10, 0.10, 0.12, 0.18] }
+    private var stressedCurve:[Double] { [0.85, 0.78, 0.70, 0.62, 0.58, 0.55, 0.54, 0.56, 0.60] }
 
     var body: some View {
         FactScaffold(
-            eyebrow: "Blue light & melatonin",
-            title: "Phones delay sleep onset by ~58 min",
-            source: "Harvard Health · Chang et al., 2014. Brigham & Women's study."
+            eyebrow: "Cortisol blocks deep sleep",
+            title: "Stress steals 40% of your deep sleep",
+            source: "Kim & Dimsdale, Behav Sleep Med 2007 · stress & slow-wave sleep meta."
         ) {
-            VStack(spacing: 14) {
-                ZStack(alignment: .topLeading) {
-                    AnimatedLineChart(data: normalCurve, phase: phase,
-                                      accent: MooniColor.success,
-                                      fillTop: MooniColor.success.opacity(0.0),
-                                      fillBottom: MooniColor.success.opacity(0.0))
-                    AnimatedLineChart(data: phoneCurve, phase: phase,
-                                      accent: MooniColor.danger,
-                                      fillTop: MooniColor.danger.opacity(0.0),
-                                      fillBottom: MooniColor.danger.opacity(0.0))
-                }
-                .frame(height: 160)
+            VStack(spacing: 16) {
+                // Truncated-axis bar comparison
+                DramaticBarChart(
+                    bars: [
+                        .init(label: "Calm night",   value: 1.8 / 2.0, color: MooniColor.success, suffix: " hrs"),
+                        .init(label: "Stressed",     value: 1.1 / 2.0, color: MooniColor.danger,  suffix: " hrs")
+                    ],
+                    truncated: true,
+                    truncatedFloor: 0.45,
+                    maxValue: 0.95
+                )
+                .frame(height: 170)
+                .overlay(
+                    HStack(spacing: 30) {
+                        Text("1.8h").font(MooniFont.display(20)).foregroundColor(MooniColor.success).frame(maxWidth: .infinity)
+                        Text("1.1h").font(MooniFont.display(20)).foregroundColor(MooniColor.danger).frame(maxWidth: .infinity)
+                    }
+                    .padding(.top, 6),
+                    alignment: .top
+                )
 
-                HStack(spacing: 16) {
-                    legendDot(color: MooniColor.success, label: "No phone")
-                    legendDot(color: MooniColor.danger,  label: "Your habit")
+                // Cortisol curve
+                ZStack {
+                    AxisLineChart(
+                        data: calmCurve,
+                        phase: phase,
+                        accent: MooniColor.success,
+                        fillTop: MooniColor.success.opacity(0.0),
+                        fillBottom: MooniColor.success.opacity(0.0),
+                        xLabels: ["6pm","9pm","12am","3am"],
+                        yMaxLabel: "high",
+                        yMinLabel: "low"
+                    )
+                    AxisLineChart(
+                        data: stressedCurve,
+                        phase: phase,
+                        accent: MooniColor.danger,
+                        fillTop: MooniColor.danger.opacity(0.30),
+                        fillBottom: MooniColor.danger.opacity(0.0),
+                        xLabels: [], yMaxLabel: "", yMinLabel: ""
+                    )
                 }
+                .frame(height: 130)
 
-                HStack(spacing: 10) {
-                    Image(systemName: "iphone.slash").foregroundColor(MooniColor.warning)
-                    Text("Your \(profile.phoneScreenMinutes) min flattens your melatonin peak.")
+                HStack(spacing: 8) {
+                    Image(systemName: "wind").foregroundColor(MooniColor.accent)
+                    Text("Mooni's wind-down crashes cortisol so deep sleep returns.")
                         .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.warning)
+                        .foregroundColor(MooniColor.accentSoft)
                 }
                 .padding(10)
-                .frame(maxWidth: .infinity)
-                .background(MooniColor.warning.opacity(0.10))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(MooniColor.accent.opacity(0.10))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .padding(20)
@@ -3002,168 +3472,56 @@ private struct PhoneFactScreen: View {
             }
         }
     }
-
-    private func legendDot(color: Color, label: String) -> some View {
-        HStack(spacing: 6) {
-            Circle().fill(color).frame(width: 8, height: 8)
-            Text(label).font(MooniFont.caption(11)).foregroundColor(MooniColor.textSecondary)
-        }
-    }
 }
 
-// MARK: - Fact: Caffeine
-
-private struct CaffeineFactScreen: View {
-    @State private var phase: CGFloat = 0
-    @State private var markerOffset: CGFloat = 0
-
-    /// Caffeine concentration over 12 hours — exponential decay.
-    private var data: [Double] {
-        (0..<13).map { i in pow(0.5, Double(i) / 5.0) }
-    }
-
-    var body: some View {
-        FactScaffold(
-            eyebrow: "Caffeine half-life",
-            title: "12 hours later, half is still in your system",
-            source: "Caffeine half-life: 5–7 hrs · Roehrs & Roth, Sleep Med Reviews."
-        ) {
-            VStack(spacing: 14) {
-                AnimatedLineChart(
-                    data: data, phase: phase,
-                    accent: MooniColor.warning,
-                    fillTop: MooniColor.warning.opacity(0.55),
-                    fillBottom: MooniColor.warning.opacity(0.0)
-                )
-                .frame(height: 180)
-
-                HStack {
-                    Text("Coffee at 2pm").font(MooniFont.caption(10)).foregroundColor(MooniColor.textMuted)
-                    Spacer()
-                    Text("Bedtime").font(MooniFont.caption(10)).foregroundColor(MooniColor.warning)
-                }
-                .padding(.horizontal, 4)
-
-                HStack(spacing: 10) {
-                    Image(systemName: "cup.and.saucer.fill").foregroundColor(MooniColor.warning)
-                    Text("That afternoon coffee = a quarter-cup at bedtime.")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.warning)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity)
-                .background(MooniColor.warning.opacity(0.10))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .padding(20)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .onAppear {
-                withAnimation(.easeOut(duration: 1.8)) { phase = 1 }
-            }
-        }
-    }
-}
-
-// MARK: - Fact: Stress
-
-private struct StressFactScreen: View {
-    @State private var bar1: CGFloat = 0
-    @State private var bar2: CGFloat = 0
-
-    var body: some View {
-        FactScaffold(
-            eyebrow: "Cortisol & deep sleep",
-            title: "Stress can cut deep sleep by 40%",
-            source: "American Psychological Association, sleep & cortisol meta-analysis."
-        ) {
-            VStack(spacing: 16) {
-                HStack(alignment: .bottom, spacing: 30) {
-                    barColumn(label: "Calm night", value: bar1, color: MooniColor.success, hours: "1.8 hrs deep")
-                    barColumn(label: "Stressed", value: bar2, color: MooniColor.danger, hours: "1.1 hrs deep")
-                }
-                .frame(height: 200)
-                .padding(.top, 8)
-
-                HStack(spacing: 10) {
-                    Image(systemName: "wind").foregroundColor(MooniColor.accent)
-                    Text("Mooni's wind-down lowers cortisol so deep sleep returns.")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.accentSoft)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity)
-                .background(MooniColor.accent.opacity(0.10))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .padding(20)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .onAppear {
-                withAnimation(.easeOut(duration: 1.4)) { bar1 = 1.0 }
-                withAnimation(.easeOut(duration: 1.4).delay(0.25)) { bar2 = 0.6 }
-            }
-        }
-    }
-
-    private func barColumn(label: String, value: CGFloat, color: Color, hours: String) -> some View {
-        VStack(spacing: 8) {
-            Spacer()
-            Text(hours)
-                .font(MooniFont.caption(11))
-                .foregroundColor(color)
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(LinearGradient(
-                    colors: [color.opacity(0.85), color.opacity(0.45)],
-                    startPoint: .top, endPoint: .bottom))
-                .frame(width: 64, height: max(8, 140 * value))
-                .animation(.easeOut(duration: 1.0), value: value)
-            Text(label)
-                .font(MooniFont.caption(12))
-                .foregroundColor(MooniColor.textPrimary)
-        }
-    }
-}
-
-// MARK: - Fact: Day cycle
+// MARK: - Fact: Day cycle (cinematic 24h dial)
 
 private struct DayCycleFactScreen: View {
     @State private var rotation: Double = 0
     @State private var pulse = false
+    @State private var arcReveal: CGFloat = 0
 
     var body: some View {
         FactScaffold(
-            eyebrow: "Your circadian rhythm",
-            title: "Your body runs on a 24-hour clock",
-            source: "Anchoring wake time stabilizes the entire rhythm."
+            eyebrow: "Your circadian dial",
+            title: "Same wake time = stable rhythm",
+            source: "Czeisler CA et al. Science 1999 · stable wake-time entrains the SCN."
         ) {
             VStack(spacing: 14) {
                 ZStack {
+                    // Day/night ring
                     Circle()
                         .stroke(LinearGradient(
-                            colors: [MooniColor.accent, MooniColor.warning, MooniColor.accentSoft, MooniColor.accent],
-                            startPoint: .leading, endPoint: .trailing),
-                                lineWidth: 6)
+                            colors: [
+                                Color(red: 0.05, green: 0.07, blue: 0.20),
+                                Color(red: 0.18, green: 0.10, blue: 0.30),
+                                Color(red: 0.95, green: 0.78, blue: 0.55),
+                                Color(red: 1.00, green: 0.85, blue: 0.62),
+                                Color(red: 0.30, green: 0.20, blue: 0.45),
+                                Color(red: 0.05, green: 0.07, blue: 0.20)
+                            ],
+                            startPoint: .top, endPoint: .bottom),
+                                lineWidth: 8)
                         .frame(width: 220, height: 220)
-
-                    // Sleep arc
-                    Circle()
-                        .trim(from: 0.04, to: 0.32)
-                        .stroke(MooniColor.accent.opacity(0.4),
-                                style: StrokeStyle(lineWidth: 22, lineCap: .round))
-                        .frame(width: 220, height: 220)
-                        .rotationEffect(.degrees(-90))
 
                     // Hour ticks
                     ForEach(0..<24, id: \.self) { h in
                         Capsule()
                             .fill(Color.white.opacity(h % 6 == 0 ? 0.95 : 0.30))
-                            .frame(width: 2, height: h % 6 == 0 ? 12 : 5)
-                            .offset(y: -110)
+                            .frame(width: 2, height: h % 6 == 0 ? 14 : 6)
+                            .offset(y: -113)
                             .rotationEffect(.degrees(Double(h) * 15))
                     }
 
-                    // Sun marker rotating
+                    // Sleep window arc (10pm–7am)
+                    Circle()
+                        .trim(from: 0.04, to: arcReveal)
+                        .stroke(MooniColor.accent.opacity(0.5),
+                                style: StrokeStyle(lineWidth: 28, lineCap: .round))
+                        .frame(width: 220, height: 220)
+                        .rotationEffect(.degrees(-90))
+
+                    // Sun marker rotating around dial
                     Image(systemName: "sun.max.fill")
                         .foregroundStyle(LinearGradient(colors: [.yellow, MooniColor.warning],
                                                         startPoint: .top, endPoint: .bottom))
@@ -3171,22 +3529,27 @@ private struct DayCycleFactScreen: View {
                         .offset(y: -110)
                         .rotationEffect(.degrees(rotation))
                         .scaleEffect(pulse ? 1.1 : 1.0)
+                        .shadow(color: .yellow.opacity(0.6), radius: 12)
 
-                    // Center label
+                    // Center
                     VStack(spacing: 2) {
-                        Text("CYCLE")
+                        Text("STABLE WAKE")
                             .font(MooniFont.caption(10))
                             .foregroundColor(MooniColor.textMuted)
                             .tracking(2)
                         Text("24 hr")
                             .font(MooniFont.title(20))
                             .foregroundColor(MooniColor.textPrimary)
+                        Text("locks rhythm")
+                            .font(MooniFont.caption(10))
+                            .foregroundColor(MooniColor.accent)
                     }
                 }
                 .padding(.top, 4)
                 .onAppear {
-                    withAnimation(.linear(duration: 12).repeatForever(autoreverses: false)) { rotation = 360 }
+                    withAnimation(.linear(duration: 18).repeatForever(autoreverses: false)) { rotation = 360 }
                     withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { pulse = true }
+                    withAnimation(.easeOut(duration: 1.6)) { arcReveal = 0.32 }
                 }
 
                 HStack(spacing: 8) {
@@ -3214,60 +3577,107 @@ private struct DayCycleFactScreen: View {
     }
 }
 
-// MARK: - Fact: Environment
+// MARK: - Fact: Environment (with overshoot bars)
 
 private struct EnvironmentFactScreen: View {
     let profile: OnboardingProfile
     @State private var darkVal: CGFloat = 0
     @State private var quietVal: CGFloat = 0
     @State private var comfyVal: CGFloat = 0
+    @State private var totalScore: Double = 0
+
+    private var darkScore: Double {
+        switch profile.roomDarkness {
+        case .dark: return 0.95
+        case .someLight: return 0.55
+        default: return 0.18
+        }
+    }
+    private var quietScore: Double {
+        switch profile.roomNoise {
+        case .quiet: return 0.95
+        case .someNoise: return 0.55
+        default: return 0.20
+        }
+    }
+    private var comfyScore: Double {
+        switch profile.bedComfort {
+        case .comfortable: return 0.95
+        case .okay: return 0.55
+        default: return 0.22
+        }
+    }
+    private var combined: Double {
+        ((darkScore + quietScore + comfyScore) / 3) * 100
+    }
 
     var body: some View {
         FactScaffold(
-            eyebrow: "Environment matters",
-            title: "Three things gate deep sleep",
-            source: "Sleep Foundation · environmental sleep hygiene."
+            eyebrow: "Environment audit",
+            title: "Your room scores \(Int(combined))/100 for sleep",
+            source: "Sleep Foundation · darkness, sound & comfort weight by Buysse PSQI."
         ) {
-            VStack(spacing: 12) {
-                envBar(label: "Darkness", icon: "moon.fill",
-                       impact: profile.roomDarkness == .dark ? 1.0 :
-                               profile.roomDarkness == .someLight ? 0.6 : 0.25,
-                       color: MooniColor.accent, value: darkVal)
-                envBar(label: "Quiet", icon: "ear.badge.checkmark",
-                       impact: profile.roomNoise == .quiet ? 1.0 :
-                               profile.roomNoise == .someNoise ? 0.6 : 0.25,
-                       color: MooniColor.success, value: quietVal)
-                envBar(label: "Comfort", icon: "bed.double.fill",
-                       impact: profile.bedComfort == .comfortable ? 1.0 :
-                               profile.bedComfort == .okay ? 0.6 : 0.25,
-                       color: MooniColor.warning, value: comfyVal)
+            VStack(spacing: 14) {
+                // Big dramatic combined score
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.10), lineWidth: 12)
+                        .frame(width: 160, height: 160)
+                    Circle()
+                        .trim(from: 0, to: CGFloat(totalScore / 100))
+                        .stroke(LinearGradient(colors: scoreGradient,
+                                               startPoint: .top, endPoint: .bottom),
+                                style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                        .frame(width: 160, height: 160)
+                        .rotationEffect(.degrees(-90))
+                    VStack(spacing: -2) {
+                        CountUpText(
+                            target: combined,
+                            duration: 1.6,
+                            format: { String(format: "%.0f", $0) },
+                            font: .system(size: 52, weight: .bold, design: .rounded),
+                            color: MooniColor.textPrimary
+                        )
+                        Text("/ 100")
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(MooniColor.textMuted)
+                    }
+                }
 
-                Text("We'll work around what we can't control.")
+                envBar("Darkness", "moon.fill", darkScore, MooniColor.accent, darkVal)
+                envBar("Quiet",    "ear.badge.checkmark", quietScore, MooniColor.success, quietVal)
+                envBar("Comfort",  "bed.double.fill", comfyScore, MooniColor.warning, comfyVal)
+
+                Text("We'll work around what we can't control tonight.")
                     .font(MooniFont.caption(12))
                     .foregroundColor(MooniColor.textSecondary)
-                    .padding(.top, 6)
+                    .padding(.top, 4)
             }
             .padding(20)
             .background(Color.white.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .onAppear {
-                withAnimation(.easeOut(duration: 1.4)) {
-                    darkVal = profile.roomDarkness == .dark ? 1.0 :
-                              profile.roomDarkness == .someLight ? 0.6 : 0.25
+                withAnimation(.spring(response: 0.9, dampingFraction: 0.7)) {
+                    darkVal = CGFloat(darkScore)
                 }
-                withAnimation(.easeOut(duration: 1.4).delay(0.15)) {
-                    quietVal = profile.roomNoise == .quiet ? 1.0 :
-                               profile.roomNoise == .someNoise ? 0.6 : 0.25
+                withAnimation(.spring(response: 0.9, dampingFraction: 0.7).delay(0.15)) {
+                    quietVal = CGFloat(quietScore)
                 }
-                withAnimation(.easeOut(duration: 1.4).delay(0.3)) {
-                    comfyVal = profile.bedComfort == .comfortable ? 1.0 :
-                               profile.bedComfort == .okay ? 0.6 : 0.25
+                withAnimation(.spring(response: 0.9, dampingFraction: 0.7).delay(0.30)) {
+                    comfyVal = CGFloat(comfyScore)
                 }
+                totalScore = combined
             }
         }
     }
 
-    private func envBar(label: String, icon: String, impact: CGFloat, color: Color, value: CGFloat) -> some View {
+    private var scoreGradient: [Color] {
+        if combined >= 75 { return [MooniColor.success, MooniColor.accentSoft] }
+        if combined >= 50 { return [MooniColor.warning, MooniColor.accentSoft] }
+        return [MooniColor.danger, MooniColor.warning]
+    }
+
+    private func envBar(_ label: String, _ icon: String, _ impact: Double, _ color: Color, _ value: CGFloat) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .foregroundColor(color)
@@ -3278,7 +3688,9 @@ private struct EnvironmentFactScreen: View {
                     Spacer()
                     Text("\(Int(impact * 100))%")
                         .font(MooniFont.caption(11))
-                        .foregroundColor(MooniColor.textMuted)
+                        .foregroundColor(impact > 0.7 ? MooniColor.success
+                                          : impact > 0.4 ? MooniColor.warning
+                                          : MooniColor.danger)
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
@@ -3287,84 +3699,10 @@ private struct EnvironmentFactScreen: View {
                             .fill(LinearGradient(colors: [color.opacity(0.85), color],
                                                  startPoint: .leading, endPoint: .trailing))
                             .frame(width: geo.size.width * value)
+                            .shadow(color: color.opacity(0.55), radius: 6)
                     }
                 }
-                .frame(height: 6)
-            }
-        }
-    }
-}
-
-// MARK: - Animated line chart used by fact screens
-
-private struct AnimatedLineChart: View {
-    let data: [Double]
-    let phase: CGFloat              // 0…1 reveal animation
-    let accent: Color
-    let fillTop: Color
-    let fillBottom: Color
-
-    var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            let maxVal = max(data.max() ?? 1, 0.001)
-            let stepX = data.count > 1 ? w / CGFloat(data.count - 1) : w
-
-            ZStack {
-                // Grid lines
-                ForEach(0..<4) { i in
-                    let y = h * CGFloat(i) / 3
-                    Path { p in
-                        p.move(to: CGPoint(x: 0, y: y))
-                        p.addLine(to: CGPoint(x: w, y: y))
-                    }
-                    .stroke(Color.white.opacity(0.05), lineWidth: 1)
-                }
-
-                // Filled area
-                Path { p in
-                    p.move(to: CGPoint(x: 0, y: h))
-                    for (i, v) in data.enumerated() {
-                        let x = CGFloat(i) * stepX
-                        let y = h - (CGFloat(v / maxVal) * h * 0.92) - h * 0.04
-                        if i == 0 { p.move(to: CGPoint(x: x, y: y)) }
-                        else      { p.addLine(to: CGPoint(x: x, y: y)) }
-                    }
-                    p.addLine(to: CGPoint(x: w, y: h))
-                    p.addLine(to: CGPoint(x: 0, y: h))
-                    p.closeSubpath()
-                }
-                .fill(LinearGradient(colors: [fillTop, fillBottom],
-                                     startPoint: .top, endPoint: .bottom))
-                .mask(
-                    Rectangle().frame(width: w * phase, height: h, alignment: .leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                )
-
-                // Line
-                Path { p in
-                    for (i, v) in data.enumerated() {
-                        let x = CGFloat(i) * stepX
-                        let y = h - (CGFloat(v / maxVal) * h * 0.92) - h * 0.04
-                        if i == 0 { p.move(to: CGPoint(x: x, y: y)) }
-                        else      { p.addLine(to: CGPoint(x: x, y: y)) }
-                    }
-                }
-                .trim(from: 0, to: phase)
-                .stroke(accent, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                .shadow(color: accent.opacity(0.5), radius: 6, y: 1)
-
-                // End dot
-                if let last = data.last {
-                    let x = CGFloat(data.count - 1) * stepX
-                    let y = h - (CGFloat(last / maxVal) * h * 0.92) - h * 0.04
-                    Circle()
-                        .fill(accent)
-                        .frame(width: 8, height: 8)
-                        .position(x: x, y: y)
-                        .opacity(Double(phase))
-                }
+                .frame(height: 8)
             }
         }
     }
