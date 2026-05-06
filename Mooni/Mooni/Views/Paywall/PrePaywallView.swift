@@ -18,12 +18,10 @@ struct PrePaywallView: View {
 
     var body: some View {
         ZStack {
-            backgroundForPhase
+            // Constant dark background — matches the rest of onboarding.
+            MooniColor.background
                 .ignoresSafeArea()
-                .animation(.easeInOut(duration: 0.8), value: phase)
-
             StarsBackground(count: 80)
-                .opacity(phase == .commitment ? 0.4 : 1.0)
 
             VStack {
                 phaseProgressBar
@@ -51,30 +49,6 @@ struct PrePaywallView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 36)
             }
-        }
-    }
-
-    @ViewBuilder
-    private var backgroundForPhase: some View {
-        switch phase {
-        case .badSleep:
-            LinearGradient(
-                colors: [Color(red: 0.10, green: 0.05, blue: 0.18),
-                         Color(red: 0.18, green: 0.06, blue: 0.20),
-                         Color(red: 0.22, green: 0.08, blue: 0.18)],
-                startPoint: .top, endPoint: .bottom)
-        case .goodSleep:
-            LinearGradient(
-                colors: [Color(red: 0.10, green: 0.16, blue: 0.40),
-                         Color(red: 0.30, green: 0.32, blue: 0.62),
-                         Color(red: 0.55, green: 0.55, blue: 0.85)],
-                startPoint: .top, endPoint: .bottom)
-        case .commitment:
-            LinearGradient(
-                colors: [Color(red: 0.08, green: 0.10, blue: 0.32),
-                         Color(red: 0.22, green: 0.16, blue: 0.46),
-                         Color(red: 0.42, green: 0.28, blue: 0.62)],
-                startPoint: .top, endPoint: .bottom)
         }
     }
 

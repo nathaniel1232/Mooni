@@ -28,15 +28,8 @@ struct DiscountPaywallView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.18, green: 0.06, blue: 0.30),
-                    Color(red: 0.30, green: 0.12, blue: 0.42),
-                    Color(red: 0.46, green: 0.22, blue: 0.58)
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            MooniColor.background
+                .ignoresSafeArea()
             StarsBackground(count: 60)
 
             ScrollView(showsIndicators: false) {

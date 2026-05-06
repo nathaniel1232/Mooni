@@ -37,18 +37,8 @@ struct PaywallView: View {
 
     var body: some View {
         ZStack {
-            // Background
-            LinearGradient(
-                colors: [
-                    Color(red: 0.04, green: 0.05, blue: 0.18),
-                    Color(red: 0.08, green: 0.06, blue: 0.24),
-                    Color(red: 0.14, green: 0.08, blue: 0.30)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-
+            MooniColor.background
+                .ignoresSafeArea()
             StarsBackground(count: 60)
 
             if showSuccess {
