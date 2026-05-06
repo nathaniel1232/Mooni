@@ -20,6 +20,7 @@ final class AppState: ObservableObject {
         static let weekendWakeHour = "mooni.weekendWakeHour"
         static let weekendWakeMinute = "mooni.weekendWakeMinute"
         static let dreamStars = "mooni.dreamStars"
+        static let profileData = "mooni.profile"
     }
 
     // MARK: - Published state
@@ -70,6 +71,11 @@ final class AppState: ObservableObject {
     /// Currency earned by completing nightly bedtime quests.
     @Published var dreamStars: Int {
         didSet { UserDefaults.standard.set(dreamStars, forKey: Key.dreamStars) }
+    }
+
+    /// Personalization captured during onboarding (age/height/weight/behaviors).
+    @Published var profile: OnboardingProfile {
+        didSet { persistProfile() }
     }
 
     // MARK: - Init
@@ -132,6 +138,13 @@ final class AppState: ObservableObject {
         }
 
         self.dreamStars = defaults.integer(forKey: Key.dreamStars)
+
+        if let data = defaults.data(forKey: Key.profileData),
+           let decoded = try? JSONDecoder().decode(OnboardingProfile.self, from: data) {
+            self.profile = decoded
+        } else {
+            self.profile = OnboardingProfile()
+        }
 
         // Reset routine completion if it's a new day
         rolloverRoutineIfNeeded()
@@ -216,6 +229,26 @@ final class AppState: ObservableObject {
         self.targetWakeTime = wakeTime
         self.weekendWakeTime = weekendWake
         self.hasCompletedOnboarding = true
+    }
+
+    /// Extended onboarding completion that also stores the personalization profile.
+    func completeOnboarding(
+        species: PetSpecies,
+        name: String,
+        goal: SleepGoal,
+        goalHours: Double,
+        bedtime: Date,
+        wakeTime: Date,
+        weekendWake: Date?,
+        room: PetRoom,
+        profile: OnboardingProfile
+    ) {
+        self.profile = profile
+        completeOnboarding(
+            species: species, name: name, goal: goal,
+            goalHours: goalHours, bedtime: bedtime, wakeTime: wakeTime,
+            weekendWake: weekendWake, room: room
+        )
     }
 
     /// Awards Dream Stars (the lightweight nightly currency).
@@ -455,6 +488,11 @@ final class AppState: ObservableObject {
     private func persistEntries() {
         if let data = try? JSONEncoder().encode(entries) {
             UserDefaults.standard.set(data, forKey: Key.entriesData)
+        }
+    }
+    private func persistProfile() {
+        if let data = try? JSONEncoder().encode(profile) {
+            UserDefaults.standard.set(data, forKey: Key.profileData)
         }
     }
 }

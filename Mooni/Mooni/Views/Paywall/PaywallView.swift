@@ -8,6 +8,12 @@ struct PaywallView: View {
     @StateObject private var manager = SubscriptionManager.shared
     @Environment(\.dismiss) private var dismiss
 
+    /// When true (during onboarding), the close button is barely visible and
+    /// dismissing routes the user to the discount paywall instead of closing.
+    var hideCloseButton: Bool = false
+    var onSoftDismiss: (() -> Void)? = nil
+    var onPurchased: (() -> Void)? = nil
+
     @State private var selectedPackage: Package?
     @State private var showCustomerCenter = false
     @State private var showSuccess = false
@@ -62,19 +68,35 @@ struct PaywallView: View {
     private var mainContent: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
-                // Close button
+                // Close button — small + faint when shown during onboarding
                 HStack {
                     Spacer()
                     Button {
-                        dismiss()
+                        if hideCloseButton, let soft = onSoftDismiss {
+                            soft()
+                        } else {
+                            dismiss()
+                        }
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(MooniColor.textSecondary)
-                            .padding(10)
-                            .background(Color.white.opacity(0.10))
+                            .font(.system(
+                                size: hideCloseButton ? 9 : 14,
+                                weight: hideCloseButton ? .regular : .semibold))
+                            .foregroundColor(
+                                hideCloseButton
+                                    ? Color.white.opacity(0.16)
+                                    : MooniColor.textSecondary
+                            )
+                            .padding(hideCloseButton ? 6 : 10)
+                            .background(
+                                hideCloseButton
+                                    ? Color.clear
+                                    : Color.white.opacity(0.10)
+                            )
                             .clipShape(Circle())
+                            .contentShape(Rectangle())
                     }
+                    .accessibilityLabel("Close paywall")
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
@@ -310,7 +332,10 @@ struct PaywallView: View {
             guard let pkg = selectedPackage else { return }
             Task {
                 let success = await manager.purchase(package: pkg)
-                if success { showSuccess = true }
+                if success {
+                    showSuccess = true
+                    onPurchased?()
+                }
             }
         } label: {
             ZStack {
@@ -387,8 +412,10 @@ struct PaywallView: View {
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
             }
-            PrimaryButton(title: "Let's Go") { dismiss() }
-                .padding(.horizontal, 32)
+            PrimaryButton(title: "Let's Go") {
+                if let soft = onSoftDismiss { soft() } else { dismiss() }
+            }
+            .padding(.horizontal, 32)
             Spacer()
         }
         .transition(.opacity.combined(with: .scale(scale: 0.95)))

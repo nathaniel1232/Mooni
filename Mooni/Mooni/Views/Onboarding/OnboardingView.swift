@@ -1,16 +1,22 @@
 import SwiftUI
+import Combine
 
-/// 14-screen onboarding flow.
-/// The order matches the product spec: emotional hook → pet → name → demo →
-/// goal → schedule → reflection → room → notification → health → preview →
-/// loading → first quest → soft paywall.
+/// Extended high-converting onboarding flow.
+///
+/// Roughly 30 screens, designed to:
+/// 1. Build emotional investment (pet, name, demo) before asking for anything
+/// 2. Personalize through age/height/weight/behavior questions
+/// 3. Surface a believable "we analyzed you" plan with a derived sleep score
+/// 4. Drive commitment with a 3-stage pre-paywall animation
+/// 5. Convert with the main paywall (hidden X) → discount paywall fallback
 struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var health = HealthKitManager.shared
     @StateObject private var notifications = NotificationManager.shared
 
     // MARK: - Wizard state
-    @State private var step: Int = 0
+    @State private var step: Step = .hero
+    @State private var transitionDirection: TransitionDirection = .forward
 
     // Pet
     @State private var species: PetSpecies = .fox
@@ -26,17 +32,78 @@ struct OnboardingView: View {
     // Room
     @State private var room: PetRoom = .moonBedroom
 
-    // Demo (Screen 4) state
+    // Onboarding profile (the new personalization data)
+    @State private var profile: OnboardingProfile = OnboardingProfile()
+
+    // Demo screen state
     @State private var demoStage: Int = 0   // 0 short / 1 long / 2 consistent
 
-    // Loading screen (Screen 12)
+    // Loading screens
     @State private var planMessageIndex: Int = 0
     @State private var planProgress: Double = 0
+    @State private var analyzingProgress: Double = 0
+    @State private var analyzingStep: Int = 0
 
-    // Paywall (Screen 14)
-    @State private var paywallShown: Bool = false
+    // Paywall flow
+    @State private var paywallSheet: PaywallStage? = nil
 
-    private let totalSteps = 14
+    // MARK: - Step Enum
+    enum Step: Int, CaseIterable {
+        case hero
+        case sleepImpactStat
+        case pickPet
+        case namePet
+        case bondMessage              // emotional copy after naming
+        case demo
+        case ageQuestion
+        case genderQuestion
+        case heightQuestion
+        case weightQuestion
+        case sleepGoal
+        case motivationQuestion
+        case struggleDuration
+        case biggestProblem
+        case typicalSleepHours
+        case phoneBeforeBed
+        case phoneScreenTime
+        case caffeineCutoff
+        case stressLevel
+        case racingThoughts
+        case wakeFeeling
+        case energyDip
+        case napsDay
+        case roomEnvironment
+        case schedule
+        case reflection
+        case roomPicker
+        case notificationPerm
+        case healthPerm
+        case analyzingAnswers         // loading 1
+        case sleepScoreReveal
+        case topIssues
+        case generatingPlan           // loading 2
+        case socialProof
+        case simulatedResult
+        case firstQuest
+        case prePaywall               // 3-stage emotional pre-paywall
+
+        var index: Int {
+            Step.allCases.firstIndex(of: self) ?? 0
+        }
+
+        static var total: Int { Step.allCases.count }
+    }
+
+    enum TransitionDirection { case forward, backward }
+    enum PaywallStage: Identifiable {
+        case main
+        case discount
+        var id: String {
+            switch self { case .main: return "main"; case .discount: return "discount" }
+        }
+    }
+
+    // MARK: - Body
 
     var body: some View {
         ZStack {
@@ -45,40 +112,106 @@ struct OnboardingView: View {
                 .animation(.easeInOut(duration: 0.6), value: step)
 
             StarsBackground(count: 80)
-                .opacity(step == 7 ? 0.6 : 1.0)
+                .opacity(starsOpacity)
+                .animation(.easeInOut, value: step)
 
             VStack(spacing: 0) {
                 topBar
                     .padding(.horizontal, 20)
-                    .padding(.top, 16)
+                    .padding(.top, 14)
 
-                content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScrollView(showsIndicators: false) {
+                    content
+                        .frame(maxWidth: .infinity)
+                        .id(step)
+                        .transition(transition)
+                }
 
                 footer
                     .padding(.horizontal, 20)
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 28)
+            }
+        }
+        .preferredColorScheme(.dark)
+        .fullScreenCover(item: $paywallSheet) { stage in
+            switch stage {
+            case .main:
+                PaywallView(
+                    hideCloseButton: true,
+                    onSoftDismiss: {
+                        paywallSheet = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            paywallSheet = .discount
+                        }
+                    },
+                    onPurchased: {
+                        paywallSheet = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            finishOnboarding()
+                        }
+                    }
+                )
+            case .discount:
+                DiscountPaywallView(
+                    petName: petName,
+                    onAccept: {
+                        paywallSheet = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            finishOnboarding()
+                        }
+                    },
+                    onDecline: {
+                        paywallSheet = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            finishOnboarding()
+                        }
+                    }
+                )
             }
         }
     }
 
     // MARK: - Background
+
     @ViewBuilder
     private var backgroundForStep: some View {
         switch step {
-        case 7:  room.gradient                         // Room preview
-        case 8:  PetRoom.cozyForest.gradient           // Notification — warm
-        case 11: MooniGradient.dawn                    // Loading screen
-        default: MooniGradient.night
+        case .roomPicker:        room.gradient
+        case .notificationPerm:  PetRoom.cozyForest.gradient
+        case .generatingPlan, .analyzingAnswers: MooniGradient.dawn
+        case .sleepScoreReveal:  MooniGradient.dawn
+        case .socialProof:       MooniGradient.dawn
+        default:                  MooniGradient.night
+        }
+    }
+
+    private var starsOpacity: Double {
+        switch step {
+        case .roomPicker, .generatingPlan, .analyzingAnswers, .socialProof, .sleepScoreReveal: return 0.5
+        default: return 1.0
+        }
+    }
+
+    private var transition: AnyTransition {
+        switch transitionDirection {
+        case .forward:
+            return .asymmetric(
+                insertion: .opacity.combined(with: .move(edge: .trailing)),
+                removal: .opacity.combined(with: .move(edge: .leading)))
+        case .backward:
+            return .asymmetric(
+                insertion: .opacity.combined(with: .move(edge: .leading)),
+                removal: .opacity.combined(with: .move(edge: .trailing)))
         }
     }
 
     // MARK: - Top progress bar
+
     private var topBar: some View {
         HStack(spacing: 12) {
-            if step > 0 && step < totalSteps - 1 {
+            if step.index > 0 && !isLoadingScreen {
                 Button {
-                    withAnimation { step -= 1 }
+                    goBack()
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 14, weight: .bold))
@@ -87,6 +220,7 @@ struct OnboardingView: View {
                         .background(Color.white.opacity(0.10))
                         .clipShape(Circle())
                 }
+                .transition(.opacity)
             } else {
                 Spacer().frame(width: 32, height: 32)
             }
@@ -95,51 +229,89 @@ struct OnboardingView: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.10))
                     Capsule()
-                        .fill(LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
-                                             startPoint: .leading, endPoint: .trailing))
-                        .frame(width: geo.size.width * CGFloat(step + 1) / CGFloat(totalSteps))
+                        .fill(LinearGradient(
+                            colors: [MooniColor.accentSoft, MooniColor.accent],
+                            startPoint: .leading, endPoint: .trailing))
+                        .frame(width: geo.size.width * CGFloat(step.index + 1) / CGFloat(Step.total))
                         .animation(.spring(response: 0.4), value: step)
                 }
             }
             .frame(height: 4)
 
-            Spacer().frame(width: 32, height: 32)
+            Text("\(step.index + 1)/\(Step.total)")
+                .font(MooniFont.mono(11))
+                .foregroundColor(MooniColor.textMuted)
+                .frame(minWidth: 32)
         }
     }
 
+    private var isLoadingScreen: Bool {
+        step == .analyzingAnswers || step == .generatingPlan
+    }
+
     // MARK: - Content
+
     @ViewBuilder
     private var content: some View {
         switch step {
-        case 0:  HookScreen()
-        case 1:  PickPetScreen(selected: $species, onPick: { picked in
-                    species = picked
-                    petName = picked.defaultName
-                 })
-        case 2:  NamePetScreen(species: species, name: $petName)
-        case 3:  DemoScreen(species: species, stage: $demoStage)
-        case 4:  GoalScreen(selection: $sleepGoal)
-        case 5:  ScheduleScreen(bedtime: $bedtime, wakeTime: $wakeTime,
-                                separateWeekends: $separateWeekends, weekendWake: $weekendWake)
-        case 6:  ReflectionScreen(petName: petName, bedtime: bedtime, wakeTime: wakeTime)
-        case 7:  RoomPickerScreen(species: species, name: petName, selection: $room)
-        case 8:  NotificationPermissionScreen(petName: petName, state: notifications.authState)
-        case 9:  HealthPermissionScreen(petName: petName, state: health.authState)
-        case 10: SimulatedResultScreen(species: species, name: petName)
-        case 11: GeneratingPlanScreen(progress: $planProgress, messageIndex: $planMessageIndex)
-                    .onAppear { runGeneratingAnimation() }
-        case 12: FirstQuestScreen(petName: petName, bedtime: bedtime, wakeTime: wakeTime)
-        case 13: SoftPaywallScreen(petName: petName, goal: sleepGoal, onContinueFree: finishOnboarding)
-        default: EmptyView()
+        case .hero:                HeroScreen(species: species)
+        case .sleepImpactStat:     SleepImpactStatScreen()
+        case .pickPet:             PickPetScreen(selected: $species, onPick: { picked in
+            species = picked
+            petName = picked.defaultName
+        })
+        case .namePet:             NamePetScreen(species: species, name: $petName)
+        case .bondMessage:         BondMessageScreen(petName: petName, species: species)
+        case .demo:                DemoScreen(species: species, stage: $demoStage)
+        case .ageQuestion:         AgeScreen(profile: $profile)
+        case .genderQuestion:      GenderScreen(profile: $profile)
+        case .heightQuestion:      HeightScreen(profile: $profile)
+        case .weightQuestion:      WeightScreen(profile: $profile)
+        case .sleepGoal:           GoalScreen(selection: $sleepGoal)
+        case .motivationQuestion:  MotivationScreen(profile: $profile)
+        case .struggleDuration:    StruggleDurationScreen(profile: $profile)
+        case .biggestProblem:      BiggestProblemScreen(profile: $profile)
+        case .typicalSleepHours:   TypicalSleepHoursScreen(profile: $profile)
+        case .phoneBeforeBed:      PhoneBeforeBedScreen(profile: $profile)
+        case .phoneScreenTime:     PhoneScreenTimeScreen(profile: $profile)
+        case .caffeineCutoff:      CaffeineCutoffScreen(profile: $profile)
+        case .stressLevel:         StressLevelScreen(profile: $profile)
+        case .racingThoughts:      RacingThoughtsScreen(profile: $profile, petName: petName)
+        case .wakeFeeling:         WakeFeelingScreen(profile: $profile)
+        case .energyDip:           EnergyDipScreen(profile: $profile)
+        case .napsDay:             NapsScreen(profile: $profile)
+        case .roomEnvironment:     RoomEnvironmentScreen(profile: $profile)
+        case .schedule:            ScheduleScreen(bedtime: $bedtime, wakeTime: $wakeTime,
+                                                  separateWeekends: $separateWeekends, weekendWake: $weekendWake)
+        case .reflection:          ReflectionScreen(petName: petName, bedtime: bedtime, wakeTime: wakeTime)
+        case .roomPicker:          RoomPickerScreen(species: species, name: petName, selection: $room)
+        case .notificationPerm:    NotificationPermissionScreen(petName: petName, state: notifications.authState)
+        case .healthPerm:          HealthPermissionScreen(petName: petName, state: health.authState)
+        case .analyzingAnswers:
+            AnalyzingAnswersScreen(progress: $analyzingProgress, currentStep: $analyzingStep, petName: petName)
+                .onAppear { runAnalyzingAnimation() }
+        case .sleepScoreReveal:    SleepScoreRevealScreen(profile: profile, petName: petName)
+        case .topIssues:           TopIssuesScreen(profile: profile)
+        case .generatingPlan:
+            GeneratingPlanScreen(progress: $planProgress, messageIndex: $planMessageIndex, petName: petName)
+                .onAppear { runGeneratingAnimation() }
+        case .socialProof:         SocialProofScreen()
+        case .simulatedResult:     SimulatedResultScreen(species: species, name: petName)
+        case .firstQuest:          FirstQuestScreen(petName: petName, bedtime: bedtime, wakeTime: wakeTime)
+        case .prePaywall:
+            PrePaywallEmbedded(
+                petName: petName, species: species, profile: profile,
+                onContinue: { paywallSheet = .main }
+            )
         }
     }
 
     // MARK: - Footer
+
     private var footer: some View {
         Group {
             switch step {
-            case 8:
-                // Notification permission: dual buttons
+            case .notificationPerm:
                 VStack(spacing: 10) {
                     PrimaryButton(title: "Yes, remind me", icon: "bell.fill") {
                         Task {
@@ -151,8 +323,7 @@ struct OnboardingView: View {
                     }
                     SecondaryButton(title: "Not now") { advance() }
                 }
-            case 9:
-                // Health permission: dual buttons
+            case .healthPerm:
                 VStack(spacing: 10) {
                     PrimaryButton(title: "Connect Apple Health", icon: "heart.text.square.fill") {
                         Task {
@@ -167,53 +338,112 @@ struct OnboardingView: View {
                     }
                     SecondaryButton(title: "I'll add sleep manually") { advance() }
                 }
-            case 11:
-                // Loading screen advances itself — no button
-                EmptyView()
-            case 13:
-                // Paywall has its own buttons
+            case .analyzingAnswers, .generatingPlan, .prePaywall:
                 EmptyView()
             default:
                 PrimaryButton(title: primaryTitle) { advance() }
                     .disabled(!canAdvance)
-                    .opacity(canAdvance ? 1 : 0.5)
+                    .opacity(canAdvance ? 1 : 0.55)
             }
         }
     }
 
     private var primaryTitle: String {
         switch step {
-        case 0:  return "Meet your sleep pet"
-        case 1:  return "Choose \(species.defaultName)"
-        case 2:  return "\(petName.isEmpty ? species.defaultName : petName) is officially yours"
-        case 3:  return demoStage < 2 ? "Continue" : "Got it"
-        case 4:  return sleepGoal == nil ? "Pick one to continue" : "Continue"
-        case 5:  return "Continue"
-        case 6:  return "Continue"
-        case 7:  return "Build \(petName)'s room"
-        case 10: return "See how it works"
-        case 12: return "Accept tonight's quest"
-        default: return "Continue"
+        case .hero:               return "Meet your sleep pet"
+        case .sleepImpactStat:    return "Continue"
+        case .pickPet:            return "Choose \(species.defaultName)"
+        case .namePet:            return "\(petName.isEmpty ? species.defaultName : petName) is officially yours"
+        case .bondMessage:        return "Continue"
+        case .demo:               return demoStage < 2 ? "Continue" : "I get it"
+        case .ageQuestion:        return profile.age == nil ? "Pick an age" : "Continue"
+        case .genderQuestion:     return "Continue"
+        case .heightQuestion:     return profile.heightCm == nil ? "Set your height" : "Continue"
+        case .weightQuestion:     return profile.weightKg == nil ? "Set your weight" : "Continue"
+        case .sleepGoal:          return sleepGoal == nil ? "Pick one to continue" : "Continue"
+        case .motivationQuestion: return "Continue"
+        case .struggleDuration:   return "Continue"
+        case .biggestProblem:     return "Continue"
+        case .typicalSleepHours:  return "Continue"
+        case .phoneBeforeBed:     return "Continue"
+        case .phoneScreenTime:    return "Continue"
+        case .caffeineCutoff:     return "Continue"
+        case .stressLevel:        return "Continue"
+        case .racingThoughts:     return "Continue"
+        case .wakeFeeling:        return "Continue"
+        case .energyDip:          return "Continue"
+        case .napsDay:            return "Continue"
+        case .roomEnvironment:    return "Continue"
+        case .schedule:           return "Continue"
+        case .reflection:         return "Continue"
+        case .roomPicker:         return "Build \(petName)'s room"
+        case .sleepScoreReveal:   return "Show me the issues"
+        case .topIssues:          return "Build my plan"
+        case .socialProof:        return "Continue"
+        case .simulatedResult:    return "See how it works"
+        case .firstQuest:         return "Accept tonight's quest"
+        default:                  return "Continue"
         }
     }
 
     private var canAdvance: Bool {
         switch step {
-        case 4:  return sleepGoal != nil
-        case 2:  return !petName.trimmingCharacters(in: .whitespaces).isEmpty
-        default: return true
+        case .pickPet:           return true
+        case .namePet:           return !petName.trimmingCharacters(in: .whitespaces).isEmpty
+        case .ageQuestion:       return profile.age != nil
+        case .heightQuestion:    return profile.heightCm != nil
+        case .weightQuestion:    return profile.weightKg != nil
+        case .sleepGoal:         return sleepGoal != nil
+        default:                 return true
         }
     }
 
-    // MARK: - Advance
+    // MARK: - Navigation
+
     private func advance() {
-        // Special demo screen: cycle internally before advancing
-        if step == 3 && demoStage < 2 {
+        // Demo screen has 3 sub-stages
+        if step == .demo && demoStage < 2 {
             withAnimation(.easeInOut) { demoStage += 1 }
             return
         }
+        let nextIndex = step.index + 1
+        guard nextIndex < Step.total else { return }
+        transitionDirection = .forward
         withAnimation(.easeInOut(duration: 0.35)) {
-            step = min(step + 1, totalSteps - 1)
+            step = Step.allCases[nextIndex]
+        }
+    }
+
+    private func goBack() {
+        if step == .demo && demoStage > 0 {
+            withAnimation(.easeInOut) { demoStage -= 1 }
+            return
+        }
+        let prevIndex = step.index - 1
+        guard prevIndex >= 0 else { return }
+        transitionDirection = .backward
+        withAnimation(.easeInOut(duration: 0.35)) {
+            step = Step.allCases[prevIndex]
+        }
+    }
+
+    // MARK: - Loading animations
+
+    private func runAnalyzingAnimation() {
+        analyzingProgress = 0
+        analyzingStep = 0
+        let totalSteps = AnalyzingAnswersScreen.steps.count
+        let stepDuration = 1.05
+        for i in 0..<totalSteps {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * stepDuration) {
+                withAnimation(.easeInOut) {
+                    analyzingStep = i
+                    analyzingProgress = Double(i + 1) / Double(totalSteps)
+                }
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(totalSteps) * stepDuration + 0.4) {
+            advance()
         }
     }
 
@@ -235,6 +465,8 @@ struct OnboardingView: View {
         }
     }
 
+    // MARK: - Finish
+
     private func finishOnboarding() {
         appState.completeOnboarding(
             species: species,
@@ -244,10 +476,10 @@ struct OnboardingView: View {
             bedtime: bedtime,
             wakeTime: wakeTime,
             weekendWake: separateWeekends ? weekendWake : nil,
-            room: room
+            room: room,
+            profile: profile
         )
 
-        // Schedule the bedtime nudge if user opted in.
         if notifications.authState == .authorized {
             notifications.scheduleNightlyBedtimeNudge(petName: petName, bedtime: bedtime)
         }
@@ -262,12 +494,126 @@ struct OnboardingView: View {
     }
 }
 
-// MARK: - Screen 1: Emotional hook
-private struct HookScreen: View {
-    @State private var glow = false
+// MARK: - Embedded pre-paywall (so footer can be empty)
+
+private struct PrePaywallEmbedded: View {
+    let petName: String
+    let species: PetSpecies
+    let profile: OnboardingProfile
+    let onContinue: () -> Void
+
     var body: some View {
-        VStack(spacing: 28) {
-            Spacer()
+        PrePaywallView(
+            petName: petName,
+            species: species,
+            profile: profile,
+            onContinue: onContinue
+        )
+        .frame(minHeight: 700)
+    }
+}
+
+// MARK: - Common screen scaffolds
+
+private struct QuestionScaffold<Content: View>: View {
+    let title: String
+    var subtitle: String? = nil
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 6) {
+                Text(title)
+                    .font(MooniFont.display(26))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                if let s = subtitle {
+                    Text(s)
+                        .font(MooniFont.body(14))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+            }
+            .padding(.top, 8)
+
+            content()
+                .padding(.horizontal, 20)
+
+            Spacer().frame(height: 12)
+        }
+        .padding(.top, 4)
+    }
+}
+
+private struct OptionRow<T: Hashable>: View {
+    let title: String
+    var subtitle: String? = nil
+    var icon: String? = nil
+    let value: T
+    @Binding var selection: T
+    var emoji: String? = nil
+
+    var isSelected: Bool { selection == value }
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.3)) { selection = value }
+        } label: {
+            HStack(spacing: 14) {
+                if let emoji {
+                    Text(emoji)
+                        .font(.system(size: 26))
+                        .frame(width: 38, height: 38)
+                        .background((isSelected ? MooniColor.accent : MooniColor.accentSoft).opacity(0.16))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(isSelected ? MooniColor.accent : MooniColor.accentSoft)
+                        .frame(width: 38, height: 38)
+                        .background((isSelected ? MooniColor.accent : MooniColor.accentSoft).opacity(0.16))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(MooniFont.title(15))
+                        .foregroundColor(MooniColor.textPrimary)
+                        .multilineTextAlignment(.leading)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.textSecondary)
+                    }
+                }
+                Spacer()
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isSelected ? MooniColor.accent : MooniColor.textMuted)
+                    .font(.system(size: 20))
+            }
+            .padding(14)
+            .background(Color.white.opacity(isSelected ? 0.13 : 0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.10),
+                            lineWidth: isSelected ? 1.5 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Screen 0: Hero
+
+private struct HeroScreen: View {
+    let species: PetSpecies
+    @State private var glow = false
+
+    var body: some View {
+        VStack(spacing: 26) {
+            Spacer().frame(height: 4)
             ZStack {
                 Image(systemName: "moon.fill")
                     .font(.system(size: 90))
@@ -276,7 +622,7 @@ private struct HookScreen: View {
                         startPoint: .top, endPoint: .bottom))
                     .offset(x: 70, y: -90)
                     .opacity(0.85)
-                DreamSpiritView(pet: previewPet, size: 170)
+                DreamSpiritView(pet: previewPet, size: 180)
                     .scaleEffect(glow ? 1.02 : 0.98)
                     .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: glow)
             }
@@ -290,37 +636,95 @@ private struct HookScreen: View {
                     .font(MooniFont.body(16))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
+                Text("⭐ 4.9 · 2.4M nights tracked")
+                    .font(MooniFont.caption(13))
+                    .foregroundColor(MooniColor.warning)
+                    .padding(.top, 4)
             }
             .padding(.horizontal, 28)
-            Spacer()
         }
+        .padding(.top, 8)
         .onAppear { glow = true }
     }
 
     private var previewPet: Pet {
-        var p = Pet(); p.species = .fox; p.mood = .sleepy; p.equippedColor = "default_color"; p.equippedHat = nil
+        var p = Pet(); p.species = species; p.mood = .cozy; p.equippedColor = "default_color"; p.equippedHat = "hat_nightcap"
         return p
     }
 }
 
+// MARK: - Screen 1: Sleep impact stat
+
+private struct SleepImpactStatScreen: View {
+    @State private var pulse = false
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer().frame(height: 24)
+            ZStack {
+                Circle()
+                    .fill(MooniColor.warning.opacity(0.18))
+                    .frame(width: 200, height: 200)
+                    .blur(radius: 30)
+                    .scaleEffect(pulse ? 1.05 : 0.95)
+                Text("85%")
+                    .font(.system(size: 92, weight: .bold, design: .rounded))
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .top, endPoint: .bottom))
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) { pulse = true }
+            }
+
+            VStack(spacing: 10) {
+                Text("of adults wake up tired")
+                    .font(MooniFont.display(24))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                Text("You're not alone. Mooni rewires your sleep, one cozy night at a time — and you'll feel the change in the first week.")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+}
+
 // MARK: - Screen 2: Pick pet
+
 private struct PickPetScreen: View {
     @Binding var selected: PetSpecies
     let onPick: (PetSpecies) -> Void
 
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 18) {
             VStack(spacing: 6) {
-                Text("Meet your sleep pet")
+                Text("Pick your sleep pet")
                     .font(MooniFont.display(28))
                     .foregroundColor(MooniColor.textPrimary)
-                Text("Pick the one that feels like you.")
+                Text("Each one feels different. Pick the one that's most you.")
                     .font(MooniFont.body(15))
                     .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
             }
             .padding(.top, 8)
 
-            VStack(spacing: 14) {
+            // Big preview of selected pet
+            ZStack {
+                Circle()
+                    .fill(selected.tint.opacity(0.20))
+                    .frame(width: 180, height: 180)
+                    .blur(radius: 24)
+                DreamSpiritView(pet: { var p = Pet(); p.species = selected; p.mood = .cozy; p.equippedHat = nil; return p }(), size: 140)
+            }
+            .id(selected)
+            .transition(.scale.combined(with: .opacity))
+
+            VStack(spacing: 10) {
                 ForEach(PetSpecies.allCases) { sp in
                     PetCardRow(species: sp, isSelected: selected == sp) {
                         withAnimation(.spring(response: 0.35)) {
@@ -332,14 +736,11 @@ private struct PickPetScreen: View {
             }
             .padding(.horizontal, 4)
 
-            if selected != .fox || true {
-                Text("\(selected.defaultName) chose you too.")
-                    .font(MooniFont.caption(13))
-                    .foregroundColor(MooniColor.accentSoft)
-                    .transition(.opacity)
-                    .id(selected)
-            }
-            Spacer()
+            Text("\(selected.defaultName) chose you too.")
+                .font(MooniFont.caption(13))
+                .foregroundColor(MooniColor.accentSoft)
+                .transition(.opacity)
+                .id(selected)
         }
         .padding(.horizontal, 20)
     }
@@ -356,17 +757,17 @@ private struct PetCardRow: View {
                 ZStack {
                     Circle()
                         .fill(species.tint.opacity(0.30))
-                        .frame(width: 64, height: 64)
+                        .frame(width: 52, height: 52)
                     Image(systemName: species.icon)
-                        .font(.system(size: 26, weight: .semibold))
+                        .font(.system(size: 22, weight: .semibold))
                         .foregroundColor(species.tint)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(species.defaultName) the \(species.displayName)")
-                        .font(MooniFont.title(17))
+                        .font(MooniFont.title(16))
                         .foregroundColor(MooniColor.textPrimary)
                     Text(species.tagline)
-                        .font(MooniFont.caption(13))
+                        .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.textSecondary)
                 }
                 Spacer()
@@ -374,11 +775,11 @@ private struct PetCardRow: View {
                     .foregroundColor(isSelected ? MooniColor.accent : MooniColor.textMuted)
                     .font(.system(size: 22))
             }
-            .padding(16)
-            .background(Color.white.opacity(isSelected ? 0.12 : 0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(14)
+            .background(Color.white.opacity(isSelected ? 0.13 : 0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(isSelected ? species.tint : Color.white.opacity(0.10),
                             lineWidth: isSelected ? 1.5 : 1)
             )
@@ -388,6 +789,7 @@ private struct PetCardRow: View {
 }
 
 // MARK: - Screen 3: Name pet
+
 private struct NamePetScreen: View {
     let species: PetSpecies
     @Binding var name: String
@@ -395,16 +797,18 @@ private struct NamePetScreen: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Spacer()
+            Spacer().frame(height: 12)
             DreamSpiritView(pet: previewPet, size: 150)
             VStack(spacing: 8) {
-                Text("What should we call your sleep buddy?")
+                Text("What should we call them?")
                     .font(MooniFont.title(20))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("You can change this later.")
+                Text("This is the name you'll see every night. Make it count.")
                     .font(MooniFont.caption(13))
                     .foregroundColor(MooniColor.textMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
             }
             TextField("", text: $name,
                       prompt: Text(species.defaultName).foregroundColor(MooniColor.textMuted))
@@ -422,7 +826,6 @@ private struct NamePetScreen: View {
                 .padding(.horizontal, 32)
                 .focused($focused)
                 .submitLabel(.done)
-            Spacer()
         }
         .padding(.horizontal, 20)
         .onAppear {
@@ -436,7 +839,49 @@ private struct NamePetScreen: View {
     }
 }
 
-// MARK: - Screen 4: Core mechanic demo
+// MARK: - Screen 4: Bond message
+
+private struct BondMessageScreen: View {
+    let petName: String
+    let species: PetSpecies
+    @State private var heart = false
+
+    var body: some View {
+        VStack(spacing: 22) {
+            Spacer().frame(height: 16)
+            ZStack {
+                DreamSpiritView(
+                    pet: { var p = Pet(); p.species = species; p.mood = .cozy; p.equippedHat = "hat_nightcap"; return p }(),
+                    size: 160
+                )
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(.pink.opacity(0.85))
+                    .offset(x: 70, y: -70)
+                    .scaleEffect(heart ? 1.2 : 0.9)
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { heart = true }
+            }
+
+            VStack(spacing: 10) {
+                Text("\(petName) is now bonded to you.")
+                    .font(MooniFont.display(24))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                Text("Every night you sleep well, \(petName) grows. Every restless night… you'll feel it together.")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+}
+
+// MARK: - Screen 5: Demo (3 sub-stages)
+
 private struct DemoScreen: View {
     let species: PetSpecies
     @Binding var stage: Int
@@ -460,13 +905,13 @@ private struct DemoScreen: View {
     private var demoPet: Pet {
         var p = Pet(); p.species = species
         p.mood = stage == 0 ? .groggy : (stage == 1 ? .cozy : .energized)
-        p.equippedHat = nil
+        p.equippedHat = stage == 2 ? "hat_nightcap" : nil
         return p
     }
 
     var body: some View {
         VStack(spacing: 22) {
-            Spacer()
+            Spacer().frame(height: 16)
             DreamSpiritView(pet: demoPet, size: 170)
                 .id(stage)
                 .transition(.scale.combined(with: .opacity))
@@ -488,83 +933,852 @@ private struct DemoScreen: View {
                         .animation(.spring(response: 0.35), value: stage)
                 }
             }
-            Spacer()
         }
         .padding(.horizontal, 20)
     }
 }
 
-// MARK: - Screen 5: Goal
+// MARK: - Screen: Age
+
+private struct AgeScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    private let minAge = 13
+    private let maxAge = 90
+    @State private var ageValue: Int = 25
+
+    var body: some View {
+        QuestionScaffold(
+            title: "How old are you?",
+            subtitle: "We use age to match you against people who improved their sleep."
+        ) {
+            VStack(spacing: 20) {
+                Text("\(ageValue)")
+                    .font(.system(size: 80, weight: .bold, design: .rounded))
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .top, endPoint: .bottom))
+                    .padding(.top, 12)
+
+                Picker("Age", selection: $ageValue) {
+                    ForEach(minAge...maxAge, id: \.self) { age in
+                        Text("\(age)").tag(age)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(height: 160)
+                .colorScheme(.dark)
+                .onChange(of: ageValue) { _, newValue in
+                    profile.age = newValue
+                }
+            }
+        }
+        .onAppear {
+            if let saved = profile.age { ageValue = saved } else { profile.age = ageValue }
+        }
+    }
+}
+
+// MARK: - Screen: Gender
+
+private struct GenderScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "How do you identify?",
+            subtitle: "Optional — sleep needs differ slightly by hormones."
+        ) {
+            VStack(spacing: 10) {
+                ForEach(OnboardingProfile.Gender.allCases) { g in
+                    OptionRow(
+                        title: g.label,
+                        icon: g.icon,
+                        value: g,
+                        selection: $profile.gender
+                    )
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Screen: Height
+
+private struct HeightScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    @State private var feet: Int = 5
+    @State private var inches: Int = 8
+    @State private var cm: Int = 173
+    @State private var unit: OnboardingProfile.UnitSystem = .imperial
+
+    var body: some View {
+        QuestionScaffold(
+            title: "How tall are you?",
+            subtitle: "Used to tune your wind-down breath cadence."
+        ) {
+            VStack(spacing: 18) {
+                unitToggle
+
+                if unit == .imperial {
+                    HStack(spacing: 12) {
+                        wheelColumn(label: "ft", range: 4...7, selection: $feet)
+                        wheelColumn(label: "in", range: 0...11, selection: $inches)
+                    }
+                    .frame(height: 180)
+                } else {
+                    wheelColumn(label: "cm", range: 130...220, selection: $cm)
+                        .frame(height: 180)
+                }
+            }
+        }
+        .onAppear {
+            if let stored = profile.heightCm {
+                cm = stored
+                let total = Int((Double(stored) / 2.54).rounded())
+                feet = total / 12
+                inches = total % 12
+                unit = profile.unitSystem
+            } else {
+                profile.heightCm = cm
+            }
+        }
+        .onChange(of: feet) { _, _ in syncHeight() }
+        .onChange(of: inches) { _, _ in syncHeight() }
+        .onChange(of: cm) { _, _ in syncHeight() }
+        .onChange(of: unit) { _, newUnit in
+            profile.unitSystem = newUnit
+            syncHeight()
+        }
+    }
+
+    private func syncHeight() {
+        switch unit {
+        case .imperial:
+            let total = feet * 12 + inches
+            profile.heightCm = Int((Double(total) * 2.54).rounded())
+        case .metric:
+            profile.heightCm = cm
+        }
+    }
+
+    private var unitToggle: some View {
+        HStack(spacing: 0) {
+            unitButton("ft / in", isSelected: unit == .imperial) { unit = .imperial }
+            unitButton("cm", isSelected: unit == .metric) { unit = .metric }
+        }
+        .padding(4)
+        .background(Color.white.opacity(0.07))
+        .clipShape(Capsule())
+    }
+
+    private func unitButton(_ title: String, isSelected: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(MooniFont.caption(13))
+                .foregroundColor(isSelected ? MooniColor.background : MooniColor.textPrimary)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 18)
+                .background(
+                    Capsule().fill(isSelected ? Color.white.opacity(0.85) : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func wheelColumn(label: String, range: ClosedRange<Int>, selection: Binding<Int>) -> some View {
+        HStack {
+            Picker("", selection: selection) {
+                ForEach(range, id: \.self) { v in
+                    Text("\(v)").tag(v)
+                }
+            }
+            .pickerStyle(.wheel)
+            .colorScheme(.dark)
+            Text(label)
+                .foregroundColor(MooniColor.textSecondary)
+                .font(MooniFont.title(15))
+        }
+        .padding(.horizontal, 16)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+// MARK: - Screen: Weight
+
+private struct WeightScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    @State private var pounds: Int = 150
+    @State private var kg: Int = 68
+    @State private var unit: OnboardingProfile.UnitSystem = .imperial
+
+    var body: some View {
+        QuestionScaffold(
+            title: "How much do you weigh?",
+            subtitle: "Recovery scales with your body. Used privately."
+        ) {
+            VStack(spacing: 18) {
+                unitToggle
+
+                if unit == .imperial {
+                    weightWheel(range: 80...360, label: "lb", selection: $pounds)
+                } else {
+                    weightWheel(range: 35...160, label: "kg", selection: $kg)
+                }
+            }
+        }
+        .onAppear {
+            unit = profile.unitSystem
+            if let kgValue = profile.weightKg {
+                kg = Int(kgValue.rounded())
+                pounds = Int((kgValue * 2.20462).rounded())
+            } else {
+                profile.weightKg = Double(kg)
+            }
+        }
+        .onChange(of: pounds) { _, _ in syncWeight() }
+        .onChange(of: kg) { _, _ in syncWeight() }
+        .onChange(of: unit) { _, newUnit in
+            profile.unitSystem = newUnit
+            syncWeight()
+        }
+    }
+
+    private func syncWeight() {
+        switch unit {
+        case .imperial: profile.weightKg = Double(pounds) / 2.20462
+        case .metric:   profile.weightKg = Double(kg)
+        }
+    }
+
+    private var unitToggle: some View {
+        HStack(spacing: 0) {
+            Button { unit = .imperial } label: {
+                Text("lb").font(MooniFont.caption(13))
+                    .foregroundColor(unit == .imperial ? MooniColor.background : MooniColor.textPrimary)
+                    .padding(.vertical, 8).padding(.horizontal, 22)
+                    .background(Capsule().fill(unit == .imperial ? Color.white.opacity(0.85) : Color.clear))
+            }
+            Button { unit = .metric } label: {
+                Text("kg").font(MooniFont.caption(13))
+                    .foregroundColor(unit == .metric ? MooniColor.background : MooniColor.textPrimary)
+                    .padding(.vertical, 8).padding(.horizontal, 22)
+                    .background(Capsule().fill(unit == .metric ? Color.white.opacity(0.85) : Color.clear))
+            }
+        }
+        .padding(4)
+        .background(Color.white.opacity(0.07))
+        .clipShape(Capsule())
+    }
+
+    private func weightWheel(range: ClosedRange<Int>, label: String, selection: Binding<Int>) -> some View {
+        HStack {
+            Picker("", selection: selection) {
+                ForEach(range, id: \.self) { v in
+                    Text("\(v)").tag(v)
+                }
+            }
+            .pickerStyle(.wheel)
+            .colorScheme(.dark)
+            .frame(maxWidth: .infinity)
+            Text(label)
+                .foregroundColor(MooniColor.textSecondary)
+                .font(MooniFont.title(15))
+        }
+        .frame(height: 180)
+        .padding(.horizontal, 16)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+// MARK: - Screen: Sleep goal
+
 private struct GoalScreen: View {
     @Binding var selection: SleepGoal?
 
     var body: some View {
-        VStack(spacing: 14) {
-            VStack(spacing: 6) {
-                Text("What do you want help with most?")
-                    .font(MooniFont.display(24))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                Text("We'll personalize your plan around this.")
-                    .font(MooniFont.caption(13))
-                    .foregroundColor(MooniColor.textSecondary)
-            }
-            .padding(.top, 6)
-
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 10) {
-                    ForEach(SleepGoal.allCases) { goal in
-                        GoalRow(goal: goal, selected: selection == goal) {
-                            withAnimation(.spring(response: 0.3)) { selection = goal }
+        QuestionScaffold(
+            title: "What do you want help with most?",
+            subtitle: "We'll personalize your plan around this."
+        ) {
+            VStack(spacing: 10) {
+                ForEach(SleepGoal.allCases) { goal in
+                    Button {
+                        withAnimation(.spring(response: 0.3)) { selection = goal }
+                    } label: {
+                        let isSelected = selection == goal
+                        HStack(spacing: 14) {
+                            Image(systemName: goal.icon)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(isSelected ? MooniColor.accent : MooniColor.accentSoft)
+                                .frame(width: 38, height: 38)
+                                .background((isSelected ? MooniColor.accent : MooniColor.accentSoft).opacity(0.16))
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            Text(goal.title)
+                                .font(MooniFont.title(15))
+                                .foregroundColor(MooniColor.textPrimary)
+                                .multilineTextAlignment(.leading)
+                            Spacer()
+                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(isSelected ? MooniColor.accent : MooniColor.textMuted)
+                                .font(.system(size: 20))
                         }
+                        .padding(14)
+                        .background(Color.white.opacity(isSelected ? 0.13 : 0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.10),
+                                        lineWidth: isSelected ? 1.5 : 1)
+                        )
                     }
+                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 4)
-                .padding(.bottom, 8)
             }
         }
-        .padding(.horizontal, 20)
     }
 }
 
-private struct GoalRow: View {
-    let goal: SleepGoal
-    let selected: Bool
-    let onTap: () -> Void
+// MARK: - Screen: Motivation
+
+private struct MotivationScreen: View {
+    @Binding var profile: OnboardingProfile
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 14) {
-                Image(systemName: goal.icon)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(selected ? MooniColor.accent : MooniColor.accentSoft)
-                    .frame(width: 38, height: 38)
-                    .background((selected ? MooniColor.accent : MooniColor.accentSoft).opacity(0.16))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text(goal.title)
-                    .font(MooniFont.title(15))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.leading)
-                Spacer()
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(selected ? MooniColor.accent : MooniColor.textMuted)
-                    .font(.system(size: 20))
+        QuestionScaffold(
+            title: "What would great sleep unlock for you?",
+            subtitle: "Pick the one that hits hardest."
+        ) {
+            VStack(spacing: 10) {
+                ForEach(OnboardingProfile.Motivation.allCases) { m in
+                    OptionRow(title: m.label, icon: m.icon, value: m, selection: $profile.motivation)
+                }
             }
-            .padding(14)
-            .background(Color.white.opacity(selected ? 0.12 : 0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+}
+
+// MARK: - Screen: Struggle duration
+
+private struct StruggleDurationScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "How long has sleep been a problem?",
+            subtitle: "Knowing helps us pick a recovery pace that won't burn you out."
+        ) {
+            VStack(spacing: 10) {
+                ForEach(OnboardingProfile.StruggleDuration.allCases) { d in
+                    OptionRow(title: d.label, icon: durationIcon(d), value: d, selection: $profile.struggleDuration)
+                }
+            }
+        }
+    }
+
+    private func durationIcon(_ d: OnboardingProfile.StruggleDuration) -> String {
+        switch d {
+        case .fewWeeks: return "calendar"
+        case .fewMonths: return "calendar.badge.clock"
+        case .oneYear: return "hourglass"
+        case .severalYears: return "infinity"
+        case .asLongAsRemember: return "questionmark.circle.fill"
+        }
+    }
+}
+
+// MARK: - Screen: Biggest problem
+
+private struct BiggestProblemScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "Which one bothers you most?",
+            subtitle: "We focus the first week on this."
+        ) {
+            VStack(spacing: 10) {
+                ForEach(OnboardingProfile.SleepProblem.allCases) { p in
+                    OptionRow(title: p.label, icon: p.icon, value: p, selection: $profile.biggestProblem)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Screen: Typical sleep hours
+
+private struct TypicalSleepHoursScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "How many hours do you usually sleep?",
+            subtitle: "Be honest — even rough is fine."
+        ) {
+            VStack(spacing: 18) {
+                Text(String(format: "%.1f hrs", profile.typicalSleepHours))
+                    .font(.system(size: 60, weight: .bold, design: .rounded))
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .top, endPoint: .bottom))
+
+                Slider(value: $profile.typicalSleepHours, in: 3...10, step: 0.5)
+                    .tint(MooniColor.accent)
+                    .padding(.horizontal, 4)
+
+                HStack {
+                    Text("3 hrs").font(MooniFont.caption(11)).foregroundColor(MooniColor.textMuted)
+                    Spacer()
+                    Text("10 hrs").font(MooniFont.caption(11)).foregroundColor(MooniColor.textMuted)
+                }
+
+                Text(hoursMessage)
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 4)
+            }
+            .padding(20)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+    }
+
+    private var hoursMessage: String {
+        switch profile.typicalSleepHours {
+        case ..<5.5: return "That's well below what your body needs to recover."
+        case 5.5..<7: return "You're running a meaningful sleep deficit."
+        case 7..<8: return "You're close — but not yet recovered."
+        default: return "Solid baseline. We'll help make it consistent."
+        }
+    }
+}
+
+// MARK: - Screen: Phone before bed
+
+private struct PhoneBeforeBedScreen: View {
+    @Binding var profile: OnboardingProfile
+    @State private var glow = false
+
+    var body: some View {
+        QuestionScaffold(
+            title: "Do you use your phone in bed?",
+            subtitle: "Screens delay melatonin by up to 90 minutes."
+        ) {
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle()
+                        .fill(MooniColor.warning.opacity(0.18))
+                        .frame(width: 130, height: 130)
+                        .blur(radius: 24)
+                        .scaleEffect(glow ? 1.05 : 0.95)
+                    Image(systemName: "iphone.gen3.radiowaves.left.and.right")
+                        .font(.system(size: 70))
+                        .foregroundStyle(LinearGradient(
+                            colors: [MooniColor.warning, MooniColor.danger],
+                            startPoint: .top, endPoint: .bottom))
+                }
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { glow = true }
+                }
+
+                HStack(spacing: 10) {
+                    bigChoice(label: "Yes", isYes: true)
+                    bigChoice(label: "No", isYes: false)
+                }
+                .padding(.horizontal, 8)
+            }
+        }
+    }
+
+    private func bigChoice(label: String, isYes: Bool) -> some View {
+        Button {
+            withAnimation(.spring()) { profile.usesPhoneBeforeBed = isYes }
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: isYes ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(profile.usesPhoneBeforeBed == isYes
+                                     ? (isYes ? MooniColor.warning : MooniColor.success)
+                                     : MooniColor.textMuted)
+                Text(label)
+                    .font(MooniFont.title(18))
+                    .foregroundColor(MooniColor.textPrimary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 22)
+            .background(Color.white.opacity(profile.usesPhoneBeforeBed == isYes ? 0.13 : 0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(selected ? MooniColor.accent : Color.white.opacity(0.10),
-                            lineWidth: selected ? 1.5 : 1)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(profile.usesPhoneBeforeBed == isYes
+                            ? (isYes ? MooniColor.warning : MooniColor.success)
+                            : Color.white.opacity(0.12), lineWidth: 1.5)
             )
         }
         .buttonStyle(.plain)
     }
 }
 
-// MARK: - Screen 6: Schedule
+// MARK: - Screen: Phone screen time
+
+private struct PhoneScreenTimeScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "How long on your phone before sleep?",
+            subtitle: "On the last hour before lights-out."
+        ) {
+            VStack(spacing: 18) {
+                Text("\(profile.phoneScreenMinutes) min")
+                    .font(.system(size: 56, weight: .bold, design: .rounded))
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.warning, MooniColor.danger],
+                        startPoint: .top, endPoint: .bottom))
+
+                Slider(
+                    value: Binding(
+                        get: { Double(profile.phoneScreenMinutes) },
+                        set: { profile.phoneScreenMinutes = Int($0) }
+                    ),
+                    in: 0...180, step: 5
+                )
+                .tint(MooniColor.warning)
+
+                HStack {
+                    Text("0 min").font(MooniFont.caption(11)).foregroundColor(MooniColor.textMuted)
+                    Spacer()
+                    Text("3 hrs").font(MooniFont.caption(11)).foregroundColor(MooniColor.textMuted)
+                }
+
+                if profile.phoneScreenMinutes >= 60 {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(MooniColor.warning)
+                        Text("That's 1+ hour of melatonin suppression every night.")
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.warning)
+                    }
+                    .padding(10)
+                    .background(MooniColor.warning.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+            .padding(20)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+    }
+}
+
+// MARK: - Screen: Caffeine cutoff
+
+private struct CaffeineCutoffScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "When do you stop caffeine?",
+            subtitle: "Caffeine has a half-life of 5–7 hours. It matters."
+        ) {
+            VStack(spacing: 10) {
+                ForEach(OnboardingProfile.CaffeineCutoff.allCases) { c in
+                    OptionRow(title: c.label, icon: caffeineIcon(c), value: c, selection: $profile.caffeineCutoff)
+                }
+            }
+        }
+    }
+
+    private func caffeineIcon(_ c: OnboardingProfile.CaffeineCutoff) -> String {
+        switch c {
+        case .morning: return "sun.max.fill"
+        case .afternoon: return "sun.haze.fill"
+        case .evening: return "moon.fill"
+        case .none: return "drop.fill"
+        }
+    }
+}
+
+// MARK: - Screen: Stress level
+
+private struct StressLevelScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "How stressed do you feel at night?",
+            subtitle: "1 = totally calm, 10 = thoughts won't stop."
+        ) {
+            VStack(spacing: 16) {
+                Text("\(profile.stressLevel)")
+                    .font(.system(size: 76, weight: .bold, design: .rounded))
+                    .foregroundColor(stressColor)
+
+                Slider(value: Binding(
+                    get: { Double(profile.stressLevel) },
+                    set: { profile.stressLevel = Int($0) }
+                ), in: 1...10, step: 1)
+                .tint(stressColor)
+
+                HStack {
+                    Text("Calm").font(MooniFont.caption(11)).foregroundColor(MooniColor.success)
+                    Spacer()
+                    Text("Anxious").font(MooniFont.caption(11)).foregroundColor(MooniColor.danger)
+                }
+
+                Text(stressMessage)
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 4)
+            }
+            .padding(20)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+    }
+
+    private var stressColor: Color {
+        switch profile.stressLevel {
+        case ..<4: return MooniColor.success
+        case 4..<7: return MooniColor.warning
+        default: return MooniColor.danger
+        }
+    }
+
+    private var stressMessage: String {
+        switch profile.stressLevel {
+        case ..<4: return "Great — your nervous system is on your side."
+        case 4..<7: return "Some background noise. We'll add a wind-down."
+        default: return "High stress flattens deep sleep. We'll fix this first."
+        }
+    }
+}
+
+// MARK: - Screen: Racing thoughts
+
+private struct RacingThoughtsScreen: View {
+    @Binding var profile: OnboardingProfile
+    let petName: String
+
+    var body: some View {
+        QuestionScaffold(
+            title: "Do thoughts race when you try to sleep?",
+            subtitle: "If yes, \(petName)'s wind-down will include a brain dump."
+        ) {
+            HStack(spacing: 12) {
+                bigYesNo(label: "Yes, often", isYes: true)
+                bigYesNo(label: "Not really", isYes: false)
+            }
+        }
+    }
+
+    private func bigYesNo(label: String, isYes: Bool) -> some View {
+        Button {
+            withAnimation(.spring()) { profile.racingThoughtsAtNight = isYes }
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: isYes ? "wind" : "checkmark.seal.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(profile.racingThoughtsAtNight == isYes
+                                     ? (isYes ? MooniColor.warning : MooniColor.success)
+                                     : MooniColor.textMuted)
+                Text(label)
+                    .font(MooniFont.title(15))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 22)
+            .background(Color.white.opacity(profile.racingThoughtsAtNight == isYes ? 0.13 : 0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(profile.racingThoughtsAtNight == isYes
+                            ? (isYes ? MooniColor.warning : MooniColor.success)
+                            : Color.white.opacity(0.12), lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Screen: Wake feeling
+
+private struct WakeFeelingScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "How do you usually wake up?",
+            subtitle: "Your wake-up window is half the equation."
+        ) {
+            VStack(spacing: 10) {
+                ForEach(OnboardingProfile.WakeFeeling.allCases) { f in
+                    OptionRow(
+                        title: f.label, value: f, selection: $profile.wakeFeeling, emoji: f.emoji
+                    )
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Screen: Energy dip
+
+private struct EnergyDipScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "When do you crash during the day?",
+            subtitle: "Energy dips reveal which sleep stage you're missing."
+        ) {
+            VStack(spacing: 10) {
+                ForEach(OnboardingProfile.EnergyDip.allCases) { d in
+                    OptionRow(title: d.label, icon: dipIcon(d), value: d, selection: $profile.energyDip)
+                }
+            }
+        }
+    }
+
+    private func dipIcon(_ d: OnboardingProfile.EnergyDip) -> String {
+        switch d {
+        case .morning: return "sunrise.fill"
+        case .afternoon: return "sun.max.fill"
+        case .evening: return "sunset.fill"
+        case .allDay: return "battery.25"
+        case .never: return "bolt.fill"
+        }
+    }
+}
+
+// MARK: - Screen: Naps
+
+private struct NapsScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "Do you nap during the day?",
+            subtitle: "Naps can help — but the wrong nap hurts night sleep."
+        ) {
+            HStack(spacing: 12) {
+                bigYesNo(label: "Yes", isYes: true)
+                bigYesNo(label: "No", isYes: false)
+            }
+        }
+    }
+
+    private func bigYesNo(label: String, isYes: Bool) -> some View {
+        Button {
+            withAnimation(.spring()) { profile.napsDuringDay = isYes }
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: isYes ? "moon.zzz.fill" : "sun.max.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(profile.napsDuringDay == isYes ? MooniColor.accent : MooniColor.textMuted)
+                Text(label).font(MooniFont.title(18)).foregroundColor(MooniColor.textPrimary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 22)
+            .background(Color.white.opacity(profile.napsDuringDay == isYes ? 0.13 : 0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(profile.napsDuringDay == isYes ? MooniColor.accent : Color.white.opacity(0.12), lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Screen: Room environment
+
+private struct RoomEnvironmentScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "What's your bedroom like?",
+            subtitle: "Light + noise + comfort. Quick taps."
+        ) {
+            VStack(spacing: 14) {
+                envSection(
+                    title: "Light",
+                    options: [(.dark, "Pitch dark", "moon.fill"),
+                              (.someLight, "Some light", "moon.haze.fill"),
+                              (.bright, "Pretty bright", "sun.max.fill")],
+                    binding: $profile.roomDarkness
+                )
+                envSection(
+                    title: "Noise",
+                    options: [(.quiet, "Quiet", "ear.badge.checkmark"),
+                              (.someNoise, "Some noise", "ear"),
+                              (.loud, "Loud / city", "speaker.wave.3.fill")],
+                    binding: $profile.roomNoise
+                )
+                envSection(
+                    title: "Bed",
+                    options: [(.comfortable, "Comfy", "bed.double.fill"),
+                              (.okay, "Okay", "bed.double"),
+                              (.uncomfortable, "Uncomfy", "exclamationmark.bubble.fill")],
+                    binding: $profile.bedComfort
+                )
+            }
+        }
+    }
+
+    private func envSection(
+        title: String,
+        options: [(OnboardingProfile.RoomQuality, String, String)],
+        binding: Binding<OnboardingProfile.RoomQuality>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(MooniFont.caption(12))
+                .foregroundColor(MooniColor.textMuted)
+                .textCase(.uppercase)
+                .tracking(1)
+            HStack(spacing: 8) {
+                ForEach(options, id: \.0) { opt in
+                    Button {
+                        withAnimation(.spring()) { binding.wrappedValue = opt.0 }
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: opt.2)
+                                .font(.system(size: 18))
+                                .foregroundColor(binding.wrappedValue == opt.0 ? MooniColor.accent : MooniColor.textMuted)
+                            Text(opt.1).font(MooniFont.caption(11))
+                                .foregroundColor(MooniColor.textPrimary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.white.opacity(binding.wrappedValue == opt.0 ? 0.13 : 0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(binding.wrappedValue == opt.0 ? MooniColor.accent : Color.white.opacity(0.10),
+                                        lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Screen: Schedule
+
 private struct ScheduleScreen: View {
     @Binding var bedtime: Date
     @Binding var wakeTime: Date
@@ -572,18 +1786,10 @@ private struct ScheduleScreen: View {
     @Binding var weekendWake: Date
 
     var body: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 6) {
-                Text("When do you usually want to sleep?")
-                    .font(MooniFont.display(22))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                Text("Don't worry — you can fine-tune later.")
-                    .font(MooniFont.caption(13))
-                    .foregroundColor(MooniColor.textSecondary)
-            }
-            .padding(.top, 6)
-
+        QuestionScaffold(
+            title: "When do you want to sleep & wake?",
+            subtitle: "We'll keep you on this rhythm gently."
+        ) {
             VStack(spacing: 12) {
                 timeRow(title: "Bedtime", icon: "moon.fill",
                         color: MooniColor.accent, selection: $bedtime)
@@ -603,11 +1809,7 @@ private struct ScheduleScreen: View {
                             color: MooniColor.accentSoft, selection: $weekendWake)
                 }
             }
-            .padding(.horizontal, 4)
-
-            Spacer()
         }
-        .padding(.horizontal, 20)
     }
 
     private func timeRow(title: String, icon: String, color: Color,
@@ -631,7 +1833,8 @@ private struct ScheduleScreen: View {
     }
 }
 
-// MARK: - Screen 7: Reflection
+// MARK: - Screen: Reflection
+
 private struct ReflectionScreen: View {
     let petName: String
     let bedtime: Date
@@ -653,8 +1856,7 @@ private struct ReflectionScreen: View {
 
     var body: some View {
         VStack(spacing: 22) {
-            Spacer()
-
+            Spacer().frame(height: 14)
             ZStack {
                 Circle()
                     .fill(MooniColor.accent.opacity(0.16))
@@ -687,14 +1889,13 @@ private struct ReflectionScreen: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
                 .padding(.top, 4)
-
-            Spacer()
         }
         .padding(.horizontal, 20)
     }
 }
 
-// MARK: - Screen 8: Room picker
+// MARK: - Screen: Room picker
+
 private struct RoomPickerScreen: View {
     let species: PetSpecies
     let name: String
@@ -716,7 +1917,7 @@ private struct RoomPickerScreen: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(selection.gradient)
-                    .frame(height: 170)
+                    .frame(height: 180)
                     .overlay(
                         RoundedRectangle(cornerRadius: 22, style: .continuous)
                             .stroke(Color.white.opacity(0.18), lineWidth: 1)
@@ -734,8 +1935,6 @@ private struct RoomPickerScreen: View {
                 }
             }
             .padding(.horizontal, 4)
-
-            Spacer()
         }
         .padding(.horizontal, 20)
     }
@@ -757,7 +1956,7 @@ private struct RoomChip: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(room.gradient)
-                        .frame(height: 60)
+                        .frame(height: 64)
                     Image(systemName: room.icon)
                         .font(.system(size: 22))
                         .foregroundColor(.white.opacity(0.9))
@@ -767,7 +1966,7 @@ private struct RoomChip: View {
                     .foregroundColor(MooniColor.textPrimary)
             }
             .padding(8)
-            .background(Color.white.opacity(selected ? 0.12 : 0.04))
+            .background(Color.white.opacity(selected ? 0.13 : 0.04))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -779,14 +1978,15 @@ private struct RoomChip: View {
     }
 }
 
-// MARK: - Screen 9: Notification permission
+// MARK: - Screen: Notification permission
+
 private struct NotificationPermissionScreen: View {
     let petName: String
     let state: NotificationManager.AuthState
 
     var body: some View {
         VStack(spacing: 22) {
-            Spacer()
+            Spacer().frame(height: 14)
             ZStack {
                 Circle().fill(MooniColor.warning.opacity(0.16))
                     .frame(width: 110, height: 110).blur(radius: 18)
@@ -823,8 +2023,6 @@ private struct NotificationPermissionScreen: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
             }
-
-            Spacer()
         }
         .padding(.horizontal, 20)
     }
@@ -853,14 +2051,15 @@ private struct NotificationPermissionScreen: View {
     }
 }
 
-// MARK: - Screen 10: Health permission
+// MARK: - Screen: Health permission
+
 private struct HealthPermissionScreen: View {
     let petName: String
     let state: HealthKitManager.AuthState
 
     var body: some View {
         VStack(spacing: 20) {
-            Spacer()
+            Spacer().frame(height: 14)
             ZStack {
                 Circle().fill(MooniColor.danger.opacity(0.16))
                     .frame(width: 110, height: 110).blur(radius: 18)
@@ -902,8 +2101,6 @@ private struct HealthPermissionScreen: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
             }
-
-            Spacer()
         }
         .padding(.horizontal, 20)
     }
@@ -925,7 +2122,381 @@ private struct HealthPermissionScreen: View {
     }
 }
 
-// MARK: - Screen 11: Simulated first result
+// MARK: - Screen: Analyzing answers
+
+private struct AnalyzingAnswersScreen: View {
+    @Binding var progress: Double
+    @Binding var currentStep: Int
+    let petName: String
+
+    static let steps: [String] = [
+        "Reading your answers…",
+        "Mapping your chronotype…",
+        "Calculating your sleep debt…",
+        "Identifying your top 3 issues…",
+        "Aligning growth schedule…"
+    ]
+
+    var body: some View {
+        VStack(spacing: 28) {
+            Spacer().frame(height: 30)
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.10), lineWidth: 8)
+                    .frame(width: 140, height: 140)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
+                                           startPoint: .top, endPoint: .bottom),
+                            style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                    .frame(width: 140, height: 140)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut, value: progress)
+                Text("\(Int(progress * 100))%")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(MooniColor.textPrimary)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(stepsList.enumerated()), id: \.offset) { idx, msg in
+                    HStack(spacing: 10) {
+                        Image(systemName: idx <= currentStep ? "checkmark.circle.fill" : "circle.dashed")
+                            .foregroundColor(idx <= currentStep ? MooniColor.success : MooniColor.textMuted)
+                        Text(msg)
+                            .font(MooniFont.body(15))
+                            .foregroundColor(idx <= currentStep ? MooniColor.textPrimary : MooniColor.textSecondary)
+                            .strikethrough(idx < currentStep, color: MooniColor.textMuted)
+                    }
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 24)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var stepsList: [String] {
+        [
+            "Reading your answers…",
+            "Mapping your chronotype…",
+            "Calculating your sleep debt…",
+            "Identifying your top 3 issues…",
+            "Aligning \(petName)'s growth schedule…"
+        ]
+    }
+}
+
+// MARK: - Screen: Sleep score reveal
+
+private struct SleepScoreRevealScreen: View {
+    let profile: OnboardingProfile
+    let petName: String
+
+    @State private var animateNumber: Double = 0
+    @State private var pulse = false
+
+    var body: some View {
+        VStack(spacing: 22) {
+            Text("YOUR CURRENT SLEEP SCORE")
+                .font(MooniFont.caption(13))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(2)
+
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.10), lineWidth: 14)
+                    .frame(width: 220, height: 220)
+                Circle()
+                    .trim(from: 0, to: CGFloat(animateNumber) / 100)
+                    .stroke(LinearGradient(
+                        colors: [MooniColor.danger, MooniColor.warning, MooniColor.accentSoft],
+                        startPoint: .leading, endPoint: .trailing),
+                            style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                    .frame(width: 220, height: 220)
+                    .rotationEffect(.degrees(-90))
+                Circle()
+                    .fill(MooniColor.warning.opacity(pulse ? 0.18 : 0.05))
+                    .frame(width: 200, height: 200)
+                    .blur(radius: 20)
+                VStack(spacing: 4) {
+                    Text("\(Int(animateNumber))")
+                        .font(.system(size: 78, weight: .bold, design: .rounded))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text("/ 100")
+                        .font(MooniFont.caption(13))
+                        .foregroundColor(MooniColor.textMuted)
+                }
+            }
+
+            VStack(spacing: 8) {
+                Text(scoreVerdict)
+                    .font(MooniFont.display(22))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                Text("Don't worry, \(petName). Mooni Pro members average \(profile.derivedSleepScore + 24) within 14 days.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+
+            HStack(spacing: 12) {
+                statBubble("Sleep age", "+\(profile.sleepAgeYearsAdded) yrs", color: MooniColor.danger)
+                statBubble("Days lost / yr", "\(max(profile.daysLostPerYear, 18))", color: MooniColor.warning)
+            }
+            .padding(.horizontal, 24)
+        }
+        .padding(.horizontal, 16)
+        .onAppear {
+            withAnimation(.easeOut(duration: 1.6)) {
+                animateNumber = Double(profile.derivedSleepScore)
+            }
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
+    }
+
+    private var scoreVerdict: String {
+        switch profile.derivedSleepScore {
+        case ..<45: return "There's real upside here."
+        case 45..<60: return "You're below your potential."
+        case 60..<70: return "You're closer than you think."
+        default: return "Solid baseline — let's optimize."
+        }
+    }
+
+    private func statBubble(_ label: String, _ value: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(MooniFont.title(20))
+                .foregroundColor(color)
+            Text(label)
+                .font(MooniFont.caption(11))
+                .foregroundColor(MooniColor.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+// MARK: - Screen: Top issues
+
+private struct TopIssuesScreen: View {
+    let profile: OnboardingProfile
+
+    var body: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 6) {
+                Text("We found your top 3 sleep blockers")
+                    .font(MooniFont.display(22))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                Text("Mooni Pro fixes each one with a tailored exercise.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+            .padding(.top, 8)
+
+            VStack(spacing: 10) {
+                ForEach(Array(profile.topIssues.enumerated()), id: \.offset) { idx, issue in
+                    issueCard(index: idx + 1, text: issue)
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private func issueCard(index: Int, text: String) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(MooniColor.warning.opacity(0.20))
+                    .frame(width: 40, height: 40)
+                Text("\(index)")
+                    .font(MooniFont.title(16))
+                    .foregroundColor(MooniColor.warning)
+            }
+            Text(text)
+                .font(MooniFont.title(14))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.leading)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .foregroundColor(MooniColor.textMuted)
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(MooniColor.warning.opacity(0.30), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Screen: Generating plan
+
+private struct GeneratingPlanScreen: View {
+    @Binding var progress: Double
+    @Binding var messageIndex: Int
+    let petName: String
+
+    static let messages: [String] = [
+        "Learning your sleep rhythm…",
+        "Building your first bedtime quest…",
+        "Preparing your dream room…",
+        "Tuning your wake-up window…"
+    ]
+
+    private var msgs: [String] {
+        [
+            "Learning your sleep rhythm…",
+            "Building your first bedtime quest…",
+            "Preparing \(petName)'s dream room…",
+            "Tuning your wake-up window…"
+        ]
+    }
+
+    var body: some View {
+        VStack(spacing: 28) {
+            Spacer().frame(height: 30)
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.10), lineWidth: 6)
+                    .frame(width: 140, height: 140)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
+                                           startPoint: .top, endPoint: .bottom),
+                            style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .frame(width: 140, height: 140)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut, value: progress)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 42))
+                    .foregroundColor(MooniColor.accentSoft)
+            }
+            Text(msgs[min(messageIndex, msgs.count - 1)])
+                .font(MooniFont.title(17))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .id(messageIndex)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
+        .padding(.horizontal, 20)
+    }
+}
+
+// MARK: - Screen: Social proof
+
+private struct SocialProofScreen: View {
+    @State private var index: Int = 0
+    private let timer = Timer.publish(every: 2.6, on: .main, in: .common).autoconnect()
+
+    private struct Review {
+        let text: String
+        let author: String
+        let stat: String
+    }
+    private let reviews: [Review] = [
+        Review(text: "I haven't woken up tired in 3 weeks. The pet thing actually worked on me.",
+               author: "Sarah, 28", stat: "+38% energy"),
+        Review(text: "Stopped scrolling in bed because I didn't want my fox to be sad. Wild.",
+               author: "Marco, 34", stat: "1.2 hrs more sleep"),
+        Review(text: "First app that actually fixed my schedule. Tiny daily wins compound.",
+               author: "Priya, 41", stat: "14-day streak"),
+        Review(text: "I sleep when my pet sleeps. It rewired me in a week.",
+               author: "Jake, 22", stat: "Score: 86 / 100")
+    ]
+
+    var body: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 6) {
+                HStack(spacing: 4) {
+                    ForEach(0..<5) { _ in
+                        Image(systemName: "star.fill").foregroundColor(MooniColor.warning)
+                    }
+                }
+                Text("Loved by 2.4 million sleepers")
+                    .font(MooniFont.display(22))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                Text("4.9 average rating. Real people, real change.")
+                    .font(MooniFont.body(13))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            .padding(.top, 8)
+
+            ZStack {
+                ForEach(reviews.indices, id: \.self) { i in
+                    if i == index {
+                        reviewCard(reviews[i])
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                                removal: .opacity.combined(with: .scale(scale: 1.05))))
+                    }
+                }
+            }
+            .frame(minHeight: 200)
+            .animation(.easeInOut(duration: 0.45), value: index)
+            .padding(.horizontal, 24)
+
+            HStack(spacing: 6) {
+                ForEach(reviews.indices, id: \.self) { i in
+                    Capsule()
+                        .fill(i == index ? MooniColor.accent : Color.white.opacity(0.20))
+                        .frame(width: i == index ? 22 : 8, height: 4)
+                        .animation(.spring(response: 0.4), value: index)
+                }
+            }
+        }
+        .onReceive(timer) { _ in
+            withAnimation { index = (index + 1) % reviews.count }
+        }
+    }
+
+    private func reviewCard(_ review: Review) -> some View {
+        VStack(spacing: 14) {
+            Text("\u{201C}\(review.text)\u{201D}")
+                .font(MooniFont.body(15))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+            HStack(spacing: 10) {
+                Text(review.author)
+                    .font(MooniFont.caption(13))
+                    .foregroundColor(MooniColor.textSecondary)
+                Text("·").foregroundColor(MooniColor.textMuted)
+                Text(review.stat)
+                    .font(MooniFont.caption(13))
+                    .foregroundColor(MooniColor.success)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity)
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Screen: Simulated result
+
 private struct SimulatedResultScreen: View {
     let species: PetSpecies
     let name: String
@@ -950,7 +2521,6 @@ private struct SimulatedResultScreen: View {
                             detail: "Tired pet, dim room — easy to recover.")
             }
             .padding(.horizontal, 4)
-            Spacer()
         }
         .padding(.horizontal, 20)
     }
@@ -976,51 +2546,8 @@ private struct SimulatedResultScreen: View {
     }
 }
 
-// MARK: - Screen 12: Generating plan
-private struct GeneratingPlanScreen: View {
-    @Binding var progress: Double
-    @Binding var messageIndex: Int
+// MARK: - Screen: First quest
 
-    static let messages: [String] = [
-        "Learning your sleep rhythm…",
-        "Building your first bedtime quest…",
-        "Preparing your dream room…",
-        "Tuning your wake-up window…"
-    ]
-
-    var body: some View {
-        VStack(spacing: 28) {
-            Spacer()
-            ZStack {
-                Circle()
-                    .stroke(Color.white.opacity(0.10), lineWidth: 6)
-                    .frame(width: 120, height: 120)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
-                                           startPoint: .top, endPoint: .bottom),
-                            style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                    .frame(width: 120, height: 120)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut, value: progress)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 36))
-                    .foregroundColor(MooniColor.accentSoft)
-            }
-            Text(Self.messages[min(messageIndex, Self.messages.count - 1)])
-                .font(MooniFont.title(17))
-                .foregroundColor(MooniColor.textPrimary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-                .id(messageIndex)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-    }
-}
-
-// MARK: - Screen 13: First quest
 private struct FirstQuestScreen: View {
     let petName: String
     let bedtime: Date
@@ -1064,8 +2591,6 @@ private struct FirstQuestScreen: View {
             .background(Color.white.opacity(0.08))
             .clipShape(Capsule())
             .padding(.top, 6)
-
-            Spacer()
         }
         .padding(.horizontal, 20)
     }
@@ -1086,96 +2611,6 @@ private struct FirstQuestScreen: View {
         .padding(14)
         .background(Color.white.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-
-// MARK: - Screen 14: Soft paywall
-private struct SoftPaywallScreen: View {
-    let petName: String
-    let goal: SleepGoal?
-    let onContinueFree: () -> Void
-
-    @StateObject private var manager = SubscriptionManager.shared
-    @State private var showPaywallSheet = false
-
-    var body: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkles").foregroundColor(MooniColor.warning)
-                    Text("Help \(petName) grow faster")
-                        .font(MooniFont.display(24))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Image(systemName: "sparkles").foregroundColor(MooniColor.warning)
-                }
-                .multilineTextAlignment(.center)
-                if let g = goal {
-                    Text(g.promise)
-                        .font(MooniFont.body(14))
-                        .foregroundColor(MooniColor.accentSoft)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                }
-            }
-            .padding(.top, 6)
-
-            VStack(spacing: 8) {
-                proRow(icon: "chart.bar.fill", title: "Advanced sleep coaching",
-                       detail: "Sleep debt, consistency, recovery prediction")
-                proRow(icon: "pawprint.fill", title: "Rare pets & full evolution",
-                       detail: "Unlock dream forms and seasonal pets")
-                proRow(icon: "house.fill", title: "All dream rooms",
-                       detail: "Premium decorations & seasonal themes")
-                proRow(icon: "wind", title: "Guided wind-downs & programs",
-                       detail: "Sleep stories, breathing, 7-day reset")
-            }
-            .padding(.horizontal, 4)
-
-            VStack(spacing: 10) {
-                PrimaryButton(title: "Start free trial", icon: "sparkles") {
-                    showPaywallSheet = true
-                }
-                Button {
-                    onContinueFree()
-                } label: {
-                    Text("Continue free")
-                        .font(MooniFont.body(15))
-                        .foregroundColor(MooniColor.textSecondary)
-                        .padding(.vertical, 8)
-                }
-            }
-            .padding(.top, 4)
-        }
-        .padding(.horizontal, 20)
-        .sheet(isPresented: $showPaywallSheet, onDismiss: {
-            // Whether they bought or dismissed, finish onboarding either way.
-            onContinueFree()
-        }) {
-            PaywallView()
-        }
-    }
-
-    private func proRow(icon: String, title: String, detail: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(MooniColor.accent)
-                .frame(width: 32, height: 32)
-                .background(MooniColor.accent.opacity(0.16))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(MooniFont.title(14))
-                    .foregroundColor(MooniColor.textPrimary)
-                Text(detail)
-                    .font(MooniFont.caption(11))
-                    .foregroundColor(MooniColor.textSecondary)
-            }
-            Spacer()
-        }
-        .padding(10)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
