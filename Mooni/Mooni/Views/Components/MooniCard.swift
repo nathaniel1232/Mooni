@@ -199,27 +199,28 @@ struct MooniPremiumLockCard: View {
                             .foregroundColor(MooniColor.accentSoft)
                     }
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 7) {
-                            Text(title)
-                                .font(MooniFont.title(15))
-                                .foregroundColor(MooniColor.textPrimary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.82)
-                            Text(badge)
-                                .font(MooniFont.caption(10))
-                                .foregroundColor(MooniColor.background)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(MooniColor.accentSoft)
-                                .clipShape(Capsule())
-                        }
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(title)
+                            .font(MooniFont.title(15))
+                            .foregroundColor(MooniColor.textPrimary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         Text(subtitle)
                             .font(MooniFont.caption(12))
                             .foregroundColor(MooniColor.textSecondary)
                             .multilineTextAlignment(.leading)
-                            .lineLimit(2)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(badge)
+                            .font(MooniFont.caption(10))
+                            .foregroundColor(MooniColor.background)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(MooniColor.accentSoft)
+                            .clipShape(Capsule())
+                            .padding(.top, 2)
                     }
 
                     Spacer(minLength: 4)

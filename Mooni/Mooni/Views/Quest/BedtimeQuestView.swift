@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Quest is the nightly care ritual. Free users always get one useful bedtime
 /// quest; Premium adds guided wind-down content and structured programs.
@@ -12,7 +13,7 @@ struct BedtimeQuestView: View {
     @State private var showQuestFlow = false
 
     private var questHabits: [RoutineHabit] {
-        ["no_phone", "breathing", "journal"].compactMap { id in
+        ["breathing", "journal", "no_phone"].compactMap { id in
             RoutineHabit.library.first { $0.id == id }
         }
     }
@@ -341,16 +342,16 @@ private struct QuestStepRow: View {
 
     private var hint: String {
         switch index {
-        case 0: return "Make the room quieter for Luna."
-        case 1: return "Breathe slowly for a softer bedtime."
-        default: return "Let one thought rest before sleep."
+        case 0: return "Breathe slowly for a softer bedtime."
+        case 1: return "Let one thought rest before sleep."
+        default: return "Phone away — last step before bed."
         }
     }
 
     private var lunaMicrocopy: String {
         switch index {
-        case 0: return "That helped me feel calmer."
-        case 1: return "Almost ready for sleep."
+        case 0: return "Almost ready for sleep."
+        case 1: return "That helped me feel calmer."
         default: return "I feel cozy now."
         }
     }
@@ -366,7 +367,7 @@ private struct QuestFlowView: View {
     @State private var breathingExpanded = false
 
     private var questHabits: [RoutineHabit] {
-        ["no_phone", "breathing", "journal"].compactMap { id in
+        ["breathing", "journal", "no_phone"].compactMap { id in
             RoutineHabit.library.first { $0.id == id }
         }
     }
@@ -446,11 +447,11 @@ private struct QuestFlowView: View {
                         .foregroundColor(MooniColor.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if index == 1 {
+                    if index == 0 {
                         breathingCircle
                     }
 
-                    if index == 2 {
+                    if index == 1 {
                         journalField
                     }
 
@@ -458,7 +459,7 @@ private struct QuestFlowView: View {
                         handleStepTap(habit: habit, index: index)
                     }
 
-                    if index == 2 && !showedMicrocopy {
+                    if index == 1 && !showedMicrocopy {
                         Button {
                             handleStepTap(habit: habit, index: index)
                         } label: {
@@ -475,7 +476,7 @@ private struct QuestFlowView: View {
         }
         .onAppear {
             showedMicrocopy = appState.routine.completedToday.contains(habit.id)
-            if index == 1 {
+            if index == 0 {
                 withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
                     breathingExpanded = true
                 }
@@ -540,6 +541,7 @@ private struct QuestFlowView: View {
                     MooniInfoRow(icon: "flame.fill", title: "Rhythm support", value: "Protected", color: MooniColor.success)
                     MooniInfoRow(icon: "arrow.up.right.circle.fill", title: "Growth support", value: "Tonight counts")
                     PrimaryButton(title: "Ready for sleep", icon: "moon.fill") {
+                        appState.enterSleepMode()
                         dismiss()
                     }
                 }
@@ -568,10 +570,11 @@ private struct QuestFlowView: View {
         }
 
         if !appState.routine.completedToday.contains(habit.id) {
-            withAnimation {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.7)) {
                 appState.toggleHabitCompletion(habit)
             }
             appState.awardDreamStarsForQuestStep(habit, amount: index == 2 ? 10 : 5)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
 
         withAnimation {
@@ -585,32 +588,32 @@ private struct QuestFlowView: View {
 
     private func title(for index: Int) -> String {
         switch index {
-        case 0: return "Put phone away"
-        case 1: return "Breathe with Luna"
-        default: return "Quick journal"
+        case 0: return "Breathe with Luna"
+        case 1: return "Quick journal"
+        default: return "Put phone away"
         }
     }
 
     private func subtitle(for index: Int) -> String {
         switch index {
-        case 0: return "Make the room quieter for Luna."
-        case 1: return "Breathe slowly for a softer bedtime."
-        default: return "What's one thought you want to let rest tonight?"
+        case 0: return "Breathe slowly for a softer bedtime."
+        case 1: return "What's one thought you want to let rest tonight?"
+        default: return "Last step. Set the phone down so the room goes quiet."
         }
     }
 
     private func speech(for index: Int) -> String {
         switch index {
-        case 0: return "A quiet room helps me settle."
-        case 1: return "Let's slow down together."
-        default: return "One tiny thought can rest here."
+        case 0: return "Let's slow down together."
+        case 1: return "One tiny thought can rest here."
+        default: return "Time to put the phone away."
         }
     }
 
     private func microcopy(for index: Int) -> String {
         switch index {
-        case 0: return "That feels calmer."
-        case 1: return "Almost cozy."
+        case 0: return "Almost cozy."
+        case 1: return "That feels calmer."
         default: return "I feel cozy now."
         }
     }
@@ -618,18 +621,18 @@ private struct QuestFlowView: View {
     private func ctaTitle(for index: Int) -> String {
         if showedMicrocopy { return "Next" }
         switch index {
-        case 0: return "I put it away"
-        case 1: return "Done"
-        default: return "Finish quest"
+        case 0: return "Done"
+        case 1: return "Save thought"
+        default: return "I put it away"
         }
     }
 
     private func ctaIcon(for index: Int) -> String {
         if showedMicrocopy { return "arrow.right" }
         switch index {
-        case 0: return "iphone.slash"
-        case 1: return "checkmark"
-        default: return "sparkles"
+        case 0: return "checkmark"
+        case 1: return "sparkles"
+        default: return "iphone.slash"
         }
     }
 }
@@ -663,6 +666,7 @@ private struct ReadyForSleepSheet: View {
                 }
 
                 PrimaryButton(title: "Good night", icon: "moon.fill") {
+                    appState.enterSleepMode()
                     dismiss()
                 }
 

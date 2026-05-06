@@ -316,8 +316,20 @@ struct SleepReportView: View {
                         MooniInfoRow(icon: "flame.fill", title: "Rhythm forming", value: "Day 1", color: MooniColor.warning)
                     }
 
-                    PrimaryButton(title: "Connect Apple Health", icon: "heart.text.square.fill") {
-                        connectAppleHealth()
+                    if isHealthConnected {
+                        HStack(spacing: 10) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundColor(MooniColor.success)
+                            Text("Connected to Apple Health")
+                                .font(MooniFont.caption(13))
+                                .foregroundColor(MooniColor.success)
+                            Spacer()
+                        }
+                        .padding(.vertical, 6)
+                    } else {
+                        PrimaryButton(title: "Connect Apple Health", icon: "heart.text.square.fill") {
+                            connectAppleHealth()
+                        }
                     }
 
                     SecondaryButton(title: "Add sleep manually", icon: "plus") {
@@ -343,7 +355,7 @@ struct SleepReportView: View {
                     MooniStatPill(icon: "heart.fill", value: "Mood", label: "Luna")
                     MooniStatPill(icon: "gauge.with.dots.needle.67percent", value: "Score", label: "Sleep")
                     MooniStatPill(icon: "text.bubble.fill", value: "Reason", label: "Plain English", color: MooniColor.accent)
-                    MooniStatPill(icon: "leaf.fill", value: "Tip", label: "Recovery", color: MooniColor.success)
+                    MooniStatPill(icon: "moon.zzz.fill", value: "Tip", label: "Recovery", color: MooniColor.success)
                 }
             }
         }
@@ -394,6 +406,11 @@ struct SleepReportView: View {
         case 60..<70: return "Luna is a little sleepy."
         default: return "Rough night. Let's recover gently."
         }
+    }
+
+    private var isHealthConnected: Bool {
+        if case .authorized = healthKit.authState { return true }
+        return false
     }
 
     private func connectAppleHealth() {

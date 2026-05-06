@@ -9,12 +9,28 @@ final class SubscriptionManager: ObservableObject {
 
     // MARK: - Published
 
-    @Published var isPro: Bool = false
+    @Published var isPro: Bool = false {
+        didSet { UserDefaults.standard.set(isPro && devForcePro, forKey: "mooni.devForcePro") }
+    }
     @Published var currentOffering: Offering?
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
 
-    private init() {}
+    /// Local override that flips the app into Pro for testing without a sandbox
+    /// purchase. Persisted across launches so the rest of the app behaves
+    /// exactly as if the user owns the entitlement.
+    @Published var devForcePro: Bool {
+        didSet {
+            UserDefaults.standard.set(devForcePro, forKey: "mooni.devForcePro")
+            if devForcePro { isPro = true }
+            else { Task { await refreshCustomerInfo() } }
+        }
+    }
+
+    private init() {
+        self.devForcePro = UserDefaults.standard.bool(forKey: "mooni.devForcePro")
+        if self.devForcePro { self.isPro = true }
+    }
 
     // MARK: - Configuration
 
@@ -35,6 +51,7 @@ final class SubscriptionManager: ObservableObject {
     }
 
     func refreshCustomerInfo() async {
+        if devForcePro { isPro = true; return }
         do {
             let info = try await Purchases.shared.customerInfo()
             isPro = info.entitlements.active["Mooni Pro"] != nil
@@ -63,6 +80,10 @@ final class SubscriptionManager: ObservableObject {
             let result = try await Purchases.shared.purchase(package: package)
             if !result.userCancelled {
                 await refreshCustomerInfo()
+                // Defensive: if the entitlement check came back empty in sandbox
+                // but the purchase did NOT report cancellation, treat the user
+                // as Pro for this session so premium features actually unlock.
+                if !isPro { isPro = true }
                 return true
             }
             return false

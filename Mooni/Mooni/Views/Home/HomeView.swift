@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct HomeView: View {
     @EnvironmentObject var appState: AppState
@@ -153,13 +154,13 @@ struct HomeView: View {
                 }
 
                 VStack(spacing: 10) {
-                    MooniInfoRow(icon: "leaf.fill", title: "Wind-down starts", value: windDownTime.hourMinuteString, color: MooniColor.success)
+                    MooniInfoRow(icon: "moon.zzz.fill", title: "Wind-down starts", value: windDownTime.hourMinuteString, color: MooniColor.success)
                     MooniInfoRow(icon: "bed.double.fill", title: "Bedtime target", value: appState.targetBedtime.hourMinuteString)
                     MooniInfoRow(icon: "sunrise.fill", title: "Wake target", value: appState.targetWakeTime.hourMinuteString, color: MooniColor.warning)
                 }
 
                 VStack(spacing: 10) {
-                    PrimaryButton(title: "Start wind-down", icon: "leaf.fill") {
+                    PrimaryButton(title: "Start wind-down", icon: "moon.zzz.fill") {
                         showWindDown = true
                     }
 
@@ -202,7 +203,7 @@ struct HomeView: View {
 
                 VStack(spacing: 10) {
                     MooniInfoRow(icon: "checkmark.circle.fill", title: "Quest progress", value: "\(questDone)/3", color: MooniColor.success)
-                    MooniInfoRow(icon: "leaf.fill", title: "Wind-down time", value: windDownTime.hourMinuteString, color: MooniColor.success)
+                    MooniInfoRow(icon: "moon.zzz.fill", title: "Wind-down time", value: windDownTime.hourMinuteString, color: MooniColor.success)
                     MooniInfoRow(icon: "moon.fill", title: "Sleep target", value: appState.targetBedtime.hourMinuteString)
                     MooniInfoRow(icon: "sparkles", title: "Reward", value: "+20 dream stars", color: MooniColor.warning)
                 }
@@ -210,7 +211,7 @@ struct HomeView: View {
                 MooniProgressBar(value: Double(questDone) / 3.0, height: 9)
 
                 VStack(spacing: 10) {
-                    PrimaryButton(title: "Start wind-down", icon: "leaf.fill") {
+                    PrimaryButton(title: "Start wind-down", icon: "moon.zzz.fill") {
                         showWindDown = true
                     }
                     SecondaryButton(title: "Going to bed now", icon: "bed.double.fill") {
@@ -274,7 +275,7 @@ struct HomeView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 VStack(spacing: 10) {
-                    MooniInfoRow(icon: "leaf.fill", title: "Earlier wind-down", value: recoveryWindDownTime.hourMinuteString, color: MooniColor.success)
+                    MooniInfoRow(icon: "moon.zzz.fill", title: "Earlier wind-down", value: recoveryWindDownTime.hourMinuteString, color: MooniColor.success)
                     MooniInfoRow(icon: "wind", title: "Calming breathing", value: "2 minutes", color: MooniColor.accent)
                     MooniInfoRow(icon: "sunrise.fill", title: "Simple wake target", value: appState.targetWakeTime.hourMinuteString, color: MooniColor.warning)
                 }
@@ -553,7 +554,7 @@ struct HomeView: View {
     }
 
     private var questHabitIDs: [String] {
-        ["no_phone", "breathing", "journal"]
+        ["breathing", "journal", "no_phone"]
     }
 
     private var isHealthConnected: Bool {
@@ -628,7 +629,7 @@ private struct WindDownSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private var questHabits: [RoutineHabit] {
-        ["no_phone", "breathing", "journal"].compactMap { id in
+        ["breathing", "journal", "no_phone"].compactMap { id in
             RoutineHabit.library.first { $0.id == id }
         }
     }
@@ -661,6 +662,7 @@ private struct WindDownSheet: View {
                         }
 
                         PrimaryButton(title: "I'm ready for sleep", icon: "moon.fill") {
+                            appState.enterSleepMode()
                             dismiss()
                         }
                     }
@@ -691,11 +693,14 @@ private struct HabitRow: View {
     var body: some View {
         Button {
             let wasDone = isDone
-            withAnimation {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.7)) {
                 appState.toggleHabitCompletion(habit)
             }
             if !wasDone {
                 appState.awardDreamStarsForQuestStep(habit, amount: index == 2 ? 10 : 5)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } else {
+                UISelectionFeedbackGenerator().selectionChanged()
             }
         } label: {
             HStack(spacing: 14) {
@@ -724,16 +729,16 @@ private struct HabitRow: View {
 
     private func stepHint(index: Int) -> String {
         switch index {
-        case 0: return "Give Luna a quieter room."
-        case 1: return "A few slow breaths soften bedtime."
-        default: return "Clear one thought before sleep."
+        case 0: return "A few slow breaths soften bedtime."
+        case 1: return "Clear one thought before sleep."
+        default: return "Phone away — last step before bed."
         }
     }
 
     private func lunaMicrocopy(index: Int) -> String {
         switch index {
-        case 0: return "That helped me feel calmer."
-        case 1: return "Almost ready for sleep."
+        case 0: return "Almost ready for sleep."
+        case 1: return "That helped me feel calmer."
         default: return "I feel cozy now."
         }
     }
@@ -769,7 +774,8 @@ private struct StartSleepSheet: View {
                     }
                     .padding(.horizontal, 4)
 
-                    PrimaryButton(title: "Confirm", icon: "moon.stars.fill") {
+                    PrimaryButton(title: "Good night", icon: "moon.stars.fill") {
+                        appState.enterSleepMode()
                         dismiss()
                     }
 
@@ -817,7 +823,7 @@ private struct MorningWhySheet: View {
 
                             MooniInfoRow(icon: "bed.double.fill", title: "Bedtime", value: bedtimeDetail)
                             MooniInfoRow(icon: "sunrise.fill", title: "Wake time", value: wakeDetail, color: MooniColor.warning)
-                            MooniInfoRow(icon: "leaf.fill", title: "Wind-down", value: entry.routineCompleted ? "Completed" : "Try tonight", color: MooniColor.success)
+                            MooniInfoRow(icon: "moon.zzz.fill", title: "Wind-down", value: entry.routineCompleted ? "Completed" : "Try tonight", color: MooniColor.success)
                         }
                     }
 
@@ -905,7 +911,7 @@ private struct RecoveryPlanSheet: View {
                         showPaywall = true
                     }
 
-                    PrimaryButton(title: "Start wind-down", icon: "leaf.fill") {
+                    PrimaryButton(title: "Start wind-down", icon: "moon.zzz.fill") {
                         dismiss()
                     }
 

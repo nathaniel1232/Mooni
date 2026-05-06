@@ -330,6 +330,22 @@ struct ProfileView: View {
             devButton("Add Dream Stars (100)", icon: "sparkles") {
                 appState.dreamStars += 100
             }
+
+            devButton(
+                subscriptionManager.devForcePro ? "Disable forced Pro" : "Force Pro on",
+                icon: subscriptionManager.devForcePro ? "lock.fill" : "sparkles",
+                color: subscriptionManager.devForcePro ? MooniColor.warning : MooniColor.success
+            ) {
+                subscriptionManager.devForcePro.toggle()
+            }
+
+            devButton("Trigger sleep mode", icon: "moon.fill") {
+                appState.enterSleepMode()
+            }
+
+            devButton("Show morning check-in", icon: "sun.max.fill") {
+                appState.showMorningCheckIn = true
+            }
         }
         .padding(14)
         .background(Color.white.opacity(0.06))

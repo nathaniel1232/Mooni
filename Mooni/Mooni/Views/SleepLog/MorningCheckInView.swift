@@ -10,10 +10,11 @@ struct MorningCheckInView: View {
     @State private var wakeTime: Date = Date()
     @State private var quality: SleepEntry.Quality = .good
     @State private var mood: SleepEntry.Mood = .okay
+    @State private var phoneAway: Bool? = nil
     @State private var savedEntry: SleepEntry?
 
     enum Step {
-        case greeting, times, quality, mood, summary
+        case greeting, phone, times, quality, mood, summary
     }
 
     var body: some View {
@@ -40,10 +41,34 @@ struct MorningCheckInView: View {
     private var content: some View {
         switch step {
         case .greeting: greetingView
+        case .phone:    phoneView
         case .times:    timesView
         case .quality:  qualityView
         case .mood:     moodView
         case .summary:  summaryView
+        }
+    }
+
+    private var phoneView: some View {
+        VStack(spacing: 16) {
+            Text("Did you put your phone away last night?")
+                .font(MooniFont.display(24))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
+            Text("If yes, Luna gets a head start on tonight's quest.")
+                .font(MooniFont.caption(13))
+                .foregroundColor(MooniColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            VStack(spacing: 10) {
+                pickerRow(label: "📵  Yes, phone was away", selected: phoneAway == true) {
+                    phoneAway = true
+                }
+                pickerRow(label: "📱  No, I had it nearby", selected: phoneAway == false) {
+                    phoneAway = false
+                }
+            }
         }
     }
 
@@ -172,6 +197,13 @@ struct MorningCheckInView: View {
                 }
                 PrimaryButton(title: step == .greeting ? "Begin" : (step == .mood ? "See result" : "Next")) {
                     if step == .mood {
+                        if phoneAway == true {
+                            if let habit = RoutineHabit.library.first(where: { $0.id == "no_phone" }),
+                               !appState.routine.completedToday.contains(habit.id) {
+                                appState.toggleHabitCompletion(habit)
+                                appState.awardDreamStarsForQuestStep(habit, amount: 10)
+                            }
+                        }
                         let entry = appState.logSleep(
                             bedtime: bedtime,
                             wakeTime: wakeTime,
@@ -186,13 +218,16 @@ struct MorningCheckInView: View {
                         withAnimation { step = nextStep(of: step) }
                     }
                 }
+                .disabled(step == .phone && phoneAway == nil)
+                .opacity(step == .phone && phoneAway == nil ? 0.55 : 1)
             }
         }
     }
 
     private func nextStep(of s: Step) -> Step {
         switch s {
-        case .greeting: return .times
+        case .greeting: return .phone
+        case .phone:    return .times
         case .times:    return .quality
         case .quality:  return .mood
         case .mood:     return .summary
@@ -203,7 +238,8 @@ struct MorningCheckInView: View {
     private func previousStep(of s: Step) -> Step {
         switch s {
         case .greeting: return .greeting
-        case .times:    return .greeting
+        case .phone:    return .greeting
+        case .times:    return .phone
         case .quality:  return .times
         case .mood:     return .quality
         case .summary:  return .mood

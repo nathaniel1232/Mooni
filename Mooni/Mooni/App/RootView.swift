@@ -15,8 +15,66 @@ struct RootView: View {
                 MainTabView()
                     .transition(.opacity)
             }
+
+            if appState.isSleeping {
+                SleepingOverlay()
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
         }
         .animation(.easeInOut(duration: 0.4), value: appState.hasCompletedOnboarding)
+        .animation(.easeInOut(duration: 0.4), value: appState.isSleeping)
+    }
+}
+
+/// Full-screen lock that stays in front of the tab bar while the user is
+/// sleeping. The only escape is "Wake up", which kicks them into the morning
+/// check-in. This is the in-app version of a screen-time block.
+struct SleepingOverlay: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        ZStack {
+            MooniGradient.night.ignoresSafeArea()
+            StarsBackground(count: 70)
+
+            VStack(spacing: 22) {
+                Spacer()
+
+                LunaMoodHero(
+                    pet: appState.pet,
+                    mood: .sleepy,
+                    size: 200,
+                    caption: nil
+                )
+
+                VStack(spacing: 10) {
+                    Text("\(appState.pet.name) is sleeping")
+                        .font(MooniFont.display(28))
+                        .foregroundColor(MooniColor.textPrimary)
+                        .multilineTextAlignment(.center)
+                    Text("The app is resting too. Tap wake up when you're up — Luna will ask you a couple of questions before unlocking the day.")
+                        .font(MooniFont.body(14))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28)
+                }
+
+                if let started = appState.sleepStartedAt {
+                    Text("Sleep started at \(started.hourMinuteString)")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textMuted)
+                }
+
+                Spacer()
+
+                PrimaryButton(title: "Wake up", icon: "sun.max.fill") {
+                    appState.wakeUpFromSleepMode()
+                }
+                .padding(.horizontal, 28)
+                .padding(.bottom, 32)
+            }
+        }
     }
 }
 

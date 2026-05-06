@@ -2729,7 +2729,7 @@ private struct FirstQuestScreen: View {
             .padding(.top, 8)
 
             VStack(spacing: 10) {
-                questRow(icon: "leaf.fill", title: "Start wind-down by \(windDownTime)")
+                questRow(icon: "moon.zzz.fill", title: "Start wind-down by \(windDownTime)")
                 questRow(icon: "iphone.slash", title: "Avoid phone in bed")
                 questRow(icon: "sun.max.fill", title: "Wake up around \(wakeTime.hourMinuteString)")
             }

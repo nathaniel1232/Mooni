@@ -23,6 +23,9 @@ final class AppState: ObservableObject {
         static let profileData = "mooni.profile"
         static let questRewardDay = "mooni.questRewardDay"
         static let questRewardedSteps = "mooni.questRewardedSteps"
+        static let isSleeping = "mooni.isSleeping"
+        static let sleepStartedAt = "mooni.sleepStartedAt"
+        static let devForcePro = "mooni.devForcePro"
     }
 
     // MARK: - Published state
@@ -53,6 +56,21 @@ final class AppState: ObservableObject {
     @Published var showMorningCheckIn: Bool = false
     @Published var lastEarnedEnergy: Int? = nil
     @Published var lastLevelUp: Int? = nil
+
+    /// True while the user has tapped "Going to bed now" / "Ready for sleep"
+    /// and hasn't completed the morning check-in. The app shows a sleep-lock
+    /// overlay so the pet (and the user) actually rests.
+    @Published var isSleeping: Bool {
+        didSet {
+            UserDefaults.standard.set(isSleeping, forKey: Key.isSleeping)
+            if isSleeping {
+                UserDefaults.standard.set(Date(), forKey: Key.sleepStartedAt)
+            }
+        }
+    }
+    var sleepStartedAt: Date? {
+        UserDefaults.standard.object(forKey: Key.sleepStartedAt) as? Date
+    }
 
     /// Primary goal the user picked during onboarding. Drives personalized copy.
     @Published var sleepGoal: SleepGoal? {
@@ -140,6 +158,7 @@ final class AppState: ObservableObject {
         }
 
         self.dreamStars = defaults.integer(forKey: Key.dreamStars)
+        self.isSleeping = defaults.bool(forKey: Key.isSleeping)
 
         if let data = defaults.data(forKey: Key.profileData),
            let decoded = try? JSONDecoder().decode(OnboardingProfile.self, from: data) {
@@ -489,6 +508,21 @@ final class AppState: ObservableObject {
     func dismissMorningCheckIn() {
         UserDefaults.standard.set(Date().dayKey, forKey: Key.lastMorningPrompt)
         showMorningCheckIn = false
+        isSleeping = false
+    }
+
+    /// Enter sleep mode. The app locks itself until morning, and the pet sleeps.
+    func enterSleepMode() {
+        isSleeping = true
+        var p = pet
+        p.mood = .sleepy
+        self.pet = p
+    }
+
+    /// Wake-up tap from the sleep-lock screen. Surfaces the morning check-in.
+    func wakeUpFromSleepMode() {
+        isSleeping = false
+        showMorningCheckIn = true
     }
 
     // MARK: - HealthKit import

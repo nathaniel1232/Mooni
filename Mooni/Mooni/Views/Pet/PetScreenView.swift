@@ -21,7 +21,16 @@ struct PetScreenView: View {
             case .hats: return "Hats"
             case .colors: return "Colors"
             case .rooms: return "Rooms"
-            case .backgrounds: return "Backgrounds"
+            case .backgrounds: return "Scenes"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .hats: return "graduationcap.fill"
+            case .colors: return "paintpalette.fill"
+            case .rooms: return "house.fill"
+            case .backgrounds: return "photo.fill"
             }
         }
     }
@@ -240,15 +249,26 @@ struct PetScreenView: View {
                         selectedTab = tab
                     }
                 } label: {
-                    Text(tab.title)
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(selectedTab == tab ? MooniColor.background : MooniColor.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity)
-                        .background(selectedTab == tab ? MooniColor.accentSoft : Color.white.opacity(0.07))
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    let active = selectedTab == tab
+                    VStack(spacing: 5) {
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(tab.title)
+                            .font(MooniFont.caption(11))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .foregroundColor(active ? MooniColor.background : MooniColor.textPrimary)
+                    .padding(.vertical, 11)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(active ? MooniColor.accentSoft : Color.white.opacity(0.06))
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(active ? Color.clear : Color.white.opacity(0.08), lineWidth: 1)
+                        }
+                    )
                 }
                 .buttonStyle(.plain)
             }
@@ -424,41 +444,66 @@ struct PetScreenView: View {
         isLocked: Bool,
         @ViewBuilder icon: () -> Icon
     ) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(0.07))
-                    .frame(height: 68)
+                    .fill(
+                        LinearGradient(
+                            colors: isSelected
+                                ? [MooniColor.accent.opacity(0.22), MooniColor.accentSoft.opacity(0.10)]
+                                : [Color.white.opacity(0.08), Color.white.opacity(0.03)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(height: 92)
 
                 icon()
 
                 if isLocked {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.black.opacity(0.34))
-                        .frame(height: 68)
+                        .fill(Color.black.opacity(0.40))
+                        .frame(height: 92)
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white.opacity(0.76))
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white.opacity(0.82))
+                }
+
+                if isSelected {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(MooniColor.success)
+                                .padding(7)
+                        }
+                        Spacer()
+                    }
+                    .frame(height: 92)
                 }
             }
 
-            Text(title)
-                .font(MooniFont.caption(12))
-                .foregroundColor(isLocked ? MooniColor.textMuted : MooniColor.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(MooniFont.title(13))
+                    .foregroundColor(isLocked ? MooniColor.textMuted : MooniColor.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
 
-            Text(subtitle)
-                .font(MooniFont.caption(10))
-                .foregroundColor(isSelected ? MooniColor.success : (isLocked ? MooniColor.textMuted : MooniColor.textSecondary))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                Text(subtitle)
+                    .font(MooniFont.caption(10))
+                    .foregroundColor(isSelected ? MooniColor.success : (isLocked ? MooniColor.textMuted : MooniColor.textSecondary))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+            .frame(maxWidth: .infinity)
         }
-        .padding(9)
-        .background(Color.white.opacity(isSelected ? 0.11 : 0.045))
+        .padding(10)
+        .background(Color.white.opacity(isSelected ? 0.10 : 0.04))
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.06), lineWidth: 1.4)
+                .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.07), lineWidth: 1.4)
         )
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
