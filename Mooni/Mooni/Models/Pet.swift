@@ -109,18 +109,18 @@ struct Pet: Codable {
         var consistencyRequired: Int {
             switch self {
             case .egg:       return 0
-            case .baby:      return 3
-            case .young:     return 10
-            case .adult:     return 25
-            case .dream:     return 60
-            case .legendary: return 120
+            case .baby:      return 0
+            case .young:     return 3
+            case .adult:     return 10
+            case .dream:     return 25
+            case .legendary: return 60
             }
         }
     }
 
     // MARK: - Stored
-    var name: String = "Nova"
-    var species: PetSpecies = .fox
+    var name: String = "Luna"
+    var species: PetSpecies = .owl
     var room: PetRoom = .moonBedroom
     var stage: EvolutionStage = .baby
 
@@ -180,6 +180,7 @@ struct UnlockableItem: Identifiable, Codable, Hashable {
         .init(id: "color_rose",      name: "Rose",            kind: .color, requiredLevel: 6, icon: "circle.fill"),
         .init(id: "color_gold",      name: "Stardust",        kind: .color, requiredLevel: 8, icon: "circle.fill"),
         // Backgrounds
+        .init(id: "bg_starry_blanket", name: "Starry Blanket", kind: .background, requiredLevel: 2, icon: "sparkle.magnifyingglass"),
         .init(id: "bg_starfield",    name: "Starfield",       kind: .background, requiredLevel: 2, icon: "sparkles"),
         .init(id: "bg_forest",       name: "Quiet Forest",    kind: .background, requiredLevel: 5, icon: "leaf.fill"),
         .init(id: "bg_ocean",        name: "Ocean",           kind: .background, requiredLevel: 6, icon: "water.waves"),

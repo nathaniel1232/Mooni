@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct RootView: View {
     @EnvironmentObject var appState: AppState
@@ -26,8 +27,12 @@ struct MainTabView: View {
     @State private var selection: Tab = .home
     @State private var showPaywall = false
 
+    init() {
+        Self.configureTabBarAppearance()
+    }
+
     enum Tab: Hashable {
-        case home, report, quest, pet, profile
+        case home, sleep, quest, luna, me
     }
 
     var body: some View {
@@ -37,20 +42,20 @@ struct MainTabView: View {
                 .tag(Tab.home)
 
             SleepReportView(showPaywall: $showPaywall)
-                .tabItem { Label("Report", systemImage: "chart.bar.fill") }
-                .tag(Tab.report)
+                .tabItem { Label("Sleep", systemImage: "chart.xyaxis.line") }
+                .tag(Tab.sleep)
 
             BedtimeQuestView(showPaywall: $showPaywall)
                 .tabItem { Label("Quest", systemImage: "checklist") }
                 .tag(Tab.quest)
 
             PetScreenView(showPaywall: $showPaywall)
-                .tabItem { Label("Pet", systemImage: "pawprint.fill") }
-                .tag(Tab.pet)
+                .tabItem { Label("Luna", systemImage: "sparkles") }
+                .tag(Tab.luna)
 
             ProfileView(showPaywall: $showPaywall)
-                .tabItem { Label("Profile", systemImage: "person.crop.circle.fill") }
-                .tag(Tab.profile)
+                .tabItem { Label("Me", systemImage: "person.crop.circle.fill") }
+                .tag(Tab.me)
         }
         .tint(MooniColor.accent)
         .sheet(isPresented: $appState.showMorningCheckIn) {
@@ -63,6 +68,34 @@ struct MainTabView: View {
                 Task { await appState.importHealthKitSleep() }
             }
         }
+    }
+
+    private static func configureTabBarAppearance() {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+        appearance.backgroundColor = UIColor(MooniColor.background).withAlphaComponent(0.86)
+        appearance.shadowColor = UIColor.white.withAlphaComponent(0.08)
+
+        let itemAppearance = UITabBarItemAppearance()
+        itemAppearance.normal.titleTextAttributes = [
+            .font: UIFont.systemFont(ofSize: 10, weight: .medium),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.56)
+        ]
+        itemAppearance.selected.titleTextAttributes = [
+            .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
+            .foregroundColor: UIColor(MooniColor.accentSoft)
+        ]
+        itemAppearance.normal.iconColor = UIColor.white.withAlphaComponent(0.56)
+        itemAppearance.selected.iconColor = UIColor(MooniColor.accentSoft)
+
+        appearance.stackedLayoutAppearance = itemAppearance
+        appearance.inlineLayoutAppearance = itemAppearance
+        appearance.compactInlineLayoutAppearance = itemAppearance
+
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+        UITabBar.appearance().isTranslucent = true
     }
 }
 

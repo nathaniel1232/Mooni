@@ -1,218 +1,263 @@
 import SwiftUI
 
-/// Profile / Progress tab — long-term achievement view.
-/// Free users see basic streaks & 7-day average; Pro users see deeper trends.
+/// Me is the quiet account/settings/progress tab. It supports the app without
+/// competing with the daily Luna care loop.
 struct ProfileView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     @Binding var showPaywall: Bool
 
+    @StateObject private var healthKit = HealthKitManager.shared
+    @StateObject private var notifications = NotificationManager.shared
+
     var body: some View {
         NavigationStack {
             ZStack {
                 MooniGradient.night.ignoresSafeArea()
+
                 ScrollView {
                     VStack(spacing: 16) {
-                        identityCard
-                        streakCard
-                        statsGrid
-                        badgesCard
-                        if subscriptionManager.isPro {
-                            historicalTrends
-                        } else {
-                            historicalTeaser
+                        lunaSummaryCard
+                        sleepGoalCard
+                        progressCard
+                        unlocksCard
+                        settingsCard
+
+                        if !subscriptionManager.isPro {
+                            upgradeCard
                         }
-                        manageRow
+
+                        #if DEBUG
+                        devTools
+                        #endif
                     }
                     .padding(20)
+                    .padding(.bottom, 96)
                 }
             }
-            .navigationTitle("Profile")
+            .navigationTitle("Me")
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .task {
+                healthKit.refreshAuthState()
+                await notifications.refreshAuthState()
+            }
         }
     }
 
-    // MARK: - Identity card
-    private var identityCard: some View {
+    private var lunaSummaryCard: some View {
         MooniCard {
-            HStack(spacing: 14) {
-                DreamSpiritView(pet: appState.pet, size: 70)
-                    .frame(width: 100, height: 100)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(appState.pet.name)
-                        .font(MooniFont.display(22))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Text("\(appState.pet.species.displayName) · \(appState.pet.stage.label)")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.textSecondary)
-                    if let goal = appState.sleepGoal {
-                        Text(goal.title)
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.accentSoft)
-                    }
-                }
-                Spacer()
-            }
-        }
-    }
-
-    // MARK: - Streak card
-    private var streakCard: some View {
-        let cur = appState.bedtimeConsistencyDays
-        return MooniCard {
             HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(MooniColor.warning.opacity(0.16))
-                        .frame(width: 64, height: 64)
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(MooniColor.warning)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(cur) day streak")
-                        .font(MooniFont.title(18))
+                DreamSpiritView(pet: appState.pet, size: 86)
+                    .frame(width: 96, height: 96)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(appState.pet.name)
+                        .font(MooniFont.display(24))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text("Consistent bedtime within 30 minutes of your target.")
+                    Text("\(appState.pet.species.displayName) • \(appState.pet.stage.label)")
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.textSecondary)
+                    Text("\(appState.petPersonality.label): \(shortPersonalityCopy)")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.accentSoft)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+
                 Spacer()
             }
         }
     }
 
-    // MARK: - Stats grid
-    private var statsGrid: some View {
-        let recent = appState.recentEntries
-        let avg = recent.isEmpty ? 0 : recent.map(\.hours).reduce(0, +) / Double(recent.count)
-        let total = appState.entries.count
-        return HStack(spacing: 12) {
-            statTile(icon: "moon.zzz.fill", color: MooniColor.accent,
-                     value: String(format: "%.1fh", avg), label: "Avg / night")
-            statTile(icon: "calendar", color: MooniColor.accentSoft,
-                     value: "\(total)", label: "Nights tracked")
-            statTile(icon: "sparkles", color: MooniColor.warning,
-                     value: "\(appState.dreamStars)", label: "Dream stars")
-        }
-    }
-
-    private func statTile(icon: String, color: Color, value: String, label: String) -> some View {
-        MooniCard(padding: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Image(systemName: icon).foregroundColor(color)
-                Text(value)
-                    .font(MooniFont.title(18))
+    private var sleepGoalCard: some View {
+        MooniCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Sleep goal")
+                    .font(MooniFont.title(20))
                     .foregroundColor(MooniColor.textPrimary)
-                Text(label)
-                    .font(MooniFont.caption(11))
-                    .foregroundColor(MooniColor.textSecondary)
+
+                MooniInfoRow(icon: "moon.zzz.fill", title: "Goal", value: String(format: "%.1fh", appState.goalHours))
+                MooniInfoRow(icon: "bed.double.fill", title: "Bedtime", value: appState.targetBedtime.hourMinuteString)
+                MooniInfoRow(icon: "sunrise.fill", title: "Wake time", value: appState.targetWakeTime.hourMinuteString, color: MooniColor.warning)
+
+                if let goal = appState.sleepGoal {
+                    Text(goal.title)
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .padding(.top, 2)
+                }
             }
         }
     }
 
-    // MARK: - Badges card
-    private var badgesCard: some View {
+    private var progressCard: some View {
+        MooniCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Personal progress")
+                    .font(MooniFont.title(20))
+                    .foregroundColor(MooniColor.textPrimary)
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    MooniStatPill(icon: "flame.fill", value: "\(appState.bedtimeConsistencyDays)", label: "Sleep rhythm", color: MooniColor.warning)
+                    MooniStatPill(icon: "calendar", value: "\(appState.entries.count)", label: "Nights tracked", color: MooniColor.accent)
+                    MooniStatPill(icon: "moon.fill", value: averageSleepText, label: "Average sleep")
+                    MooniStatPill(icon: "sparkles", value: "\(appState.dreamStars)", label: "Dream stars", color: MooniColor.warning)
+                }
+            }
+        }
+    }
+
+    private var unlocksCard: some View {
         let unlocked = appState.pet.unlockedItems.count
         let total = UnlockableItem.catalog.count
-        return MooniCard {
-            VStack(alignment: .leading, spacing: 10) {
+
+        return MooniCard(padding: 18, cornerRadius: 24) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Label("Badges & unlocks", systemImage: "rosette")
-                        .font(MooniFont.title(15))
+                        .font(MooniFont.title(16))
                         .foregroundColor(MooniColor.textPrimary)
                     Spacer()
-                    Text("\(unlocked) / \(total)")
+                    Text("\(unlocked)/\(total)")
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.textSecondary)
                 }
-                progressBar(value: Double(unlocked) / Double(max(total, 1)))
+
+                MooniProgressBar(value: Double(unlocked) / Double(max(total, 1)), height: 9)
             }
         }
     }
 
-    private func progressBar(value: Double) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.08))
-                Capsule()
-                    .fill(LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
-                                         startPoint: .leading, endPoint: .trailing))
-                    .frame(width: geo.size.width * CGFloat(min(max(value, 0), 1)))
-            }
-        }
-        .frame(height: 8)
-    }
-
-    // MARK: - Premium history trends
-    private var historicalTrends: some View {
+    private var settingsCard: some View {
         MooniCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Long-term trends", systemImage: "chart.line.uptrend.xyaxis")
-                    .font(MooniFont.title(15))
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Settings")
+                    .font(MooniFont.title(20))
                     .foregroundColor(MooniColor.textPrimary)
-                let monthly = monthlyAverage()
-                Text(monthly == nil
-                     ? "Keep tracking — your monthly trend will appear soon."
-                     : String(format: "Your 30-day average: %.1fh / night.", monthly!))
-                    .font(MooniFont.caption(13))
-                    .foregroundColor(MooniColor.textSecondary)
+
+                settingsButton(icon: "heart.text.square.fill", title: "Apple Health", value: healthStatusText) {
+                    Task {
+                        _ = await healthKit.requestAuthorization()
+                        await appState.importHealthKitSleep()
+                    }
+                }
+
+                Divider().background(Color.white.opacity(0.08))
+
+                settingsButton(icon: "bell.fill", title: "Bedtime reminder", value: notificationStatusText) {
+                    Task {
+                        _ = await notifications.requestAuthorization()
+                        notifications.scheduleNightlyBedtimeNudge(
+                            petName: appState.pet.name,
+                            bedtime: appState.targetBedtime
+                        )
+                    }
+                }
+
+                Divider().background(Color.white.opacity(0.08))
+
+                settingsButton(icon: "sparkles", title: "Subscription", value: subscriptionManager.isPro ? "Premium active" : "Free plan") {
+                    showPaywall = true
+                }
+
+                Divider().background(Color.white.opacity(0.08))
+
+                settingsButton(icon: "hand.raised.fill", title: "Privacy", value: "Manage") {}
             }
         }
     }
 
-    private func monthlyAverage() -> Double? {
-        let cal = Calendar.current
-        let cutoff = cal.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-        let recent = appState.entries.filter { $0.wakeTime >= cutoff }
-        guard !recent.isEmpty else { return nil }
-        return recent.map(\.hours).reduce(0, +) / Double(recent.count)
+    private func settingsButton(icon: String, title: String, value: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(MooniColor.accent)
+                    .frame(width: 30, height: 30)
+                    .background(MooniColor.accent.opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                Text(title)
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textPrimary)
+
+                Spacer()
+
+                Text(value)
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(MooniColor.textMuted)
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
     }
 
-    private var historicalTeaser: some View {
+    private var upgradeCard: some View {
         Button { showPaywall = true } label: {
             MooniCard {
-                HStack {
-                    Label("Long-term trends", systemImage: "chart.line.uptrend.xyaxis")
-                        .font(MooniFont.title(15))
-                        .foregroundColor(MooniColor.accent)
-                    Spacer()
-                    Image(systemName: "lock.fill")
-                        .foregroundColor(MooniColor.textMuted)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Label("Premium", systemImage: "sparkles")
+                            .font(MooniFont.title(18))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(MooniColor.accentSoft)
+                    }
+
+                    Text("Unlock Luna's full evolution path, rare rooms, guided wind-downs, programs, and deeper sleep insights.")
+                        .font(MooniFont.body(14))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Manage row
-    private var manageRow: some View {
-        VStack(spacing: 10) {
-            if !subscriptionManager.isPro {
-                Button { showPaywall = true } label: {
-                    HStack {
-                        Image(systemName: "sparkles")
-                        Text("Upgrade to Mooni Pro")
-                            .font(MooniFont.title(15))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                    }
-                    .foregroundColor(.white)
-                    .padding(14)
-                    .background(LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
-                                               startPoint: .leading, endPoint: .trailing))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-            }
+    private var averageSleepText: String {
+        let recent = appState.recentEntries
+        guard !recent.isEmpty else { return "--" }
+        let average = recent.map(\.hours).reduce(0, +) / Double(recent.count)
+        return String(format: "%.1fh", average)
+    }
 
-            #if DEBUG
-            devTools
-            #endif
+    private var shortPersonalityCopy: String {
+        switch appState.petPersonality {
+        case .balanced: return "adapts to the night."
+        case .consistent: return "loves a steady routine."
+        case .nightOwl: return "needs a gentle wind-down."
+        case .earlyBird: return "brightens with steady mornings."
+        case .recovering: return "bounces back softly."
+        case .explorer: return "is still finding rhythm."
         }
     }
 
-    // MARK: - DEBUG: Dev tools
+    private var healthStatusText: String {
+        switch healthKit.authState {
+        case .authorized: return "Connected"
+        case .denied: return "Needs access"
+        case .notDetermined: return "Connect"
+        case .unavailable: return "Unavailable"
+        }
+    }
+
+    private var notificationStatusText: String {
+        switch notifications.authState {
+        case .authorized: return "On"
+        case .denied: return "Off"
+        case .notDetermined: return "Set up"
+        }
+    }
+
+    // MARK: - DEBUG
+
     #if DEBUG
     private var devTools: some View {
         VStack(spacing: 10) {
@@ -249,7 +294,7 @@ struct ProfileView: View {
             }
 
             HStack(spacing: 8) {
-                devButton("Level +1", icon: "plus.circle.fill", width: nil) {
+                devButton("Growth +1", icon: "plus.circle.fill", width: nil) {
                     var p = appState.pet
                     p.dreamEnergy += p.energyForNextLevel
                     while p.dreamEnergy >= p.energyForNextLevel {
@@ -261,33 +306,24 @@ struct ProfileView: View {
                     }
                     appState.pet = p
                 }
-                devButton("Max Out", icon: "star.fill", width: nil) {
+
+                devButton("Unlock All", icon: "lock.open.fill", width: nil) {
                     var p = appState.pet
-                    p.level = 20
-                    p.dreamEnergy = 0
-                    for item in UnlockableItem.catalog {
-                        p.unlockedItems.insert(item.id)
-                    }
+                    p.unlockedItems = Set(UnlockableItem.catalog.map { $0.id })
                     appState.pet = p
                 }
             }
 
-            devButton("Clear All Sleep Logs", icon: "xmark.circle.fill", color: MooniColor.danger) {
+            devButton("Clear Sleep Logs", icon: "xmark.circle.fill", color: MooniColor.danger) {
                 appState.entries = []
-            }
-
-            devButton("Unlock All Items", icon: "lock.open.fill") {
-                var p = appState.pet
-                p.unlockedItems = Set(UnlockableItem.catalog.map { $0.id })
-                appState.pet = p
             }
 
             devButton("Cycle Mood", icon: "face.smiling.fill") {
                 let moods: [Pet.Mood] = [.energized, .cozy, .calm, .sleepy, .groggy, .restless]
                 let current = appState.pet.mood
-                let nextIdx = (moods.firstIndex(of: current) ?? -1) + 1
+                let nextIndex = (moods.firstIndex(of: current) ?? -1) + 1
                 var p = appState.pet
-                p.mood = moods[nextIdx % moods.count]
+                p.mood = moods[nextIndex % moods.count]
                 appState.pet = p
             }
 
@@ -297,9 +333,9 @@ struct ProfileView: View {
         }
         .padding(14)
         .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(MooniColor.danger.opacity(0.3), lineWidth: 1)
         )
     }
@@ -318,13 +354,15 @@ struct ProfileView: View {
                     .frame(width: 18)
                 Text(label)
                     .font(MooniFont.caption(12))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Spacer()
             }
             .foregroundColor(color)
             .padding(.vertical, 8)
             .padding(.horizontal, 10)
             .background(color.opacity(0.10))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .frame(maxWidth: width)
         }
         .buttonStyle(.plain)

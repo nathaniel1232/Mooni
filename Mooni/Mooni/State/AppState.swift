@@ -21,6 +21,8 @@ final class AppState: ObservableObject {
         static let weekendWakeMinute = "mooni.weekendWakeMinute"
         static let dreamStars = "mooni.dreamStars"
         static let profileData = "mooni.profile"
+        static let questRewardDay = "mooni.questRewardDay"
+        static let questRewardedSteps = "mooni.questRewardedSteps"
     }
 
     // MARK: - Published state
@@ -194,10 +196,32 @@ final class AppState: ObservableObject {
     var recommendedBedtime: Date { targetBedtime }
     var recommendedWakeTime: Date { targetWakeTime }
 
+    var nextEvolutionStage: Pet.EvolutionStage? {
+        let stages = Pet.EvolutionStage.allCases
+        guard let currentIndex = stages.firstIndex(of: pet.stage),
+              currentIndex + 1 < stages.count else {
+            return nil
+        }
+        return stages[currentIndex + 1]
+    }
+
+    var nightsUntilNextEvolution: Int {
+        guard let nextEvolutionStage else { return 0 }
+        return max(0, nextEvolutionStage.consistencyRequired - bedtimeConsistencyDays)
+    }
+
+    var growthProgress: Double {
+        guard let nextEvolutionStage else { return 1 }
+        let currentRequirement = pet.stage.consistencyRequired
+        let nextRequirement = nextEvolutionStage.consistencyRequired
+        let span = max(1, nextRequirement - currentRequirement)
+        return Double(bedtimeConsistencyDays - currentRequirement) / Double(span)
+    }
+
     // MARK: - Onboarding
     func completeOnboarding(name: String, goalHours: Double, bedtime: Date, wakeTime: Date) {
         var newPet = pet
-        newPet.name = name.isEmpty ? "Nova" : name
+        newPet.name = name.isEmpty ? "Luna" : name
         self.pet = newPet
         self.goalHours = goalHours
         self.targetBedtime = bedtime
@@ -256,6 +280,29 @@ final class AppState: ObservableObject {
         dreamStars = max(0, dreamStars + amount)
     }
 
+    @discardableResult
+    func spendDreamStars(_ amount: Int) -> Bool {
+        guard dreamStars >= amount else { return false }
+        dreamStars -= amount
+        return true
+    }
+
+    func unlock(_ item: UnlockableItem) {
+        var p = pet
+        p.unlockedItems.insert(item.id)
+        self.pet = p
+    }
+
+    /// Awards each nightly quest step only once per day, so dream stars stay legible.
+    func awardDreamStarsForQuestStep(_ habit: RoutineHabit, amount: Int) {
+        rolloverQuestRewardsIfNeeded()
+        var rewarded = Set(UserDefaults.standard.stringArray(forKey: Key.questRewardedSteps) ?? [])
+        guard !rewarded.contains(habit.id) else { return }
+        rewarded.insert(habit.id)
+        UserDefaults.standard.set(Array(rewarded), forKey: Key.questRewardedSteps)
+        addDreamStars(amount)
+    }
+
     // MARK: - Logging
     @discardableResult
     func logSleep(
@@ -306,7 +353,7 @@ final class AppState: ObservableObject {
         p.lastSleepScore = score
         p.mood = Pet.Mood.from(score: score)
 
-        // Level up
+        // Advance hidden growth inventory.
         var leveledTo: Int? = nil
         while p.dreamEnergy >= p.energyForNextLevel {
             p.dreamEnergy -= p.energyForNextLevel
@@ -399,6 +446,14 @@ final class AppState: ObservableObject {
             r.completedToday.removeAll()
             r.lastCompletedDay = today
             self.routine = r
+        }
+    }
+
+    private func rolloverQuestRewardsIfNeeded() {
+        let today = Date().dayKey
+        if UserDefaults.standard.string(forKey: Key.questRewardDay) != today {
+            UserDefaults.standard.set(today, forKey: Key.questRewardDay)
+            UserDefaults.standard.set([String](), forKey: Key.questRewardedSteps)
         }
     }
 
@@ -503,7 +558,7 @@ extension AppState {
         let s = AppState()
         s.hasCompletedOnboarding = true
         var p = s.pet
-        p.name = "Lumi"
+        p.name = "Luna"
         p.level = 4
         p.dreamEnergy = 240
         p.lastSleepScore = 84

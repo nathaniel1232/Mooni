@@ -122,11 +122,11 @@ struct MorningCheckInView: View {
                     HStack(spacing: 14) {
                         SleepScoreRing(score: entry.score, size: 84, lineWidth: 9)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("+\(entry.energyEarned) dream energy")
+                            Text("+\(entry.energyEarned) growth")
                                 .font(MooniFont.title(17))
                                 .foregroundColor(MooniColor.success)
-                            if let lvl = appState.lastLevelUp {
-                                Text("Level up! \(appState.pet.name) reached level \(lvl)")
+                            if appState.lastLevelUp != nil {
+                                Text("\(appState.pet.name) grew brighter after this night.")
                                     .font(MooniFont.caption(13))
                                     .foregroundColor(MooniColor.accent)
                             } else {

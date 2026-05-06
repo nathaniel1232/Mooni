@@ -231,7 +231,7 @@ struct LogSleepSheet: View {
                     Text("Completed wind-down")
                         .font(MooniFont.title(15))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text("Bonus dream energy if you did your routine")
+                    Text("Bonus growth if Luna had a wind-down")
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.textSecondary)
                 }

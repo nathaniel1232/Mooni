@@ -12,7 +12,7 @@ enum PetSpecies: String, Codable, CaseIterable, Identifiable {
 
     var defaultName: String {
         switch self {
-        case .fox:   return "Nova"
+        case .fox:   return "Luna"
         case .panda: return "Mochi"
         case .owl:   return "Luna"
         }

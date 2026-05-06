@@ -4,28 +4,46 @@ struct PetScreenView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     @Binding var showPaywall: Bool
-    @State private var selectedKind: UnlockableItem.Kind = .hat
+
+    @State private var selectedTab: CustomizationTab = .hats
+    @State private var showEvolutionPath = false
+
+    private enum CustomizationTab: String, CaseIterable, Identifiable {
+        case hats
+        case colors
+        case rooms
+        case backgrounds
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .hats: return "Hats"
+            case .colors: return "Colors"
+            case .rooms: return "Rooms"
+            case .backgrounds: return "Backgrounds"
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 MooniGradient.night.ignoresSafeArea()
-                StarsBackground(count: 50)
+                StarsBackground(count: 38)
 
                 ScrollView {
-                    VStack(spacing: 22) {
-                        petHero
+                    VStack(spacing: 20) {
+                        hero
                         evolutionCard
                         personalityCard
-                        levelCard
-                        nextUnlockCard
-                        kindPicker
-                        itemGrid
+                        customizationSection
                     }
                     .padding(20)
+                    .padding(.bottom, 96)
                 }
             }
-            .navigationTitle(appState.pet.name)
+            .navigationTitle("Luna")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -34,322 +52,623 @@ struct PetScreenView: View {
                         Button {
                             showPaywall = true
                         } label: {
-                            Label("Pro", systemImage: "sparkles")
+                            Label("Premium", systemImage: "sparkles")
                                 .font(MooniFont.caption(12))
-                                .foregroundColor(.white)
+                                .foregroundColor(MooniColor.background)
                                 .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(
-                                    LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
-                                                   startPoint: .leading, endPoint: .trailing)
-                                )
+                                .padding(.vertical, 5)
+                                .background(MooniColor.accentSoft)
                                 .clipShape(Capsule())
                         }
                     }
                 }
             }
+            .sheet(isPresented: $showEvolutionPath) {
+                EvolutionPathSheet(showPaywall: $showPaywall)
+            }
         }
     }
 
-    // MARK: - Hero
-    private var petHero: some View {
-        VStack(spacing: 6) {
-            DreamSpiritView(pet: appState.pet, size: 200)
-            Text(appState.pet.mood.label)
-                .font(MooniFont.title(16))
-                .foregroundColor(MooniColor.accent)
+    private var hero: some View {
+        VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Luna")
+                    .font(MooniFont.display(32))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text("\(appState.pet.name) feels \(appState.pet.mood.label.lowercased()).")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            LunaMoodHero(
+                pet: appState.pet,
+                mood: appState.pet.mood,
+                size: 220,
+                caption: nil
+            )
+
+            HStack(spacing: 10) {
+                MooniStatPill(icon: "heart.fill", value: appState.pet.mood.label, label: "Mood", color: MooniColor.success)
+                MooniStatPill(icon: appState.petPersonality.icon, value: appState.petPersonality.label, label: "Trait", color: MooniColor.accent)
+            }
         }
     }
 
-    // MARK: - Evolution
     private var evolutionCard: some View {
-        let stages = Pet.EvolutionStage.allCases
-        let currentIdx = stages.firstIndex(of: appState.pet.stage) ?? 0
-        let consistency = appState.bedtimeConsistencyDays
-        let nextStage: Pet.EvolutionStage? = currentIdx + 1 < stages.count ? stages[currentIdx + 1] : nil
-        let toGo = nextStage.map { max(0, $0.consistencyRequired - consistency) }
+        MooniCard {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Next: \(nextStageName) Luna")
+                            .font(MooniFont.title(20))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Text(evolutionCopy)
+                            .font(MooniFont.body(14))
+                            .foregroundColor(MooniColor.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
-        return MooniCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Label("Evolution", systemImage: "arrow.up.right.circle.fill")
-                        .font(MooniFont.title(15))
-                        .foregroundColor(MooniColor.textPrimary)
                     Spacer()
-                    Text(appState.pet.stage.label)
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.accent)
+
+                    Image(systemName: "sparkles")
+                        .foregroundColor(MooniColor.accentSoft)
+                        .frame(width: 38, height: 38)
+                        .background(MooniColor.accent.opacity(0.14))
+                        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                 }
 
-                HStack(spacing: 6) {
-                    ForEach(Array(stages.enumerated()), id: \.element) { idx, stage in
-                        Capsule()
-                            .fill(idx <= currentIdx ? MooniColor.accent : Color.white.opacity(0.12))
-                            .frame(height: 6)
-                        if idx < stages.count - 1 {
-                            Rectangle().fill(Color.clear).frame(width: 0)
-                        }
+                stageTrack
+
+                MooniProgressBar(value: appState.growthProgress, height: 10)
+
+                HStack(spacing: 10) {
+                    Image(systemName: "sparkles")
+                        .foregroundColor(MooniColor.warning)
+                    Text("Unlock: Starry Blanket")
+                        .font(MooniFont.caption(13))
+                        .foregroundColor(MooniColor.warning)
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+
+                SecondaryButton(title: "View evolution path", icon: "arrow.up.right.circle.fill") {
+                    showEvolutionPath = true
+                }
+
+                if shouldShowEvolutionLock {
+                    MooniPremiumLockCard(
+                        icon: "moon.stars.fill",
+                        title: "Full evolution path",
+                        subtitle: "Unlock adult, dream form, rare animations, and seasonal forms.",
+                        actionTitle: "Let Luna keep growing"
+                    ) {
+                        showPaywall = true
                     }
-                }
-
-                if let next = nextStage, let togo = toGo {
-                    Text(togo == 0
-                         ? "Ready to evolve into \(next.label) — keep your streak!"
-                         : "\(togo) more consistent night\(togo == 1 ? "" : "s") until \(next.label).")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.textSecondary)
-                } else {
-                    Text("Maxed out — \(appState.pet.name) is in their \(appState.pet.stage.label).")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.textSecondary)
-                }
-
-                if !subscriptionManager.isPro {
-                    HStack(spacing: 6) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 11))
-                        Text("Adult, Dream form & Legendary forms unlock with Pro.")
-                            .font(MooniFont.caption(11))
-                    }
-                    .foregroundColor(MooniColor.textMuted)
                 }
             }
         }
     }
 
-    // MARK: - Personality
+    private var stageTrack: some View {
+        let stages: [Pet.EvolutionStage] = [.baby, .young, .adult, .dream, .legendary]
+        let currentIndex = stages.firstIndex(of: appState.pet.stage) ?? 0
+
+        return HStack(spacing: 8) {
+            ForEach(Array(stages.enumerated()), id: \.element) { index, stage in
+                VStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .fill(index <= currentIndex ? MooniColor.accent.opacity(0.28) : Color.white.opacity(0.07))
+                            .frame(width: 42, height: 42)
+
+                        if isPremiumStage(stage), !subscriptionManager.isPro {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(MooniColor.textMuted)
+                        } else {
+                            Text(stageInitial(stage))
+                                .font(MooniFont.title(14))
+                                .foregroundColor(index <= currentIndex ? MooniColor.accentSoft : MooniColor.textMuted)
+                        }
+                    }
+
+                    Text(shortStageLabel(stage))
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(index <= currentIndex ? MooniColor.textPrimary : MooniColor.textMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
     private var personalityCard: some View {
-        let p = appState.petPersonality
-        return MooniCard {
+        let personality = appState.petPersonality
+
+        return MooniCard(padding: 18, cornerRadius: 24) {
             HStack(spacing: 14) {
-                Image(systemName: p.icon)
-                    .font(.system(size: 22))
+                Image(systemName: personality.icon)
+                    .font(.system(size: 22, weight: .semibold))
                     .foregroundColor(MooniColor.accentSoft)
-                    .frame(width: 44, height: 44)
-                    .background(MooniColor.accentSoft.opacity(0.16))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(p.label)
-                        .font(MooniFont.title(15))
+                    .frame(width: 48, height: 48)
+                    .background(MooniColor.accent.opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(personality.label) Luna")
+                        .font(MooniFont.title(16))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text(p.description)
+                    Text(personalityCopy(personality))
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+
                 Spacer()
             }
         }
     }
 
-    // MARK: - Level
-    private var levelCard: some View {
-        MooniCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Level \(appState.pet.level)")
-                            .font(MooniFont.title(18))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Text("Dream energy \(appState.pet.dreamEnergy) / \(appState.pet.energyForNextLevel)")
-                            .font(MooniFont.caption(13))
-                            .foregroundColor(MooniColor.textSecondary)
-                    }
-                    Spacer()
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 24))
-                        .foregroundColor(MooniColor.accent)
+    private var customizationSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Customize Luna")
+                        .font(MooniFont.title(20))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text("\(appState.dreamStars) dream stars")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.warning)
                 }
-                progressBar(value: appState.pet.levelProgress)
+                Spacer()
             }
+            .padding(.horizontal, 4)
+
+            tabPicker
+            customizationGrid
+            premiumPreviewShelf
         }
     }
 
-    private func progressBar(value: Double) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.08))
-                Capsule()
-                    .fill(LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent], startPoint: .leading, endPoint: .trailing))
-                    .frame(width: geo.size.width * CGFloat(value))
-            }
-        }
-        .frame(height: 8)
-    }
-
-    // MARK: - Next unlock
-    @ViewBuilder
-    private var nextUnlockCard: some View {
-        if let next = nextUnlock() {
-            MooniCard {
-                HStack(spacing: 14) {
-                    Image(systemName: next.icon)
-                        .font(.system(size: 28))
-                        .foregroundColor(MooniColor.accent)
-                        .frame(width: 50, height: 50)
-                        .background(Color.white.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Next unlock")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textSecondary)
-                        Text(next.name)
-                            .font(MooniFont.title(17))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Text("Reach level \(next.requiredLevel)")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textMuted)
-                    }
-                    Spacer()
-                }
-            }
-        }
-    }
-
-    private func nextUnlock() -> UnlockableItem? {
-        UnlockableItem.catalog
-            .filter { $0.requiredLevel > appState.pet.level }
-            .sorted { $0.requiredLevel < $1.requiredLevel }
-            .first
-    }
-
-    // MARK: - Kind picker
-    private var kindPicker: some View {
+    private var tabPicker: some View {
         HStack(spacing: 8) {
-            ForEach([UnlockableItem.Kind.hat, .color, .background], id: \.self) { kind in
-                let selected = selectedKind == kind
+            ForEach(CustomizationTab.allCases) { tab in
                 Button {
-                    withAnimation { selectedKind = kind }
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedTab = tab
+                    }
                 } label: {
-                    Text(label(for: kind))
-                        .font(MooniFont.caption(13))
-                        .foregroundColor(selected ? MooniColor.background : MooniColor.textPrimary)
+                    Text(tab.title)
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(selectedTab == tab ? MooniColor.background : MooniColor.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
                         .padding(.vertical, 10)
-                        .padding(.horizontal, 14)
                         .frame(maxWidth: .infinity)
-                        .background(selected ? MooniColor.accent : Color.white.opacity(0.06))
-                        .clipShape(Capsule())
+                        .background(selectedTab == tab ? MooniColor.accentSoft : Color.white.opacity(0.07))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
         }
     }
 
-    private func label(for kind: UnlockableItem.Kind) -> String {
-        switch kind {
-        case .hat: return "Hats"
-        case .color: return "Colors"
-        case .background: return "Backgrounds"
-        case .animation: return "Animations"
+    @ViewBuilder
+    private var customizationGrid: some View {
+        let columns = [GridItem(.adaptive(minimum: 104), spacing: 12)]
+
+        LazyVGrid(columns: columns, spacing: 12) {
+            switch selectedTab {
+            case .hats:
+                noneHatTile
+                ForEach(items(for: .hat)) { item in
+                    itemTile(item)
+                }
+            case .colors:
+                ForEach(items(for: .color)) { item in
+                    itemTile(item)
+                }
+            case .rooms:
+                ForEach(PetRoom.allCases) { room in
+                    roomTile(room)
+                }
+            case .backgrounds:
+                ForEach(items(for: .background)) { item in
+                    itemTile(item)
+                }
+            }
         }
     }
 
-    // MARK: - Items
-    private var itemGrid: some View {
-        let items = UnlockableItem.catalog.filter { $0.kind == selectedKind }
-        let columns = [GridItem(.adaptive(minimum: 100), spacing: 12)]
-        return LazyVGrid(columns: columns, spacing: 12) {
-            if selectedKind == .hat {
-                noneTile()
-            }
-            ForEach(items) { item in
-                tile(for: item)
-            }
-        }
-    }
-
-    private func noneTile() -> some View {
-        let selected = appState.pet.equippedHat == nil
-        return Button {
+    private var noneHatTile: some View {
+        Button {
             appState.unequipHat()
         } label: {
-            VStack(spacing: 8) {
+            tileShell(
+                title: "None",
+                subtitle: appState.pet.equippedHat == nil ? "Equipped" : "Starter",
+                isSelected: appState.pet.equippedHat == nil,
+                isLocked: false
+            ) {
                 Image(systemName: "circle.slash")
-                    .font(.system(size: 26))
+                    .font(.system(size: 25, weight: .semibold))
                     .foregroundColor(MooniColor.textPrimary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 60)
-                    .background(Color.white.opacity(0.04))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                Text("None")
-                    .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.textSecondary)
             }
-            .padding(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(selected ? MooniColor.accent : Color.clear, lineWidth: 1.5)
-            )
         }
         .buttonStyle(.plain)
     }
 
-    private func tile(for item: UnlockableItem) -> some View {
+    private func itemTile(_ item: UnlockableItem) -> some View {
+        let premiumLocked = isPremiumItem(item) && !subscriptionManager.isPro
         let unlocked = appState.pet.unlockedItems.contains(item.id)
         let equipped = isEquipped(item)
+        let cost = starCost(for: item)
+        let subtitle: String = {
+            if premiumLocked { return premiumLockLabel(for: item) }
+            if equipped { return "Equipped" }
+            if unlocked { return "Owned" }
+            return "\(cost) stars"
+        }()
+
         return Button {
-            if unlocked { appState.equip(item) }
+            if premiumLocked {
+                showPaywall = true
+            } else if unlocked {
+                appState.equip(item)
+            } else if appState.spendDreamStars(cost) {
+                appState.unlock(item)
+                appState.equip(item)
+            }
         } label: {
-            VStack(spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                        .frame(height: 60)
-
-                    if item.kind == .color {
-                        Circle()
-                            .fill(UnlockableItem.color(for: item.id))
-                            .frame(width: 32, height: 32)
-                            .shadow(color: UnlockableItem.color(for: item.id).opacity(0.5), radius: 6)
-                    } else {
-                        Image(systemName: item.icon)
-                            .font(.system(size: 24))
-                            .foregroundColor(unlocked ? MooniColor.textPrimary : MooniColor.textMuted)
-                    }
-
-                    if !unlocked {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color.black.opacity(0.45))
-                            .overlay(
-                                Image(systemName: "lock.fill")
-                                    .foregroundColor(.white.opacity(0.7))
-                            )
-                            .frame(height: 60)
-                    }
-                }
-
-                Text(item.name)
-                    .font(MooniFont.caption(12))
-                    .foregroundColor(unlocked ? MooniColor.textPrimary : MooniColor.textMuted)
-                    .lineLimit(1)
-
-                if !unlocked {
-                    Text("Lvl \(item.requiredLevel)")
-                        .font(MooniFont.caption(10))
-                        .foregroundColor(MooniColor.textMuted)
-                } else if equipped {
-                    Text("Equipped")
-                        .font(MooniFont.caption(10))
-                        .foregroundColor(MooniColor.success)
+            tileShell(title: item.name, subtitle: subtitle, isSelected: equipped, isLocked: premiumLocked) {
+                if item.kind == .color {
+                    Circle()
+                        .fill(UnlockableItem.color(for: item.id))
+                        .frame(width: 32, height: 32)
+                        .shadow(color: UnlockableItem.color(for: item.id).opacity(0.45), radius: 8)
+                } else {
+                    Image(systemName: item.icon)
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundColor(premiumLocked ? MooniColor.textMuted : MooniColor.textPrimary)
                 }
             }
-            .padding(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(equipped ? MooniColor.accent : Color.clear, lineWidth: 1.5)
-            )
         }
         .buttonStyle(.plain)
-        .disabled(!unlocked)
+    }
+
+    private func roomTile(_ room: PetRoom) -> some View {
+        let selected = appState.pet.room == room
+        let locked = !subscriptionManager.isPro && !selected && room != .moonBedroom
+
+        return Button {
+            if locked {
+                showPaywall = true
+            } else {
+                var pet = appState.pet
+                pet.room = room
+                appState.pet = pet
+            }
+        } label: {
+            tileShell(
+                title: room.displayName,
+                subtitle: locked ? "Premium unlock" : (selected ? "Equipped" : "Room"),
+                isSelected: selected,
+                isLocked: locked
+            ) {
+                Image(systemName: room.icon)
+                    .font(.system(size: 25, weight: .semibold))
+                    .foregroundColor(locked ? MooniColor.textMuted : MooniColor.accentSoft)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var premiumPreviewShelf: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Rare previews")
+                .font(MooniFont.title(17))
+                .foregroundColor(MooniColor.textPrimary)
+                .padding(.horizontal, 4)
+                .padding(.top, 4)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                premiumPreviewTile(title: "Dream Crown", subtitle: "Premium unlock", icon: "crown.fill")
+                premiumPreviewTile(title: "Aurora Room", subtitle: "Seasonal item", icon: "sun.haze.fill")
+                premiumPreviewTile(title: "Cloud Bed", subtitle: "Dream room", icon: "bed.double.fill")
+                premiumPreviewTile(title: "Rare Dream Form", subtitle: "Rare sleep form", icon: "moon.stars.fill")
+            }
+        }
+    }
+
+    private func premiumPreviewTile(title: String, subtitle: String, icon: String) -> some View {
+        Button {
+            showPaywall = true
+        } label: {
+            MooniCard(padding: 14, cornerRadius: 22) {
+                HStack(spacing: 12) {
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(MooniColor.accentSoft)
+                        .frame(width: 38, height: 38)
+                        .background(MooniColor.accent.opacity(0.14))
+                        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title)
+                            .font(MooniFont.title(13))
+                            .foregroundColor(MooniColor.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                        Text(subtitle)
+                            .font(MooniFont.caption(10))
+                            .foregroundColor(MooniColor.accentSoft)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 0)
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(MooniColor.textMuted)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func tileShell<Icon: View>(
+        title: String,
+        subtitle: String,
+        isSelected: Bool,
+        isLocked: Bool,
+        @ViewBuilder icon: () -> Icon
+    ) -> some View {
+        VStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white.opacity(0.07))
+                    .frame(height: 68)
+
+                icon()
+
+                if isLocked {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.black.opacity(0.34))
+                        .frame(height: 68)
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white.opacity(0.76))
+                }
+            }
+
+            Text(title)
+                .font(MooniFont.caption(12))
+                .foregroundColor(isLocked ? MooniColor.textMuted : MooniColor.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+            Text(subtitle)
+                .font(MooniFont.caption(10))
+                .foregroundColor(isSelected ? MooniColor.success : (isLocked ? MooniColor.textMuted : MooniColor.textSecondary))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .padding(9)
+        .background(Color.white.opacity(isSelected ? 0.11 : 0.045))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.06), lineWidth: 1.4)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    // MARK: - Helpers
+
+    private var evolutionCopy: String {
+        guard let next = appState.nextEvolutionStage else {
+            return "Luna has reached her brightest dream form."
+        }
+
+        if !subscriptionManager.isPro && isPremiumStage(next) {
+            return "Luna is ready for deeper dream forms. Premium unlocks the full path."
+        }
+
+        let nights = appState.nightsUntilNextEvolution
+        if nights == 0 {
+            return "Luna is ready to grow into \(next.label)."
+        }
+        return "\(nights) more consistent night\(nights == 1 ? "" : "s") until \(next.label)."
+    }
+
+    private var nextStageName: String {
+        appState.nextEvolutionStage?.label.replacingOccurrences(of: " form", with: "") ?? "Dream"
+    }
+
+    private var shouldShowEvolutionLock: Bool {
+        guard let next = appState.nextEvolutionStage else { return false }
+        return !subscriptionManager.isPro && isPremiumStage(next)
+    }
+
+    private func isPremiumStage(_ stage: Pet.EvolutionStage) -> Bool {
+        switch stage {
+        case .adult, .dream, .legendary: return true
+        case .egg, .baby, .young: return false
+        }
+    }
+
+    private func stageInitial(_ stage: Pet.EvolutionStage) -> String {
+        switch stage {
+        case .egg: return "E"
+        case .baby: return "B"
+        case .young: return "Y"
+        case .adult: return "A"
+        case .dream: return "D"
+        case .legendary: return "L"
+        }
+    }
+
+    private func shortStageLabel(_ stage: Pet.EvolutionStage) -> String {
+        switch stage {
+        case .egg: return "Egg"
+        case .baby: return "Baby"
+        case .young: return "Young"
+        case .adult: return "Adult"
+        case .dream: return "Dream"
+        case .legendary: return "Rare"
+        }
+    }
+
+    private func personalityCopy(_ personality: Personality) -> String {
+        switch personality {
+        case .consistent:
+            return "Cozy: does best with consistent routines."
+        case .nightOwl:
+            return "Night Owl: active late, needs gentle wind-down."
+        case .earlyBird:
+            return "Bright and steady when mornings stay calm."
+        case .recovering:
+            return "Recovering gently after harder nights."
+        case .explorer:
+            return "Curious and flexible, still learning a steady rhythm."
+        case .balanced:
+            return "Balanced: adapts to whatever the night brings."
+        }
+    }
+
+    private func items(for kind: UnlockableItem.Kind) -> [UnlockableItem] {
+        UnlockableItem.catalog
+            .filter { $0.kind == kind }
+            .sorted { lhs, rhs in
+                let lhsLocked = isPremiumItem(lhs) && !subscriptionManager.isPro
+                let rhsLocked = isPremiumItem(rhs) && !subscriptionManager.isPro
+                if lhsLocked != rhsLocked { return !lhsLocked }
+                return lhs.requiredLevel < rhs.requiredLevel
+            }
+    }
+
+    private func isPremiumItem(_ item: UnlockableItem) -> Bool {
+        if item.id == "bg_starry_blanket" { return false }
+        return item.requiredLevel >= 5 || item.kind == .background
+    }
+
+    private func premiumLockLabel(for item: UnlockableItem) -> String {
+        if item.kind == .background { return "Premium unlock" }
+        if item.id.contains("crown") { return "Premium unlock" }
+        if item.id.contains("gold") { return "Seasonal item" }
+        return "Rare sleep item"
+    }
+
+    private func starCost(for item: UnlockableItem) -> Int {
+        max(0, item.requiredLevel - 1) * 20
     }
 
     private func isEquipped(_ item: UnlockableItem) -> Bool {
         switch item.kind {
-        case .hat:        return appState.pet.equippedHat == item.id
-        case .color:      return appState.pet.equippedColor == item.id
+        case .hat: return appState.pet.equippedHat == item.id
+        case .color: return appState.pet.equippedColor == item.id
         case .background: return appState.pet.equippedBackground == item.id
-        case .animation:  return false
+        case .animation: return false
         }
+    }
+}
+
+private struct EvolutionPathSheet: View {
+    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var subscriptionManager: SubscriptionManager
+    @Environment(\.dismiss) private var dismiss
+    @Binding var showPaywall: Bool
+
+    private let stages: [Pet.EvolutionStage] = [.baby, .young, .adult, .dream, .legendary]
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MooniGradient.night.ignoresSafeArea()
+                StarsBackground(count: 26)
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        LunaMoodHero(
+                            pet: appState.pet,
+                            mood: .cozy,
+                            size: 170,
+                            caption: "Sleep rhythm helps Luna grow."
+                        )
+
+                        ForEach(stages, id: \.self) { stage in
+                            stageRow(stage)
+                        }
+
+                        if !subscriptionManager.isPro {
+                            MooniPremiumLockCard(
+                                icon: "moon.stars.fill",
+                                title: "Full evolution path",
+                                subtitle: "Premium unlocks adult, dream, rare forms, and seasonal animations.",
+                                actionTitle: "Unlock rare sleep forms"
+                            ) {
+                                showPaywall = true
+                            }
+                        }
+                    }
+                    .padding(20)
+                    .padding(.bottom, 80)
+                }
+            }
+            .navigationTitle("Evolution Path")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundColor(MooniColor.accent)
+                }
+            }
+        }
+    }
+
+    private func stageRow(_ stage: Pet.EvolutionStage) -> some View {
+        let currentIndex = stages.firstIndex(of: appState.pet.stage) ?? 0
+        let stageIndex = stages.firstIndex(of: stage) ?? 0
+        let isCurrent = stage == appState.pet.stage
+        let isReached = stageIndex <= currentIndex
+        let isLocked = !subscriptionManager.isPro && [.adult, .dream, .legendary].contains(stage)
+
+        return Button {
+            if isLocked {
+                showPaywall = true
+            }
+        } label: {
+            MooniCard(padding: 16, cornerRadius: 24) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(isReached ? MooniColor.accent.opacity(0.24) : Color.white.opacity(0.07))
+                            .frame(width: 50, height: 50)
+                        Image(systemName: isLocked ? "lock.fill" : (isReached ? "sparkles" : "moon.fill"))
+                            .foregroundColor(isLocked ? MooniColor.textMuted : MooniColor.accentSoft)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(stage.label)
+                            .font(MooniFont.title(16))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Text(stageCopy(stage, isCurrent: isCurrent, isLocked: isLocked))
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func stageCopy(_ stage: Pet.EvolutionStage, isCurrent: Bool, isLocked: Bool) -> String {
+        if isCurrent { return "Current stage. Keep Luna's rhythm steady." }
+        if isLocked { return "Premium unlock. A deeper Luna form waits here." }
+        return "\(stage.consistencyRequired) calm nights to reach this stage."
     }
 }
 

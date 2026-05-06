@@ -19,8 +19,8 @@ struct OnboardingView: View {
     @State private var transitionDirection: TransitionDirection = .forward
 
     // Pet
-    @State private var species: PetSpecies = .fox
-    @State private var petName: String = PetSpecies.fox.defaultName
+    @State private var species: PetSpecies = .owl
+    @State private var petName: String = PetSpecies.owl.defaultName
 
     // Goal & schedule
     @State private var sleepGoal: SleepGoal? = nil

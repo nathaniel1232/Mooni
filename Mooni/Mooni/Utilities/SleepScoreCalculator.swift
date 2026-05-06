@@ -82,7 +82,7 @@ enum SleepScoreCalculator {
         return min(raw, 1440 - raw)
     }
 
-    /// Calculate dream energy reward for a sleep entry.
+    /// Calculate hidden growth points for a sleep entry.
     static func energyReward(for entry: SleepEntry, score: Int) -> Int {
         var energy = 10 // base for logging
         if entry.hours >= 7 { energy += 15 }
