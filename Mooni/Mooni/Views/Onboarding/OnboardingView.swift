@@ -119,22 +119,35 @@ struct OnboardingView: View {
                 .ignoresSafeArea()
             StarsBackground(count: 80)
 
-            VStack(spacing: 0) {
-                topBar
-                    .padding(.horizontal, 20)
-                    .padding(.top, 14)
+            if step == .prePaywall {
+                // Pre-paywall takes over the screen — its own progress dots,
+                // its own footer, no outer onboarding chrome.
+                PrePaywallView(
+                    petName: petName,
+                    species: species,
+                    profile: profile,
+                    onContinue: { paywallSheet = .main }
+                )
+                .transition(.opacity)
+            } else {
+                VStack(spacing: 0) {
+                    topBar
+                        .padding(.horizontal, 20)
+                        .padding(.top, 14)
 
-                ScrollView(showsIndicators: false) {
-                    content
-                        .padding(.top, 36)              // breathing room from progress bar
-                        .frame(maxWidth: .infinity)
-                        .id(step)
-                        .transition(transition)
+                    ScrollView(showsIndicators: false) {
+                        content
+                            .padding(.top, 36)          // breathing room from progress bar
+                            .frame(maxWidth: .infinity)
+                            .id(step)
+                            .transition(transition)
+                    }
+
+                    footer
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 28)
                 }
-
-                footer
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 28)
+                .transition(.opacity)
             }
         }
         .preferredColorScheme(.dark)
@@ -291,11 +304,7 @@ struct OnboardingView: View {
         case .socialProof:         SocialProofScreen()
         case .simulatedResult:     SimulatedResultScreen(species: species, name: petName)
         case .firstQuest:          FirstQuestScreen(petName: petName, bedtime: bedtime, wakeTime: wakeTime)
-        case .prePaywall:
-            PrePaywallEmbedded(
-                petName: petName, species: species, profile: profile,
-                onContinue: { paywallSheet = .main }
-            )
+        case .prePaywall:          EmptyView()    // rendered full-screen above; never reaches here
         }
     }
 
@@ -542,23 +551,6 @@ struct OnboardingView: View {
 }
 
 // MARK: - Embedded pre-paywall (so footer can be empty)
-
-private struct PrePaywallEmbedded: View {
-    let petName: String
-    let species: PetSpecies
-    let profile: OnboardingProfile
-    let onContinue: () -> Void
-
-    var body: some View {
-        PrePaywallView(
-            petName: petName,
-            species: species,
-            profile: profile,
-            onContinue: onContinue
-        )
-        .frame(minHeight: 700)
-    }
-}
 
 // MARK: - Common screen scaffolds
 
@@ -2501,14 +2493,13 @@ private struct GeneratingPlanScreen: View {
                         .offset(x: 90)
                         .rotationEffect(.degrees(orbit + Double(i) * 120))
                 }
-                Image(systemName: "sparkles")
-                    .font(.system(size: 42))
-                    .foregroundColor(MooniColor.accentSoft)
-                    .scaleEffect(sparkleScale)
-                VStack(spacing: 2) {
-                    Spacer().frame(height: 56)
+                VStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 32))
+                        .foregroundColor(MooniColor.accentSoft)
+                        .scaleEffect(sparkleScale)
                     Text("\(Int(progress * 100))%")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
                         .foregroundColor(MooniColor.textPrimary)
                         .contentTransition(.numericText())
                         .animation(.easeOut(duration: 0.4), value: progress)
@@ -2863,10 +2854,10 @@ private struct CountUpText: View {
 private struct DramaticBarChart: View {
     struct Bar: Identifiable {
         let id = UUID()
-        let label: String
-        let value: Double
+        let label: String        // small label under the bar
+        let value: Double        // chart value 0…1 (visual height)
+        let displayText: String  // text shown above the bar (e.g. "6.5 hrs")
         let color: Color
-        let suffix: String
     }
     let bars: [Bar]
     /// When true, bars start from `truncatedFloor` (e.g. 0.6) so small percentage
@@ -2889,28 +2880,43 @@ private struct DramaticBarChart: View {
     var body: some View {
         GeometryReader { geo in
             let h = geo.size.height
+            // Reserve fixed space for top label + bottom label so the bar height
+            // is predictable and labels never overlap the bar itself.
+            let labelTop: CGFloat = 28
+            let labelBottom: CGFloat = 22
+            let trackH = max(40, h - labelTop - labelBottom - 12)
+
             HStack(alignment: .bottom, spacing: 30) {
                 ForEach(Array(bars.enumerated()), id: \.element.id) { idx, bar in
-                    VStack(spacing: 8) {
-                        Text("\(Int(bar.value * 100))\(bar.suffix)")
-                            .font(MooniFont.title(15))
+                    VStack(spacing: 6) {
+                        Text(bar.displayText)
+                            .font(MooniFont.title(16))
                             .foregroundColor(bar.color)
+                            .frame(height: labelTop)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
                         ZStack(alignment: .bottom) {
-                            // Track
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .fill(Color.white.opacity(0.05))
-                                .frame(width: 70, height: h - 40)
-                            // Filled bar
+                                .frame(width: 70, height: trackH)
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .fill(LinearGradient(
                                     colors: [bar.color.opacity(0.95), bar.color.opacity(0.55)],
                                     startPoint: .top, endPoint: .bottom))
-                                .frame(width: 70, height: barHeight(for: animatedValues.indices.contains(idx) ? animatedValues[idx] : 0, totalHeight: h - 40))
+                                .frame(
+                                    width: 70,
+                                    height: barHeight(
+                                        for: animatedValues.indices.contains(idx) ? animatedValues[idx] : 0,
+                                        totalHeight: trackH
+                                    )
+                                )
                                 .shadow(color: bar.color.opacity(0.55), radius: 18, y: 4)
                         }
+                        .frame(height: trackH)
                         Text(bar.label)
                             .font(MooniFont.caption(12))
                             .foregroundColor(MooniColor.textPrimary)
+                            .frame(height: labelBottom)
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -2928,6 +2934,108 @@ private struct DramaticBarChart: View {
 }
 
 // MARK: - Axis-labeled line chart
+
+/// Single-frame compare chart with two curves drawn against shared axes.
+/// We avoid stacking two AxisLineCharts because their text labels would overlap.
+private struct CortisolCompareChart: View {
+    let calm: [Double]
+    let stressed: [Double]
+    let phase: CGFloat
+
+    var body: some View {
+        GeometryReader { geo in
+            let leftInset: CGFloat = 32
+            let bottomInset: CGFloat = 22
+            let plotW = geo.size.width - leftInset
+            let plotH = geo.size.height - bottomInset
+            let allMax = max(calm.max() ?? 1, stressed.max() ?? 1, 0.001)
+            let stepX = max(calm.count, stressed.count) > 1
+                ? plotW / CGFloat(max(calm.count, stressed.count) - 1) : plotW
+
+            ZStack(alignment: .topLeading) {
+                // Y-axis labels
+                VStack(alignment: .trailing) {
+                    Text("high").font(MooniFont.caption(9)).foregroundColor(MooniColor.textMuted)
+                    Spacer()
+                    Text("low").font(MooniFont.caption(9)).foregroundColor(MooniColor.textMuted)
+                }
+                .frame(width: leftInset - 6, height: plotH, alignment: .trailing)
+                .padding(.trailing, 6)
+
+                // Grid lines
+                ForEach(0..<4) { i in
+                    let y = plotH * CGFloat(i) / 3
+                    Path { p in
+                        p.move(to: CGPoint(x: leftInset, y: y))
+                        p.addLine(to: CGPoint(x: geo.size.width, y: y))
+                    }
+                    .stroke(Color.white.opacity(i == 3 ? 0.16 : 0.05),
+                            style: StrokeStyle(lineWidth: 1, dash: i == 3 ? [] : [2, 4]))
+                }
+
+                // Stressed area fill
+                Path { p in
+                    p.move(to: CGPoint(x: leftInset, y: plotH))
+                    for (i, v) in stressed.enumerated() {
+                        let x = leftInset + CGFloat(i) * stepX
+                        let y = plotH - (CGFloat(v / allMax) * plotH * 0.92) - plotH * 0.04
+                        if i == 0 { p.move(to: CGPoint(x: x, y: y)) }
+                        else      { p.addLine(to: CGPoint(x: x, y: y)) }
+                    }
+                    p.addLine(to: CGPoint(x: leftInset + CGFloat(stressed.count - 1) * stepX, y: plotH))
+                    p.addLine(to: CGPoint(x: leftInset, y: plotH))
+                    p.closeSubpath()
+                }
+                .fill(LinearGradient(colors: [MooniColor.danger.opacity(0.30), MooniColor.danger.opacity(0.0)],
+                                     startPoint: .top, endPoint: .bottom))
+                .mask(
+                    Rectangle()
+                        .frame(width: leftInset + plotW * phase, height: plotH, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                )
+
+                // Stressed line
+                line(stressed, leftInset: leftInset, plotW: plotW, plotH: plotH, stepX: stepX, max: allMax)
+                    .trim(from: 0, to: phase)
+                    .stroke(MooniColor.danger,
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                    .shadow(color: MooniColor.danger.opacity(0.5), radius: 6)
+
+                // Calm line
+                line(calm, leftInset: leftInset, plotW: plotW, plotH: plotH, stepX: stepX, max: allMax)
+                    .trim(from: 0, to: phase)
+                    .stroke(MooniColor.success,
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                    .shadow(color: MooniColor.success.opacity(0.5), radius: 6)
+
+                // X-axis labels
+                HStack(spacing: 0) {
+                    ForEach(["6pm","9pm","12am","3am","6am"], id: \.self) { l in
+                        Text(l)
+                            .font(MooniFont.caption(9))
+                            .foregroundColor(MooniColor.textMuted)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.leading, leftInset)
+                .frame(width: geo.size.width, alignment: .leading)
+                .offset(y: plotH + 6)
+            }
+        }
+    }
+
+    private func line(_ values: [Double], leftInset: CGFloat, plotW: CGFloat,
+                      plotH: CGFloat, stepX: CGFloat, max: Double) -> Path {
+        Path { p in
+            for (i, v) in values.enumerated() {
+                let x = leftInset + CGFloat(i) * stepX
+                let y = plotH - (CGFloat(v / max) * plotH * 0.92) - plotH * 0.04
+                if i == 0 { p.move(to: CGPoint(x: x, y: y)) }
+                else      { p.addLine(to: CGPoint(x: x, y: y)) }
+            }
+        }
+    }
+}
 
 private struct AxisLineChart: View {
     let data: [Double]
@@ -3083,18 +3191,20 @@ private struct BodyFactScreen: View {
             VStack(spacing: 18) {
                 DramaticBarChart(
                     bars: [
-                        .init(label: "You", value: youHours / 12, color: MooniColor.danger, suffix: " hr"),
-                        .init(label: "Need", value: idealHours / 12, color: MooniColor.success, suffix: " hr")
+                        .init(label: "You",
+                              value: youHours / 12,
+                              displayText: String(format: "%.1f hrs", youHours),
+                              color: MooniColor.danger),
+                        .init(label: "Need",
+                              value: idealHours / 12,
+                              displayText: String(format: "%.1f hrs", idealHours),
+                              color: MooniColor.success)
                     ],
                     truncated: true,
-                    truncatedFloor: max(0, (youHours - 1) / 12),
+                    truncatedFloor: max(0, (youHours - 1.5) / 12),
                     maxValue: idealHours / 12 + 0.05
                 )
-                .frame(height: 200)
-                .overlay(
-                    customLabels.padding(.top, 8),
-                    alignment: .top
-                )
+                .frame(height: 220)
 
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -3113,19 +3223,6 @@ private struct BodyFactScreen: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
-
-    private var customLabels: some View {
-        HStack(spacing: 30) {
-            Text(String(format: "%.1f", youHours))
-                .font(MooniFont.display(22))
-                .foregroundColor(MooniColor.danger)
-                .frame(maxWidth: .infinity)
-            Text(String(format: "%.1f", idealHours))
-                .font(MooniFont.display(22))
-                .foregroundColor(MooniColor.success)
-                .frame(maxWidth: .infinity)
-        }
-    }
 }
 
 // MARK: - Fact: Sleep debt (compounds across the week)
@@ -3133,14 +3230,18 @@ private struct BodyFactScreen: View {
 private struct SleepDebtFactScreen: View {
     let profile: OnboardingProfile
     @State private var phase: CGFloat = 0
-    @State private var counterTarget: Double = 0
 
+    /// Curve to make a smooth-feeling compounding line (slight bend, not pure linear).
     private var dailyDeficit: Double { max(0.5, 8.0 - profile.typicalSleepHours) }
     private var weekTotal: Double { dailyDeficit * 7 }
     private var yearTotal: Double { dailyDeficit * 365 }
 
+    /// Slight curvature so the chart reads as "compounding" instead of a perfect ramp.
     private var weekData: [Double] {
-        (1...7).map { Double($0) * dailyDeficit }
+        (1...7).map { day in
+            let t = Double(day)
+            return dailyDeficit * (t + 0.06 * t * t)
+        }
     }
 
     var body: some View {
@@ -3150,10 +3251,11 @@ private struct SleepDebtFactScreen: View {
             source: "Walker MP. Why We Sleep, Ch.7 · sleep-debt accumulation literature."
         ) {
             VStack(spacing: 14) {
-                // Big dramatic counter
+                // Big dramatic counter — pass yearTotal directly so the count-up
+                // actually animates (state-bound target captured at 0 = no animation).
                 VStack(spacing: 0) {
                     CountUpText(
-                        target: counterTarget,
+                        target: yearTotal,
                         duration: 2.0,
                         format: { String(format: "%.0f", $0) },
                         font: .system(size: 76, weight: .bold, design: .rounded),
@@ -3174,11 +3276,11 @@ private struct SleepDebtFactScreen: View {
                     fillTop: MooniColor.danger.opacity(0.55),
                     fillBottom: MooniColor.danger.opacity(0.0),
                     xLabels: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
-                    yMaxLabel: String(format: "%.0fh", weekTotal),
+                    yMaxLabel: String(format: "%.0fh", weekData.last ?? weekTotal),
                     yMinLabel: "0h",
-                    highlightLastLabel: "−\(String(format: "%.0f", weekTotal))h"
+                    highlightLastLabel: "−\(String(format: "%.0f", weekData.last ?? weekTotal))h"
                 )
-                .frame(height: 170)
+                .frame(height: 180)
 
                 HStack(spacing: 10) {
                     debtChip("Per week", String(format: "%.0fh", weekTotal), MooniColor.warning)
@@ -3191,7 +3293,6 @@ private struct SleepDebtFactScreen: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .onAppear {
                 withAnimation(.easeOut(duration: 1.8)) { phase = 1 }
-                counterTarget = yearTotal
             }
         }
     }
@@ -3413,45 +3514,29 @@ private struct StressFactScreen: View {
                 // Truncated-axis bar comparison
                 DramaticBarChart(
                     bars: [
-                        .init(label: "Calm night",   value: 1.8 / 2.0, color: MooniColor.success, suffix: " hrs"),
-                        .init(label: "Stressed",     value: 1.1 / 2.0, color: MooniColor.danger,  suffix: " hrs")
+                        .init(label: "Calm night",
+                              value: 1.8 / 2.0,
+                              displayText: "1.8 hrs",
+                              color: MooniColor.success),
+                        .init(label: "Stressed",
+                              value: 1.1 / 2.0,
+                              displayText: "1.1 hrs",
+                              color: MooniColor.danger)
                     ],
                     truncated: true,
                     truncatedFloor: 0.45,
                     maxValue: 0.95
                 )
-                .frame(height: 170)
-                .overlay(
-                    HStack(spacing: 30) {
-                        Text("1.8h").font(MooniFont.display(20)).foregroundColor(MooniColor.success).frame(maxWidth: .infinity)
-                        Text("1.1h").font(MooniFont.display(20)).foregroundColor(MooniColor.danger).frame(maxWidth: .infinity)
-                    }
-                    .padding(.top, 6),
-                    alignment: .top
-                )
+                .frame(height: 200)
 
-                // Cortisol curve
-                ZStack {
-                    AxisLineChart(
-                        data: calmCurve,
-                        phase: phase,
-                        accent: MooniColor.success,
-                        fillTop: MooniColor.success.opacity(0.0),
-                        fillBottom: MooniColor.success.opacity(0.0),
-                        xLabels: ["6pm","9pm","12am","3am"],
-                        yMaxLabel: "high",
-                        yMinLabel: "low"
-                    )
-                    AxisLineChart(
-                        data: stressedCurve,
-                        phase: phase,
-                        accent: MooniColor.danger,
-                        fillTop: MooniColor.danger.opacity(0.30),
-                        fillBottom: MooniColor.danger.opacity(0.0),
-                        xLabels: [], yMaxLabel: "", yMinLabel: ""
-                    )
-                }
-                .frame(height: 130)
+                // Cortisol curve — single chart, two paths drawn inside
+                CortisolCompareChart(
+                    calm: calmCurve,
+                    stressed: stressedCurve,
+                    phase: phase
+                )
+                .frame(height: 150)
+                .padding(.top, 4)
 
                 HStack(spacing: 8) {
                     Image(systemName: "wind").foregroundColor(MooniColor.accent)
