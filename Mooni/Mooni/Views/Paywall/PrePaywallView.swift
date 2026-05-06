@@ -17,17 +17,12 @@ struct PrePaywallView: View {
     @State private var signatureStrokes: [SignatureStroke] = []
     @State private var typedCommitment: String = ""
 
-    // Transformation list reveal count
-    @State private var revealedTransformations: Int = 0
-
     private enum Phase: Int, CaseIterable {
-        case badSleep
-        case goodSleep
+        case badSleep        // "what changed without you" — problem
+        case goodSleep       // "what changes with Mooni" — promise
         case yesLadder       // 5 quick yes-questions (foot-in-the-door)
         case signature       // type "I am committed" + draw signature
-        case transformAnim   // animated metrics climbing + pet evolving
-        case transformList   // benefits revealing one by one
-        case commitment      // final ready-to-invest stage
+        case commitment      // final ready-to-invest stage → paywall
     }
 
     /// Number of yes-ladder sub-questions.
@@ -74,19 +69,11 @@ struct PrePaywallView: View {
                             typedCommitment: $typedCommitment,
                             strokes: $signatureStrokes
                         )
-                    case .transformAnim:
-                        TransformAnimStage(petName: petName, species: species)
-                    case .transformList:
-                        TransformListStage(revealed: $revealedTransformations)
                     case .commitment:
                         CommitmentStage(petName: petName, species: species, profile: profile)
                     }
                 }
                 .id("\(phase.rawValue)-\(subStage)")
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .move(edge: .trailing)),
-                    removal: .opacity.combined(with: .move(edge: .leading))
-                ))
 
                 Spacer(minLength: 0)
 
@@ -117,8 +104,6 @@ struct PrePaywallView: View {
         case (.goodSleep, _): return "Continue"
         case (.yesLadder, _): return "Yes"
         case (.signature, _): return "I commit — sign me up"
-        case (.transformAnim, _): return "Show me everything"
-        case (.transformList, _): return revealedTransformations >= TransformListStage.items.count ? "I want all of this" : "..."
         case (.commitment, _): return "Yes, I'm ready"
         }
     }
@@ -128,8 +113,6 @@ struct PrePaywallView: View {
         case .signature:
             let trimmed = typedCommitment.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             return trimmed == "i am committed" && !signatureStrokes.isEmpty
-        case .transformList:
-            return revealedTransformations >= TransformListStage.items.count
         default:
             return true
         }
@@ -157,12 +140,6 @@ struct PrePaywallView: View {
                     .font(MooniFont.caption(11))
                     .foregroundColor(.white.opacity(0.4))
             }
-        case .transformList:
-            PrimaryButton(title: primaryTitle, icon: revealedTransformations >= TransformListStage.items.count ? "sparkles" : nil) {
-                if canAdvanceFromCurrent { advance() }
-            }
-            .disabled(!canAdvanceFromCurrent)
-            .opacity(canAdvanceFromCurrent ? 1 : 0.4)
         case .signature:
             PrimaryButton(title: primaryTitle, icon: "signature") {
                 if canAdvanceFromCurrent { advance() }
@@ -177,24 +154,18 @@ struct PrePaywallView: View {
     }
 
     private func advance() {
-        withAnimation(.easeInOut(duration: 0.45)) {
-            switch phase {
-            case .badSleep:
-                if subStage < 2 { subStage += 1 } else { phase = .goodSleep; subStage = 0 }
-            case .goodSleep:
-                if subStage < 2 { subStage += 1 } else { phase = .yesLadder; subStage = 0 }
-            case .yesLadder:
-                if subStage < Self.yesLadderCount - 1 { subStage += 1 }
-                else { phase = .signature; subStage = 0 }
-            case .signature:
-                phase = .transformAnim; subStage = 0
-            case .transformAnim:
-                phase = .transformList; subStage = 0
-            case .transformList:
-                phase = .commitment; subStage = 0
-            case .commitment:
-                break
-            }
+        switch phase {
+        case .badSleep:
+            if subStage < 2 { subStage += 1 } else { phase = .goodSleep; subStage = 0 }
+        case .goodSleep:
+            if subStage < 2 { subStage += 1 } else { phase = .yesLadder; subStage = 0 }
+        case .yesLadder:
+            if subStage < Self.yesLadderCount - 1 { subStage += 1 }
+            else { phase = .signature; subStage = 0 }
+        case .signature:
+            phase = .commitment; subStage = 0
+        case .commitment:
+            break
         }
     }
 }
@@ -761,195 +732,6 @@ private struct SignatureCanvas: View {
             with: .color(MooniColor.accentSoft),
             style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round)
         )
-    }
-}
-
-// MARK: - Transform animation stage (pet evolves, metrics climb)
-
-private struct TransformAnimStage: View {
-    let petName: String
-    let species: PetSpecies
-
-    @State private var phase: Int = 0
-    @State private var sleepScore: Double = 38
-    @State private var energy: Double = 24
-    @State private var clarity: Double = 30
-
-    private let timer = Timer.publish(every: 0.9, on: .main, in: .common).autoconnect()
-
-    private var pet: Pet {
-        var p = Pet(); p.species = species
-        p.mood = phase >= 2 ? .energized : (phase == 1 ? .cozy : .groggy)
-        p.equippedHat = phase >= 2 ? "hat_nightcap" : nil
-        return p
-    }
-
-    var body: some View {
-        VStack(spacing: 22) {
-            VStack(spacing: 6) {
-                Text("Watch what changes in 30 days")
-                    .font(MooniFont.display(24))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                Text("\(petName) grows with every cozy night.")
-                    .font(MooniFont.body(13))
-                    .foregroundColor(MooniColor.textSecondary)
-            }
-            .padding(.top, 4)
-
-            ZStack {
-                Circle()
-                    .fill(MooniColor.accent.opacity(0.18 + 0.08 * Double(phase)))
-                    .frame(width: 220, height: 220)
-                    .blur(radius: 30)
-                DreamSpiritView(pet: pet, size: 160)
-                    .id(phase)
-                    .transition(.scale.combined(with: .opacity))
-            }
-
-            // Day chips with active state
-            HStack(spacing: 10) {
-                dayChip("Day 1", active: phase >= 0, color: MooniColor.danger)
-                Image(systemName: "arrow.right").foregroundColor(.white.opacity(0.4))
-                dayChip("Day 14", active: phase >= 1, color: MooniColor.warning)
-                Image(systemName: "arrow.right").foregroundColor(.white.opacity(0.4))
-                dayChip("Day 30", active: phase >= 2, color: MooniColor.success)
-            }
-
-            // Climbing metrics
-            VStack(spacing: 8) {
-                metricRow("Sleep score", value: sleepScore, suffix: "", color: MooniColor.accent)
-                metricRow("Daily energy", value: energy, suffix: "%", color: MooniColor.warning)
-                metricRow("Mental clarity", value: clarity, suffix: "%", color: MooniColor.success)
-            }
-            .padding(14)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.horizontal, 24)
-        }
-        .onReceive(timer) { _ in
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.75)) {
-                if phase < 2 {
-                    phase += 1
-                    sleepScore = phase == 1 ? 64 : 88
-                    energy     = phase == 1 ? 58 : 92
-                    clarity    = phase == 1 ? 60 : 90
-                }
-            }
-        }
-    }
-
-    private func dayChip(_ label: String, active: Bool, color: Color) -> some View {
-        Text(label)
-            .font(MooniFont.caption(11))
-            .foregroundColor(active ? color : MooniColor.textMuted)
-            .padding(.vertical, 6).padding(.horizontal, 12)
-            .background(active ? color.opacity(0.18) : Color.white.opacity(0.06))
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(active ? color.opacity(0.5) : Color.white.opacity(0.10), lineWidth: 1))
-    }
-
-    private func metricRow(_ label: String, value: Double, suffix: String, color: Color) -> some View {
-        HStack {
-            Text(label)
-                .font(MooniFont.caption(13))
-                .foregroundColor(MooniColor.textSecondary)
-                .frame(width: 110, alignment: .leading)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.10))
-                    Capsule()
-                        .fill(LinearGradient(colors: [color.opacity(0.85), color],
-                                             startPoint: .leading, endPoint: .trailing))
-                        .frame(width: geo.size.width * CGFloat(value / 100))
-                        .animation(.spring(response: 0.7, dampingFraction: 0.75), value: value)
-                }
-            }
-            .frame(height: 8)
-            Text("\(Int(value))\(suffix)")
-                .font(MooniFont.title(13))
-                .foregroundColor(color)
-                .frame(width: 44, alignment: .trailing)
-                .contentTransition(.numericText())
-                .animation(.spring(response: 0.6), value: value)
-        }
-    }
-}
-
-// MARK: - Transformation list (benefits revealing one-by-one)
-
-private struct TransformListStage: View {
-    @Binding var revealed: Int
-
-    static let items: [(icon: String, color: Color, text: String)] = [
-        ("bolt.fill",                MooniColor.warning, "+92% daily energy"),
-        ("brain.head.profile",       MooniColor.accent,  "Sharper focus & memory"),
-        ("heart.fill",               .pink,              "Lower heart strain"),
-        ("flame.fill",               MooniColor.danger,  "Less weight gain"),
-        ("face.smiling.fill",        MooniColor.accent,  "Brighter, less puffy face"),
-        ("waveform.path.ecg",        MooniColor.success, "Lower cortisol"),
-        ("shield.fill",              MooniColor.accent,  "Stronger immune system"),
-        ("dollarsign.circle.fill",   MooniColor.success, "Better money decisions"),
-        ("figure.run",               MooniColor.warning, "Faster fitness recovery"),
-        ("staroflife.fill",          .pink,              "Lower long-term disease risk")
-    ]
-
-    private let timer = Timer.publish(every: 0.55, on: .main, in: .common).autoconnect()
-
-    var body: some View {
-        VStack(spacing: 16) {
-            VStack(spacing: 4) {
-                Text("YOU WILL TRANSFORM")
-                    .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.accentSoft)
-                    .tracking(2)
-                Text("Sleep changes everything")
-                    .font(MooniFont.display(24))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.top, 4)
-
-            VStack(spacing: 8) {
-                ForEach(Array(Self.items.enumerated()), id: \.offset) { idx, item in
-                    HStack(spacing: 14) {
-                        Image(systemName: item.icon)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(item.color)
-                            .frame(width: 36, height: 36)
-                            .background(item.color.opacity(0.16))
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        Text(item.text)
-                            .font(MooniFont.title(14))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Spacer()
-                        Image(systemName: "checkmark")
-                            .foregroundColor(MooniColor.success)
-                            .font(.system(size: 12, weight: .bold))
-                            .opacity(idx < revealed ? 1 : 0)
-                    }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 14)
-                    .background(Color.white.opacity(0.07))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .opacity(idx < revealed ? 1 : 0)
-                    .offset(y: idx < revealed ? 0 : 16)
-                    .scaleEffect(idx < revealed ? 1 : 0.9)
-                    .animation(.spring(response: 0.55, dampingFraction: 0.7), value: revealed)
-                }
-            }
-            .padding(.horizontal, 20)
-        }
-        .onAppear {
-            // Reset whenever the view appears.
-            revealed = 0
-        }
-        .onReceive(timer) { _ in
-            if revealed < Self.items.count {
-                revealed += 1
-            }
-        }
     }
 }
 

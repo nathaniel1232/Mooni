@@ -128,7 +128,6 @@ struct OnboardingView: View {
                     profile: profile,
                     onContinue: { paywallSheet = .main }
                 )
-                .transition(.opacity)
             } else {
                 VStack(spacing: 0) {
                     topBar
@@ -140,14 +139,12 @@ struct OnboardingView: View {
                             .padding(.top, 36)          // breathing room from progress bar
                             .frame(maxWidth: .infinity)
                             .id(step)
-                            .transition(transition)
                     }
 
                     footer
                         .padding(.horizontal, 20)
                         .padding(.bottom, 28)
                 }
-                .transition(.opacity)
             }
         }
         .preferredColorScheme(.dark)
@@ -418,9 +415,7 @@ struct OnboardingView: View {
         let nextIndex = step.index + 1
         guard nextIndex < Step.total else { return }
         transitionDirection = .forward
-        withAnimation(.easeInOut(duration: 0.35)) {
-            step = Step.allCases[nextIndex]
-        }
+        step = Step.allCases[nextIndex]
     }
 
     private func goBack() {
@@ -431,9 +426,7 @@ struct OnboardingView: View {
         let prevIndex = step.index - 1
         guard prevIndex >= 0 else { return }
         transitionDirection = .backward
-        withAnimation(.easeInOut(duration: 0.35)) {
-            step = Step.allCases[prevIndex]
-        }
+        step = Step.allCases[prevIndex]
     }
 
     // MARK: - Loading animations
@@ -2387,58 +2380,175 @@ private struct SleepScoreRevealScreen: View {
 private struct TopIssuesScreen: View {
     let profile: OnboardingProfile
 
-    var body: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 6) {
-                Text("We found your top 3 sleep blockers")
-                    .font(MooniFont.display(22))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                Text("Mooni Pro fixes each one with a tailored exercise.")
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-            }
-            .padding(.top, 8)
+    @State private var revealed: Int = 0
+    @State private var alarmPulse = false
+    @State private var severities: [Double] = [0, 0, 0]
 
-            VStack(spacing: 10) {
-                ForEach(Array(profile.topIssues.enumerated()), id: \.offset) { idx, issue in
-                    issueCard(index: idx + 1, text: issue)
+    private static let severityValues: [Double] = [0.86, 0.74, 0.62]
+    private static let issueIcons: [String] = ["iphone.gen3.radiowaves.left.and.right",
+                                                "brain.head.profile",
+                                                "moon.zzz.fill"]
+    private static let issueColors: [Color] = [.pink, MooniColor.warning, MooniColor.danger]
+
+    private var issues: [String] { profile.topIssues }
+
+    var body: some View {
+        VStack(spacing: 22) {
+            // Header — alert siren
+            VStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(MooniColor.danger.opacity(alarmPulse ? 0.32 : 0.12))
+                        .frame(width: 110, height: 110)
+                        .blur(radius: 22)
+                    Circle()
+                        .stroke(MooniColor.danger.opacity(0.4), lineWidth: 2)
+                        .frame(width: 86, height: 86)
+                        .scaleEffect(alarmPulse ? 1.15 : 0.95)
+                        .opacity(alarmPulse ? 0 : 1)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 38, weight: .bold))
+                        .foregroundStyle(LinearGradient(
+                            colors: [MooniColor.warning, MooniColor.danger],
+                            startPoint: .top, endPoint: .bottom))
+                }
+                .frame(height: 110)
+
+                VStack(spacing: 6) {
+                    Text("3 ISSUES DETECTED")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.danger)
+                        .tracking(2.5)
+
+                    Text("Your sleep is being\nblocked tonight")
+                        .font(MooniFont.display(26))
+                        .foregroundColor(MooniColor.textPrimary)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(2)
+
+                    Text("Each one steals hours from you. We can fix them all.")
+                        .font(MooniFont.body(13))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 2)
+                }
+            }
+
+            // Issue cards — revealed one-by-one with severity bars
+            VStack(spacing: 12) {
+                ForEach(Array(issues.enumerated()), id: \.offset) { idx, text in
+                    issueCard(
+                        index: idx,
+                        text: text,
+                        severity: severities[safe: idx] ?? 0,
+                        revealed: idx < revealed
+                    )
                 }
             }
             .padding(.horizontal, 4)
         }
         .padding(.horizontal, 20)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                alarmPulse = true
+            }
+            // Stagger the card reveal
+            for i in 0..<issues.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 + Double(i) * 0.45) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.75)) {
+                        revealed = i + 1
+                    }
+                    // Animate the severity bar slightly after card lands
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                        withAnimation(.easeOut(duration: 0.9)) {
+                            severities[i] = Self.severityValues[safe: i] ?? 0.7
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    private func issueCard(index: Int, text: String) -> some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(MooniColor.warning.opacity(0.20))
-                    .frame(width: 40, height: 40)
-                Text("\(index)")
-                    .font(MooniFont.title(16))
-                    .foregroundColor(MooniColor.warning)
+    private func issueCard(index: Int, text: String, severity: Double, revealed: Bool) -> some View {
+        let color = Self.issueColors[safe: index] ?? MooniColor.warning
+        let icon = Self.issueIcons[safe: index] ?? "exclamationmark.triangle.fill"
+
+        return VStack(spacing: 10) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(color.opacity(0.18))
+                        .frame(width: 48, height: 48)
+                    Image(systemName: icon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(color)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("BLOCKER #\(index + 1)")
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(color.opacity(0.85))
+                        .tracking(1.5)
+                    Text(text)
+                        .font(MooniFont.title(14))
+                        .foregroundColor(MooniColor.textPrimary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
             }
-            Text(text)
-                .font(MooniFont.title(14))
-                .foregroundColor(MooniColor.textPrimary)
-                .multilineTextAlignment(.leading)
-            Spacer()
-            Image(systemName: "chevron.right")
-                .foregroundColor(MooniColor.textMuted)
-                .font(.system(size: 13, weight: .semibold))
+
+            // Severity bar
+            VStack(spacing: 4) {
+                HStack {
+                    Text("SEVERITY")
+                        .font(MooniFont.caption(9))
+                        .foregroundColor(MooniColor.textMuted)
+                        .tracking(1.5)
+                    Spacer()
+                    Text("\(Int(severity * 100))%")
+                        .font(MooniFont.mono(11))
+                        .foregroundColor(color)
+                        .contentTransition(.numericText())
+                }
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.08))
+                        Capsule()
+                            .fill(LinearGradient(colors: [color.opacity(0.7), color],
+                                                 startPoint: .leading, endPoint: .trailing))
+                            .frame(width: geo.size.width * CGFloat(severity))
+                    }
+                }
+                .frame(height: 5)
+            }
         }
         .padding(14)
-        .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(MooniColor.warning.opacity(0.30), lineWidth: 1)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [color.opacity(0.12), Color.clear],
+                        startPoint: .leading, endPoint: .trailing))
+            }
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(color.opacity(0.35), lineWidth: 1)
+        )
+        .opacity(revealed ? 1 : 0)
+        .offset(y: revealed ? 0 : 24)
+        .scaleEffect(revealed ? 1 : 0.94)
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
 
