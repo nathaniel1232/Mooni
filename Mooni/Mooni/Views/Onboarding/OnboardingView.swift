@@ -2392,58 +2392,119 @@ private struct SleepScoreRevealScreen: View {
 private struct TopIssuesScreen: View {
     let profile: OnboardingProfile
 
+    @State private var revealed: Int = 0
+    private let revealTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+
+    private var issues: [(icon: String, tint: Color, title: String, severity: String)] {
+        let raw = profile.topIssues
+        let palette: [(String, Color, String)] = [
+            ("iphone.gen3.radiowaves.left.and.right", MooniColor.danger,  "High"),
+            ("brain.head.profile",                    MooniColor.warning, "High"),
+            ("moon.zzz.fill",                         MooniColor.accent,  "Medium"),
+            ("cup.and.saucer.fill",                   MooniColor.warning, "Medium"),
+            ("sunrise.fill",                          MooniColor.accentSoft, "Medium")
+        ]
+        return raw.enumerated().map { idx, txt in
+            let p = palette[min(idx, palette.count - 1)]
+            return (p.0, p.1, txt, p.2)
+        }
+    }
+
     var body: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 6) {
-                Text("We found your top 3 sleep blockers")
-                    .font(MooniFont.display(22))
+        VStack(spacing: 20) {
+            VStack(spacing: 8) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 36))
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .top, endPoint: .bottom))
+                    .padding(.bottom, 4)
+                Text("Your sleep report")
+                    .font(MooniFont.display(26))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                Text("Mooni Pro fixes each one with a tailored exercise.")
+                Text("\(issues.count) blocker\(issues.count == 1 ? "" : "s") found in your answers")
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
             }
-            .padding(.top, 8)
 
-            VStack(spacing: 10) {
-                ForEach(Array(profile.topIssues.enumerated()), id: \.offset) { idx, issue in
-                    issueCard(index: idx + 1, text: issue)
+            VStack(spacing: 12) {
+                ForEach(Array(issues.enumerated()), id: \.offset) { idx, issue in
+                    issueRow(index: idx, issue: issue, isRevealed: idx < revealed)
                 }
             }
             .padding(.horizontal, 4)
+
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 12))
+                    .foregroundColor(MooniColor.accent)
+                Text("Each one gets a tailored fix in your plan")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            .padding(.top, 4)
         }
         .padding(.horizontal, 20)
+        .onReceive(revealTimer) { _ in
+            if revealed < issues.count {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.75)) {
+                    revealed += 1
+                }
+            }
+        }
     }
 
-    private func issueCard(index: Int, text: String) -> some View {
-        HStack(spacing: 14) {
+    private func issueRow(
+        index: Int,
+        issue: (icon: String, tint: Color, title: String, severity: String),
+        isRevealed: Bool
+    ) -> some View {
+        HStack(alignment: .center, spacing: 14) {
             ZStack {
-                Circle()
-                    .fill(MooniColor.warning.opacity(0.20))
-                    .frame(width: 40, height: 40)
-                Text("\(index)")
-                    .font(MooniFont.title(16))
-                    .foregroundColor(MooniColor.warning)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(issue.tint.opacity(0.18))
+                    .frame(width: 48, height: 48)
+                Image(systemName: issue.icon)
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundColor(issue.tint)
             }
-            Text(text)
-                .font(MooniFont.title(14))
-                .foregroundColor(MooniColor.textPrimary)
-                .multilineTextAlignment(.leading)
-            Spacer()
-            Image(systemName: "chevron.right")
-                .foregroundColor(MooniColor.textMuted)
-                .font(.system(size: 13, weight: .semibold))
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("Issue \(index + 1)")
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.textMuted)
+                        .tracking(1)
+                    Text(issue.severity)
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(issue.tint)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(issue.tint.opacity(0.18))
+                        .clipShape(Capsule())
+                }
+                Text(issue.title)
+                    .font(MooniFont.title(14))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
         }
         .padding(14)
-        .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(MooniColor.warning.opacity(0.30), lineWidth: 1)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.05))
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(issue.tint.opacity(0.25), lineWidth: 1)
+        )
+        .opacity(isRevealed ? 1 : 0)
+        .offset(y: isRevealed ? 0 : 12)
+        .scaleEffect(isRevealed ? 1 : 0.96)
     }
 }
 
@@ -2475,88 +2536,106 @@ private struct GeneratingPlanScreen: View {
     }
 
     var body: some View {
-        VStack(spacing: 26) {
-            Spacer().frame(height: 14)
+        VStack(spacing: 28) {
+            Spacer().frame(height: 4)
 
+            // Single hero — pulsing orbital rings, no percentage chrome.
             ZStack {
-                Circle()
-                    .stroke(Color.white.opacity(0.08), lineWidth: 8)
-                    .frame(width: 180, height: 180)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
-                                           startPoint: .top, endPoint: .bottom),
-                            style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                    .frame(width: 180, height: 180)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut(duration: 0.55), value: progress)
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                colors: [MooniColor.accent.opacity(0.55 - Double(i) * 0.15), .clear],
+                                startPoint: .top, endPoint: .bottom),
+                            lineWidth: 1.4
+                        )
+                        .frame(width: 130 + CGFloat(i) * 50, height: 130 + CGFloat(i) * 50)
+                        .rotationEffect(.degrees(orbit * (i.isMultiple(of: 2) ? 1 : -1) * 0.6))
+                        .opacity(0.85)
+                }
 
-                ForEach(0..<3) { i in
-                    Image(systemName: "sparkle")
-                        .foregroundColor(.white.opacity(0.85))
-                        .font(.system(size: 9))
-                        .offset(x: 90)
-                        .rotationEffect(.degrees(orbit + Double(i) * 120))
-                }
-                VStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 32))
-                        .foregroundColor(MooniColor.accentSoft)
-                        .scaleEffect(sparkleScale)
-                    Text("\(Int(progress * 100))%")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
-                        .foregroundColor(MooniColor.textPrimary)
-                        .contentTransition(.numericText())
-                        .animation(.easeOut(duration: 0.4), value: progress)
-                }
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [MooniColor.accent.opacity(0.4), MooniColor.accentSoft.opacity(0.2), .clear],
+                            center: .center, startRadius: 0, endRadius: 90)
+                    )
+                    .frame(width: 200, height: 200)
+                    .blur(radius: 22)
+                    .scaleEffect(sparkleScale)
+
+                DreamSpiritView(pet: previewPet, size: 110)
+                    .scaleEffect(sparkleScale * 0.98)
             }
+            .frame(height: 230)
             .onAppear {
-                withAnimation(.linear(duration: 3).repeatForever(autoreverses: false)) { orbit = 360 }
-                withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { sparkleScale = 1.15 }
+                withAnimation(.linear(duration: 18).repeatForever(autoreverses: false)) { orbit = 360 }
+                withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) { sparkleScale = 1.04 }
             }
 
-            Text(msgs[min(messageIndex, msgs.count - 1)])
-                .font(MooniFont.title(17))
-                .foregroundColor(MooniColor.textPrimary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-                .id(messageIndex)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            // Big single message — fades + slides between phases.
+            VStack(spacing: 8) {
+                Text("Building your plan")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.accentSoft)
+                    .tracking(2)
+                    .textCase(.uppercase)
+                Text(msgs[min(messageIndex, msgs.count - 1)])
+                    .font(MooniFont.display(22))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28)
+                    .id(messageIndex)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .animation(.easeInOut(duration: 0.45), value: messageIndex)
+            }
+            .frame(minHeight: 90)
 
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(msgs.enumerated()), id: \.offset) { idx, m in
-                    HStack(spacing: 12) {
-                        ZStack {
-                            if idx < messageIndex {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(MooniColor.success)
-                            } else if idx == messageIndex {
-                                Circle()
-                                    .stroke(MooniColor.accent, lineWidth: 1.5)
-                                    .frame(width: 18, height: 18)
-                                Circle()
-                                    .fill(MooniColor.accent)
-                                    .frame(width: 8, height: 8)
-                            } else {
-                                Image(systemName: "circle.dashed")
-                                    .foregroundColor(MooniColor.textMuted)
-                            }
-                        }
-                        .frame(width: 22)
-                        Text(m)
-                            .font(MooniFont.body(14))
-                            .foregroundColor(idx <= messageIndex ? MooniColor.textPrimary : MooniColor.textSecondary)
-                            .strikethrough(idx < messageIndex, color: MooniColor.textMuted)
-                        Spacer()
-                    }
+            // Slim progress strip with no number — feels less mechanical.
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.10))
+                    Capsule()
+                        .fill(LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
+                                             startPoint: .leading, endPoint: .trailing))
+                        .frame(width: geo.size.width * CGFloat(progress))
+                        .animation(.easeInOut(duration: 0.55), value: progress)
                 }
             }
-            .padding(18)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .padding(.horizontal, 24)
+            .frame(height: 5)
+            .padding(.horizontal, 40)
+
+            // Sub-line: pet name + dot pulse, no checklist.
+            HStack(spacing: 8) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .fill(MooniColor.accent.opacity(0.85))
+                        .frame(width: 6, height: 6)
+                        .scaleEffect(dotScale(i))
+                        .animation(
+                            .easeInOut(duration: 0.6)
+                                .repeatForever()
+                                .delay(Double(i) * 0.18),
+                            value: sparkleScale)
+                }
+                Text("\(petName) is getting cozy…")
+                    .font(MooniFont.caption(13))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .padding(.leading, 6)
+            }
+
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
+    }
+
+    private var previewPet: Pet {
+        var p = Pet(); p.species = .fox; p.mood = .cozy; p.equippedHat = "hat_nightcap"
+        return p
+    }
+
+    private func dotScale(_ index: Int) -> CGFloat {
+        sparkleScale + CGFloat(index) * 0.02
     }
 }
 

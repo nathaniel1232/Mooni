@@ -775,9 +775,17 @@ private struct StartSleepSheet: View {
                     .padding(.horizontal, 4)
 
                     PrimaryButton(title: "Good night", icon: "moon.stars.fill") {
+                        ActivitySleepEstimator.shared.recordSleepStart(at: normalizedBedtime)
                         appState.enterSleepMode()
                         dismiss()
                     }
+
+                    #if DEBUG
+                    SecondaryButton(title: "DEV: Simulate morning now", icon: "forward.end.fill") {
+                        appState.simulateCompletedNightEndingNow()
+                        dismiss()
+                    }
+                    #endif
 
                     Spacer()
                 }
@@ -792,6 +800,21 @@ private struct StartSleepSheet: View {
                 }
             }
         }
+    }
+
+    private var normalizedBedtime: Date {
+        let now = Date()
+        let calendar = Calendar.current
+        let picked = calendar.dateComponents([.hour, .minute], from: bedtime)
+        var today = calendar.dateComponents([.year, .month, .day], from: now)
+        today.hour = picked.hour
+        today.minute = picked.minute
+
+        guard let selectedToday = calendar.date(from: today) else { return now }
+        if selectedToday > now.addingTimeInterval(30 * 60) {
+            return calendar.date(byAdding: .day, value: -1, to: selectedToday) ?? now
+        }
+        return min(selectedToday, now)
     }
 }
 

@@ -1,20 +1,43 @@
 import SwiftUI
 
-/// Morning prompt that asks the user how they slept.
+/// Morning prompt that asks the user how they woke up, then tunes the
+/// duration-based sleep estimate into friendlier scores.
 struct MorningCheckInView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
     @State private var step: Step = .greeting
-    @State private var bedtime: Date = Date.todayAt(hour: 23, minute: 0).addingTimeInterval(-86400)
-    @State private var wakeTime: Date = Date()
-    @State private var quality: SleepEntry.Quality = .good
-    @State private var mood: SleepEntry.Mood = .okay
-    @State private var phoneAway: Bool? = nil
+    @State private var feeling: MorningFeeling = .okay
+    @State private var wakeUps: WakeUpFrequency = .none
+    @State private var dreams: DreamRecall = .notSure
+    @State private var bedDifficulty: BedDifficulty = .normal
+    @State private var caffeine: CaffeineChoice = .notSure
     @State private var savedEntry: SleepEntry?
 
     enum Step {
-        case greeting, phone, times, quality, mood, summary
+        case greeting, feeling, wakeUps, dreams, bedDifficulty, caffeine, summary
+    }
+
+    private enum CaffeineChoice: String, CaseIterable, Identifiable {
+        case no, yes, notSure
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .no: return "No"
+            case .yes: return "Yes"
+            case .notSure: return "Not sure"
+            }
+        }
+
+        var value: Bool? {
+            switch self {
+            case .no: return false
+            case .yes: return true
+            case .notSure: return nil
+            }
+        }
     }
 
     var body: some View {
@@ -40,35 +63,13 @@ struct MorningCheckInView: View {
     @ViewBuilder
     private var content: some View {
         switch step {
-        case .greeting: greetingView
-        case .phone:    phoneView
-        case .times:    timesView
-        case .quality:  qualityView
-        case .mood:     moodView
-        case .summary:  summaryView
-        }
-    }
-
-    private var phoneView: some View {
-        VStack(spacing: 16) {
-            Text("Did you put your phone away last night?")
-                .font(MooniFont.display(24))
-                .foregroundColor(MooniColor.textPrimary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 12)
-            Text("If yes, Luna gets a head start on tonight's quest.")
-                .font(MooniFont.caption(13))
-                .foregroundColor(MooniColor.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-            VStack(spacing: 10) {
-                pickerRow(label: "📵  Yes, phone was away", selected: phoneAway == true) {
-                    phoneAway = true
-                }
-                pickerRow(label: "📱  No, I had it nearby", selected: phoneAway == false) {
-                    phoneAway = false
-                }
-            }
+        case .greeting:      greetingView
+        case .feeling:       feelingView
+        case .wakeUps:       wakeUpsView
+        case .dreams:        dreamsView
+        case .bedDifficulty: bedDifficultyView
+        case .caffeine:      caffeineView
+        case .summary:       summaryView
         }
     }
 
@@ -78,53 +79,76 @@ struct MorningCheckInView: View {
             Text("Good morning")
                 .font(MooniFont.display(32))
                 .foregroundColor(MooniColor.textPrimary)
-            Text("How did you sleep?")
+            Text("A few quick taps will tune last night's Mooni score.")
                 .font(MooniFont.body(17))
                 .foregroundColor(MooniColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
         }
     }
 
-    private var timesView: some View {
-        VStack(spacing: 16) {
-            Text("When did you sleep?")
-                .font(MooniFont.display(24))
-                .foregroundColor(MooniColor.textPrimary)
-            MooniCard {
-                VStack(spacing: 14) {
-                    timeRow(title: "Bedtime", icon: "moon.fill",    selection: $bedtime)
-                    Divider().background(Color.white.opacity(0.1))
-                    timeRow(title: "Woke up", icon: "sun.max.fill", selection: $wakeTime)
+    private var feelingView: some View {
+        questionView(title: "How do you feel this morning?") {
+            ForEach(MorningFeeling.allCases) { option in
+                pickerRow(label: option.label, selected: feeling == option) {
+                    feeling = option
                 }
             }
         }
     }
 
-    private var qualityView: some View {
-        VStack(spacing: 16) {
-            Text("How was the sleep?")
-                .font(MooniFont.display(24))
-                .foregroundColor(MooniColor.textPrimary)
-            VStack(spacing: 10) {
-                ForEach(SleepEntry.Quality.allCases) { q in
-                    pickerRow(label: "\(q.emoji)  \(q.label)", selected: quality == q) {
-                        quality = q
-                    }
+    private var wakeUpsView: some View {
+        questionView(title: "Did you wake up during the night?") {
+            ForEach(WakeUpFrequency.allCases) { option in
+                pickerRow(label: option.label, selected: wakeUps == option) {
+                    wakeUps = option
                 }
             }
         }
     }
 
-    private var moodView: some View {
+    private var dreamsView: some View {
+        questionView(title: "Do you remember dreaming?") {
+            ForEach(DreamRecall.allCases) { option in
+                pickerRow(label: option.label, selected: dreams == option) {
+                    dreams = option
+                }
+            }
+        }
+    }
+
+    private var bedDifficultyView: some View {
+        questionView(title: "How hard was it to get out of bed?") {
+            ForEach(BedDifficulty.allCases) { option in
+                pickerRow(label: option.label, selected: bedDifficulty == option) {
+                    bedDifficulty = option
+                }
+            }
+        }
+    }
+
+    private var caffeineView: some View {
+        questionView(title: "Any caffeine late yesterday?") {
+            ForEach(CaffeineChoice.allCases) { option in
+                pickerRow(label: option.label, selected: caffeine == option) {
+                    caffeine = option
+                }
+            }
+        }
+    }
+
+    private func questionView<Content: View>(
+        title: String,
+        @ViewBuilder options: () -> Content
+    ) -> some View {
         VStack(spacing: 16) {
-            Text("How do you feel?")
+            Text(title)
                 .font(MooniFont.display(24))
                 .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
             VStack(spacing: 10) {
-                ForEach(SleepEntry.Mood.allCases) { m in
-                    pickerRow(label: "\(m.emoji)  \(m.label)", selected: mood == m) {
-                        mood = m
-                    }
-                }
+                options()
             }
         }
     }
@@ -132,37 +156,44 @@ struct MorningCheckInView: View {
     private var summaryView: some View {
         VStack(spacing: 16) {
             DreamSpiritView(pet: appState.pet, size: 150)
-            if let entry = savedEntry {
+            if let entry = savedEntry ?? appState.entryNeedingMorningCheckIn {
                 VStack(spacing: 6) {
-                    Text("You slept \(entry.formattedDuration)")
+                    Text(entry.energyLevel ?? SleepScoringManager.energyLevel(for: entry.readinessScore ?? entry.score))
                         .font(MooniFont.display(24))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text("\(appState.pet.name) \(appState.pet.mood.message)")
+                    Text("\(appState.pet.name) \(entry.recoveryMessage ?? appState.pet.mood.message)")
                         .font(MooniFont.body(15))
                         .foregroundColor(MooniColor.textSecondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                 }
                 MooniCard {
-                    HStack(spacing: 14) {
-                        SleepScoreRing(score: entry.score, size: 84, lineWidth: 9)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("+\(entry.energyEarned) growth")
-                                .font(MooniFont.title(17))
-                                .foregroundColor(MooniColor.success)
-                            if appState.lastLevelUp != nil {
-                                Text("\(appState.pet.name) grew brighter after this night.")
-                                    .font(MooniFont.caption(13))
-                                    .foregroundColor(MooniColor.accent)
-                            } else {
-                                Text("\(entry.bedtime.hourMinuteString) → \(entry.wakeTime.hourMinuteString)")
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 14) {
+                            SleepScoreRing(score: entry.score, size: 84, lineWidth: 9)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Readiness \(entry.readinessScore ?? entry.score)")
+                                    .font(MooniFont.title(17))
+                                    .foregroundColor(MooniColor.success)
+                                Text(entry.formattedDuration)
                                     .font(MooniFont.caption(13))
                                     .foregroundColor(MooniColor.textSecondary)
                             }
+                            Spacer()
                         }
-                        Spacer()
+                        if let insight = entry.insight {
+                            Text(insight)
+                                .font(MooniFont.caption(12))
+                                .foregroundColor(MooniColor.textSecondary)
+                        }
                     }
                 }
+            } else {
+                Text("Mooni is still gathering last night's sleep.")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
             }
         }
     }
@@ -195,66 +226,52 @@ struct MorningCheckInView: View {
                     }
                     .frame(maxWidth: 110)
                 }
-                PrimaryButton(title: step == .greeting ? "Begin" : (step == .mood ? "See result" : "Next")) {
-                    if step == .mood {
-                        if phoneAway == true {
-                            if let habit = RoutineHabit.library.first(where: { $0.id == "no_phone" }),
-                               !appState.routine.completedToday.contains(habit.id) {
-                                appState.toggleHabitCompletion(habit)
-                                appState.awardDreamStarsForQuestStep(habit, amount: 10)
-                            }
-                        }
-                        let entry = appState.logSleep(
-                            bedtime: bedtime,
-                            wakeTime: wakeTime,
-                            quality: quality,
-                            mood: mood,
-                            notes: phoneAway == true ? "📵 Phone away" : "",
-                            routineCompleted: phoneAway == true
-                        )
-                        savedEntry = entry
-                        withAnimation { step = .summary }
+                PrimaryButton(title: step == .greeting ? "Begin" : (step == .caffeine ? "See result" : "Next")) {
+                    if step == .caffeine {
+                        saveCheckIn()
                     } else {
                         withAnimation { step = nextStep(of: step) }
                     }
                 }
-                .disabled(step == .phone && phoneAway == nil)
-                .opacity(step == .phone && phoneAway == nil ? 0.55 : 1)
             }
         }
     }
 
+    private func saveCheckIn() {
+        let date = appState.entryNeedingMorningCheckIn?.wakeTime ?? Date()
+        let checkIn = MorningCheckIn(
+            date: date,
+            feeling: feeling,
+            wakeUps: wakeUps,
+            dreams: dreams,
+            getOutOfBedDifficulty: bedDifficulty,
+            lateCaffeine: caffeine.value
+        )
+        savedEntry = appState.completeMorningCheckIn(checkIn)
+        withAnimation { step = .summary }
+    }
+
     private func nextStep(of s: Step) -> Step {
         switch s {
-        case .greeting: return .phone
-        case .phone:    return .times
-        case .times:    return .quality
-        case .quality:  return .mood
-        case .mood:     return .summary
-        case .summary:  return .summary
+        case .greeting:      return .feeling
+        case .feeling:       return .wakeUps
+        case .wakeUps:       return .dreams
+        case .dreams:        return .bedDifficulty
+        case .bedDifficulty: return .caffeine
+        case .caffeine:      return .summary
+        case .summary:       return .summary
         }
     }
 
     private func previousStep(of s: Step) -> Step {
         switch s {
-        case .greeting: return .greeting
-        case .phone:    return .greeting
-        case .times:    return .phone
-        case .quality:  return .times
-        case .mood:     return .quality
-        case .summary:  return .mood
-        }
-    }
-
-    private func timeRow(title: String, icon: String, selection: Binding<Date>) -> some View {
-        HStack {
-            Image(systemName: icon).foregroundColor(MooniColor.accent).frame(width: 24)
-            Text(title)
-                .font(MooniFont.title(15))
-                .foregroundColor(MooniColor.textPrimary)
-            Spacer()
-            DatePicker("", selection: selection, displayedComponents: .hourAndMinute)
-                .labelsHidden().colorScheme(.dark)
+        case .greeting:      return .greeting
+        case .feeling:       return .greeting
+        case .wakeUps:       return .feeling
+        case .dreams:        return .wakeUps
+        case .bedDifficulty: return .dreams
+        case .caffeine:      return .bedDifficulty
+        case .summary:       return .caffeine
         }
     }
 

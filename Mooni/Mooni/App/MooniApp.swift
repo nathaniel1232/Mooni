@@ -21,11 +21,15 @@ struct MooniApp: App {
         }
     }
 
-    /// Registers Outfit .ttf files bundled under Mooni/Resources/Fonts at runtime,
-    /// so MooniFont can use Outfit-* postscript names without needing Info.plist
-    /// UIAppFonts entries (which Xcode's auto-generated Info.plist doesn't honor).
+    /// Registers Outfit .ttf files bundled under Mooni/Fonts at runtime, so
+    /// MooniFont can use Outfit-* postscript names without needing Info.plist
+    /// UIAppFonts entries (Xcode's auto-generated Info.plist drops array values).
     private static func registerCustomFonts() {
-        let names = ["Outfit-Regular", "Outfit-Medium", "Outfit-SemiBold", "Outfit-Bold"]
+        let names = [
+            "Outfit-Thin", "Outfit-ExtraLight", "Outfit-Light", "Outfit-Regular",
+            "Outfit-Medium", "Outfit-SemiBold", "Outfit-Bold", "Outfit-ExtraBold",
+            "Outfit-Black"
+        ]
         for name in names {
             guard let url = Bundle.main.url(forResource: name, withExtension: "ttf") else { continue }
             CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)

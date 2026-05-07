@@ -3,6 +3,7 @@ import UIKit
 
 struct RootView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -24,6 +25,11 @@ struct RootView: View {
         }
         .animation(.easeInOut(duration: 0.4), value: appState.hasCompletedOnboarding)
         .animation(.easeInOut(duration: 0.4), value: appState.isSleeping)
+        // Feed scenePhase to the activity estimator at the root level so we
+        // catch background/active transitions even during onboarding.
+        .onChange(of: scenePhase) { _, phase in
+            ActivitySleepEstimator.shared.handleScenePhaseChange(phase)
+        }
     }
 }
 

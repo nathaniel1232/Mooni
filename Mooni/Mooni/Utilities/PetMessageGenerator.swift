@@ -13,6 +13,11 @@ enum PetMessageGenerator {
         debt: Double,
         isPro: Bool
     ) -> String {
+        if let last = entries.sorted(by: { $0.wakeTime > $1.wakeTime }).first,
+           Calendar.current.isDateInToday(last.wakeTime),
+           let recoveryMessage = last.recoveryMessage {
+            return recoveryMessage
+        }
         if isPro {
             return personalized(pet: pet, entries: entries,
                                 targetBedtime: targetBedtime,

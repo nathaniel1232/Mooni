@@ -167,6 +167,7 @@ final class AppState: ObservableObject {
             self.profile = OnboardingProfile()
         }
 
+        backfillDerivedSleepData()
         // Reset routine completion if it's a new day
         rolloverRoutineIfNeeded()
         // Maybe surface morning check-in
@@ -178,6 +179,18 @@ final class AppState: ObservableObject {
 
     var recentEntries: [SleepEntry] {
         Array(entries.sorted(by: { $0.wakeTime > $1.wakeTime }).prefix(7))
+    }
+
+    var entryNeedingMorningCheckIn: SleepEntry? {
+        let today = Date().dayKey
+        return entries
+            .filter {
+                $0.dayKey == today &&
+                !$0.didCompleteMorningCheckIn &&
+                MorningCheckInStore.checkIn(for: $0.dayKey) == nil
+            }
+            .sorted(by: { $0.wakeTime > $1.wakeTime })
+            .first
     }
 
     /// Sleep debt (last 7 days, in hours).
@@ -332,34 +345,36 @@ final class AppState: ObservableObject {
         notes: String,
         routineCompleted: Bool
     ) -> SleepEntry {
-        var entry = SleepEntry(
-            bedtime: bedtime,
-            wakeTime: wakeTime,
-            quality: quality,
-            mood: mood,
-            notes: notes,
-            routineCompleted: routineCompleted
-        )
+            var entry = SleepEntry(
+                bedtime: bedtime,
+                wakeTime: wakeTime,
+                quality: quality,
+                mood: mood,
+                notes: notes,
+                routineCompleted: routineCompleted,
+                isEstimated: false,
+                timeInBed: max(0, wakeTime.timeIntervalSince(bedtime)),
+                source: .userAdjusted
+            )
 
-        let breakdown = SleepScoreCalculator.score(
-            for: entry,
+        SleepScoringManager.update(
+            entry: &entry,
             goalHours: goalHours,
-            targetBedtime: targetBedtime,
-            targetWakeTime: targetWakeTime
+            consistencyDays: bedtimeConsistencyDays,
+            checkIn: MorningCheckInStore.checkIn(for: entry.dayKey)
         )
-        entry.score = breakdown.total
-
-        let energy = SleepScoreCalculator.energyReward(for: entry, score: entry.score)
-        entry.energyEarned = energy
 
         // Replace any entry from same day, otherwise append
+        let previousEnergy: Int
         if let idx = entries.firstIndex(where: { $0.dayKey == entry.dayKey }) {
+            previousEnergy = entries[idx].energyEarned
             entries[idx] = entry
         } else {
+            previousEnergy = 0
             entries.append(entry)
         }
 
-        applyReward(energy: energy, score: entry.score)
+        applyReward(energy: max(0, entry.energyEarned - previousEnergy), score: entry.score)
         UserDefaults.standard.set(entry.dayKey, forKey: Key.lastMorningPrompt)
         showMorningCheckIn = false
         return entry
@@ -368,7 +383,7 @@ final class AppState: ObservableObject {
     // MARK: - Pet rewards
     private func applyReward(energy: Int, score: Int) {
         var p = pet
-        p.dreamEnergy += energy
+        p.dreamEnergy += max(0, energy)
         p.lastSleepScore = score
         p.mood = Pet.Mood.from(score: score)
 
@@ -404,7 +419,7 @@ final class AppState: ObservableObject {
         }
 
         self.pet = p
-        self.lastEarnedEnergy = energy
+        self.lastEarnedEnergy = energy > 0 ? energy : nil
         self.lastLevelUp = leveledTo
     }
 
@@ -500,7 +515,7 @@ final class AppState: ObservableObject {
         let lastPrompted = UserDefaults.standard.string(forKey: Key.lastMorningPrompt)
         let today = Date().dayKey
         let hour = Calendar.current.component(.hour, from: Date())
-        if hour >= 5 && hour < 12 && lastPrompted != today && !entries.contains(where: { $0.dayKey == today }) {
+        if hour >= 4 && hour < 12 && lastPrompted != today && entryNeedingMorningCheckIn != nil {
             showMorningCheckIn = true
         }
     }
@@ -525,41 +540,129 @@ final class AppState: ObservableObject {
         showMorningCheckIn = true
     }
 
+    func checkIn(for entry: SleepEntry) -> MorningCheckIn? {
+        MorningCheckInStore.checkIn(for: entry.dayKey)
+    }
+
+    @discardableResult
+    func completeMorningCheckIn(_ checkIn: MorningCheckIn) -> SleepEntry? {
+        MorningCheckInStore.save(checkIn)
+        let dayKey = checkIn.date.dayKey
+        guard let idx = entries.firstIndex(where: { $0.dayKey == dayKey }) else {
+            UserDefaults.standard.set(dayKey, forKey: Key.lastMorningPrompt)
+            showMorningCheckIn = false
+            return nil
+        }
+
+        var entry = entries[idx]
+        let previousEnergy = entry.energyEarned
+        SleepScoringManager.update(
+            entry: &entry,
+            goalHours: goalHours,
+            consistencyDays: bedtimeConsistencyDays,
+            checkIn: checkIn
+        )
+        entries[idx] = entry
+        applyReward(energy: max(0, entry.energyEarned - previousEnergy), score: entry.score)
+        UserDefaults.standard.set(dayKey, forKey: Key.lastMorningPrompt)
+        showMorningCheckIn = false
+        return entry
+    }
+
     // MARK: - HealthKit import
 
-    /// Pulls recent sleep samples from HealthKit and converts new nights into SleepEntry rows.
+    /// Pulls recent sleep samples from HealthKit. Falls back to activity-based
+    /// estimation when HealthKit is unavailable, denied, or simply empty.
     func importHealthKitSleep() async {
-        let intervals = await HealthKitManager.shared.fetchNightlySleep(days: 14)
-        guard !intervals.isEmpty else { return }
+        let healthIntervals = await HealthKitManager.shared.fetchNightlySleep(days: 14)
+        if !healthIntervals.isEmpty {
+            insertImportedIntervals(
+                healthIntervals,
+                source: .healthKit,
+                sourceLabel: "Imported from Health"
+            )
+            return
+        }
 
+        let estimated = ActivitySleepEstimator.shared.recentIntervals(days: 14)
+        guard !estimated.isEmpty else { return }
+        insertImportedIntervals(
+            estimated,
+            source: .appActivityEstimate,
+            sourceLabel: "Auto logged from app activity"
+        )
+    }
+
+    private func insertImportedIntervals(
+        _ intervals: [SleepInterval],
+        source: SleepDataSource,
+        sourceLabel: String
+    ) {
         for interval in intervals {
             let dayKey = interval.end.dayKey
-            // Skip if we already have an entry for that wake-day
-            if entries.contains(where: { $0.dayKey == dayKey }) { continue }
+            var previousEnergy = 0
 
-            // Auto-generated entry — neutral quality/mood until the user does morning check-in.
+            // If we already have an entry for this wake-day, only replace it
+            // when real HealthKit data trumps an existing estimate.
+            if let idx = entries.firstIndex(where: { $0.dayKey == dayKey }) {
+                let existing = entries[idx]
+                if existing.resolvedSource == .userAdjusted {
+                    continue
+                }
+                if existing.resolvedSource == .appActivityEstimate && source == .healthKit {
+                    previousEnergy = existing.energyEarned
+                    entries.remove(at: idx)
+                } else {
+                    continue
+                }
+            }
+
             var entry = SleepEntry(
                 bedtime: interval.start,
                 wakeTime: interval.end,
                 quality: .good,
                 mood: .okay,
-                notes: "Imported from Health"
+                notes: sourceLabel,
+                isEstimated: source == .appActivityEstimate,
+                totalSleep: interval.totalSleep,
+                timeInBed: interval.timeInBed ?? (source == .appActivityEstimate ? interval.duration : nil),
+                stages: interval.stages,
+                source: source
             )
-            let breakdown = SleepScoreCalculator.score(
-                for: entry,
+            SleepScoringManager.update(
+                entry: &entry,
                 goalHours: goalHours,
-                targetBedtime: targetBedtime,
-                targetWakeTime: targetWakeTime
+                consistencyDays: bedtimeConsistencyDays,
+                checkIn: MorningCheckInStore.checkIn(for: dayKey)
             )
-            entry.score = breakdown.total
-            entry.energyEarned = SleepScoreCalculator.energyReward(for: entry, score: entry.score)
             entries.append(entry)
 
-            // Reward the most recent night automatically; older imports only fill history.
             if dayKey == Date().dayKey {
-                applyReward(energy: entry.energyEarned, score: entry.score)
-                showMorningCheckIn = true   // user can refine quality/mood
+                applyReward(energy: max(0, entry.energyEarned - previousEnergy), score: entry.score)
+                evaluateMorningPrompt()
             }
+        }
+    }
+
+    private func backfillDerivedSleepData() {
+        guard !entries.isEmpty else { return }
+
+        for idx in entries.indices {
+            guard entries[idx].stages == nil ||
+                  entries[idx].readinessScore == nil ||
+                  entries[idx].energyLevel == nil ||
+                  entries[idx].insight == nil else {
+                continue
+            }
+
+            var entry = entries[idx]
+            SleepScoringManager.update(
+                entry: &entry,
+                goalHours: goalHours,
+                consistencyDays: bedtimeConsistencyDays,
+                checkIn: MorningCheckInStore.checkIn(for: entry.dayKey)
+            )
+            entries[idx] = entry
         }
     }
 
@@ -602,3 +705,23 @@ extension AppState {
         return s
     }
 }
+
+#if DEBUG
+extension AppState {
+    @discardableResult
+    func simulateCompletedNightEndingNow() -> SleepEntry {
+        let wakeTime = Date()
+        let testHours = min(max(goalHours, 2), 10)
+        let bedtime = wakeTime.addingTimeInterval(-testHours * 3600)
+
+        return logSleep(
+            bedtime: bedtime,
+            wakeTime: wakeTime,
+            quality: .good,
+            mood: .energized,
+            notes: "Developer test: simulated night",
+            routineCompleted: !routine.completedToday.isEmpty
+        )
+    }
+}
+#endif

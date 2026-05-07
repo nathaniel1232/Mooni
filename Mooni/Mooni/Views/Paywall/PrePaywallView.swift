@@ -929,7 +929,7 @@ private struct TransformListStage: View {
     private let timer = Timer.publish(every: 0.55, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             VStack(spacing: 4) {
                 Text("YOU WILL TRANSFORM")
                     .font(MooniFont.caption(12))
@@ -942,37 +942,52 @@ private struct TransformListStage: View {
             }
             .padding(.top, 4)
 
-            VStack(spacing: 8) {
-                ForEach(Array(Self.items.enumerated()), id: \.offset) { idx, item in
-                    HStack(spacing: 12) {
-                        Image(systemName: item.icon)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(item.color)
-                            .frame(width: 32, height: 32)
-                            .background(item.color.opacity(0.16))
-                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                        Text(item.text)
-                            .font(MooniFont.title(13))
-                            .foregroundColor(MooniColor.textPrimary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Image(systemName: "checkmark")
-                            .foregroundColor(MooniColor.success)
-                            .font(.system(size: 11, weight: .bold))
-                            .opacity(idx < revealed ? 1 : 0)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 10) {
+                    ForEach(Array(Self.items.enumerated()), id: \.offset) { idx, item in
+                        HStack(spacing: 14) {
+                            Image(systemName: item.icon)
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(item.color)
+                                .frame(width: 38, height: 38)
+                                .background(item.color.opacity(0.16))
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            Text(item.text)
+                                .font(MooniFont.title(15))
+                                .foregroundColor(MooniColor.textPrimary)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Image(systemName: "checkmark")
+                                .foregroundColor(MooniColor.success)
+                                .font(.system(size: 12, weight: .bold))
+                                .opacity(idx < revealed ? 1 : 0)
+                        }
+                        .padding(.vertical, 11)
+                        .padding(.horizontal, 14)
+                        .background(Color.white.opacity(0.07))
+                        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .opacity(idx < revealed ? 1 : 0)
+                        .offset(y: idx < revealed ? 0 : 16)
+                        .scaleEffect(idx < revealed ? 1 : 0.9)
+                        .animation(.spring(response: 0.55, dampingFraction: 0.7), value: revealed)
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
-                    .background(Color.white.opacity(0.07))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .opacity(idx < revealed ? 1 : 0)
-                    .offset(y: idx < revealed ? 0 : 16)
-                    .scaleEffect(idx < revealed ? 1 : 0.9)
-                    .animation(.spring(response: 0.55, dampingFraction: 0.7), value: revealed)
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
             }
-            .padding(.horizontal, 20)
+            .frame(maxHeight: 440)
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black, location: 0.05),
+                        .init(color: .black, location: 0.95),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
         }
         .onAppear {
             // Reset whenever the view appears.

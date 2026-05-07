@@ -57,6 +57,7 @@ final class HealthKitManager: ObservableObject {
     }
 
     /// Pulls sleep samples from the last `days` days and groups them into per-night bedtime/wakeTime ranges.
+    /// When HealthKit includes stages, those stage durations are carried through.
     func fetchNightlySleep(days: Int = 14) async -> [SleepInterval] {
         guard isAvailable, let type = sleepType else { return [] }
 
@@ -82,40 +83,105 @@ final class HealthKitManager: ObservableObject {
 
     /// Groups raw samples into single nightly intervals. Samples within 60 minutes of each other are merged.
     static func groupIntoNights(samples: [HKCategorySample]) -> [SleepInterval] {
-        // Only count "asleep"-state samples, ignore "inBed".
         let asleepValues: Set<Int> = [
             HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
             HKCategoryValueSleepAnalysis.asleepCore.rawValue,
             HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
             HKCategoryValueSleepAnalysis.asleepREM.rawValue
         ]
-        let asleep = samples.filter { asleepValues.contains($0.value) }
+        let relevantValues = asleepValues.union([
+            HKCategoryValueSleepAnalysis.awake.rawValue,
+            HKCategoryValueSleepAnalysis.inBed.rawValue
+        ])
+        let relevant = samples.filter { relevantValues.contains($0.value) }
             .sorted { $0.startDate < $1.startDate }
-        guard !asleep.isEmpty else { return [] }
+        guard !relevant.isEmpty else { return [] }
 
-        var intervals: [SleepInterval] = []
-        var currentStart = asleep[0].startDate
-        var currentEnd = asleep[0].endDate
+        var groups: [[HKCategorySample]] = []
+        var current: [HKCategorySample] = [relevant[0]]
+        var currentEnd = relevant[0].endDate
 
-        for s in asleep.dropFirst() {
+        for s in relevant.dropFirst() {
             // Gap of <60min → same night, extend
             if s.startDate.timeIntervalSince(currentEnd) < 60 * 60 {
+                current.append(s)
                 currentEnd = max(currentEnd, s.endDate)
             } else {
-                intervals.append(SleepInterval(start: currentStart, end: currentEnd))
-                currentStart = s.startDate
+                groups.append(current)
+                current = [s]
                 currentEnd = s.endDate
             }
         }
-        intervals.append(SleepInterval(start: currentStart, end: currentEnd))
+        groups.append(current)
 
         // Filter out naps shorter than 1 hour
-        return intervals.filter { $0.end.timeIntervalSince($0.start) >= 60 * 60 }
+        return groups.compactMap { samples -> SleepInterval? in
+            makeInterval(from: samples)
+        }
+        .filter { $0.totalSleepDuration >= 60 * 60 }
+    }
+
+    private static func makeInterval(from samples: [HKCategorySample]) -> SleepInterval? {
+        guard let start = samples.map(\.startDate).min(),
+              let end = samples.map(\.endDate).max() else {
+            return nil
+        }
+
+        var deep: TimeInterval = 0
+        var rem: TimeInterval = 0
+        var light: TimeInterval = 0
+        var awake: TimeInterval = 0
+        var inBed: TimeInterval = 0
+
+        for sample in samples {
+            let duration = max(0, sample.endDate.timeIntervalSince(sample.startDate))
+            switch sample.value {
+            case HKCategoryValueSleepAnalysis.asleepDeep.rawValue:
+                deep += duration
+            case HKCategoryValueSleepAnalysis.asleepREM.rawValue:
+                rem += duration
+            case HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+                 HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue:
+                light += duration
+            case HKCategoryValueSleepAnalysis.awake.rawValue:
+                awake += duration
+            case HKCategoryValueSleepAnalysis.inBed.rawValue:
+                inBed += duration
+            default:
+                break
+            }
+        }
+
+        let totalSleep = deep + rem + light
+        guard totalSleep > 0 else { return nil }
+
+        let hasStageData = deep > 0 || rem > 0 || samples.contains { $0.value == HKCategoryValueSleepAnalysis.asleepCore.rawValue || $0.value == HKCategoryValueSleepAnalysis.awake.rawValue }
+        let stages = hasStageData
+            ? SleepStagesEstimate(
+                deepSleep: deep,
+                remSleep: rem,
+                lightSleep: light,
+                awakeTime: awake,
+                isEstimated: false
+            )
+            : nil
+
+        return SleepInterval(
+            start: start,
+            end: end,
+            totalSleep: totalSleep,
+            timeInBed: inBed > 0 ? inBed : nil,
+            stages: stages
+        )
     }
 }
 
 struct SleepInterval: Equatable {
     let start: Date
     let end: Date
+    var totalSleep: TimeInterval? = nil
+    var timeInBed: TimeInterval? = nil
+    var stages: SleepStagesEstimate? = nil
     var duration: TimeInterval { end.timeIntervalSince(start) }
+    var totalSleepDuration: TimeInterval { totalSleep ?? duration }
 }

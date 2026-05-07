@@ -81,9 +81,11 @@ private struct NightRow: View {
             HStack(spacing: 16) {
                 SleepScoreRing(score: entry.score, size: 64, lineWidth: 7)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.wakeTime, format: .dateTime.weekday(.wide).day().month())
-                        .font(MooniFont.title(15))
-                        .foregroundColor(MooniColor.textPrimary)
+                    HStack(spacing: 6) {
+                        Text(entry.wakeTime, format: .dateTime.weekday(.wide).day().month())
+                            .font(MooniFont.title(15))
+                            .foregroundColor(MooniColor.textPrimary)
+                    }
                     Text(entry.formattedDuration)
                         .font(MooniFont.caption(13))
                         .foregroundColor(MooniColor.textSecondary)

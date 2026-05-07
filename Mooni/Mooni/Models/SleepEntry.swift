@@ -54,24 +54,82 @@ struct SleepEntry: Identifiable, Codable, Hashable {
         }
     }
 
-    var id: UUID = UUID()
+    var id: UUID
     var bedtime: Date
     var wakeTime: Date
     var quality: Quality
     var mood: Mood
-    var notes: String = ""
-    var routineCompleted: Bool = false
-    var score: Int = 0
-    var energyEarned: Int = 0
+    var notes: String
+    var routineCompleted: Bool
+    var score: Int
+    var energyEarned: Int
+    /// True when bedtime/wake were inferred from app activity (no HealthKit /
+    /// no manual log). Surfaced in UI as "Estimated".
+    var isEstimated: Bool
+    var totalSleep: TimeInterval?
+    var timeInBed: TimeInterval?
+    var stages: SleepStagesEstimate?
+    var readinessScore: Int?
+    var energyLevel: String?
+    var insight: String?
+    var recoveryMessage: String?
+    var source: SleepDataSource?
+    var didCompleteMorningCheckIn: Bool
+
+    init(
+        id: UUID = UUID(),
+        bedtime: Date,
+        wakeTime: Date,
+        quality: Quality,
+        mood: Mood,
+        notes: String = "",
+        routineCompleted: Bool = false,
+        score: Int = 0,
+        energyEarned: Int = 0,
+        isEstimated: Bool = false,
+        totalSleep: TimeInterval? = nil,
+        timeInBed: TimeInterval? = nil,
+        stages: SleepStagesEstimate? = nil,
+        readinessScore: Int? = nil,
+        energyLevel: String? = nil,
+        insight: String? = nil,
+        recoveryMessage: String? = nil,
+        source: SleepDataSource? = nil,
+        didCompleteMorningCheckIn: Bool = false
+    ) {
+        self.id = id
+        self.bedtime = bedtime
+        self.wakeTime = wakeTime
+        self.quality = quality
+        self.mood = mood
+        self.notes = notes
+        self.routineCompleted = routineCompleted
+        self.score = score
+        self.energyEarned = energyEarned
+        self.isEstimated = isEstimated
+        self.totalSleep = totalSleep
+        self.timeInBed = timeInBed
+        self.stages = stages
+        self.readinessScore = readinessScore
+        self.energyLevel = energyLevel
+        self.insight = insight
+        self.recoveryMessage = recoveryMessage
+        self.source = source
+        self.didCompleteMorningCheckIn = didCompleteMorningCheckIn
+    }
 
     var duration: TimeInterval {
         max(0, wakeTime.timeIntervalSince(bedtime))
     }
 
-    var hours: Double { duration / 3600 }
+    var totalSleepDuration: TimeInterval {
+        max(0, totalSleep ?? stages?.totalSleep ?? duration)
+    }
+
+    var hours: Double { totalSleepDuration / 3600 }
 
     var formattedDuration: String {
-        let total = Int(duration)
+        let total = Int(totalSleepDuration)
         let h = total / 3600
         let m = (total % 3600) / 60
         return "\(h)h \(String(format: "%02d", m))m"
@@ -81,5 +139,40 @@ struct SleepEntry: Identifiable, Codable, Hashable {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: wakeTime)
+    }
+
+    var resolvedSource: SleepDataSource {
+        if let source { return source }
+        return isEstimated ? .appActivityEstimate : .userAdjusted
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, bedtime, wakeTime, quality, mood, notes, routineCompleted
+        case score, energyEarned, isEstimated, totalSleep, timeInBed, stages
+        case readinessScore, energyLevel, insight, recoveryMessage, source
+        case didCompleteMorningCheckIn
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        bedtime = try container.decode(Date.self, forKey: .bedtime)
+        wakeTime = try container.decode(Date.self, forKey: .wakeTime)
+        quality = try container.decodeIfPresent(Quality.self, forKey: .quality) ?? .good
+        mood = try container.decodeIfPresent(Mood.self, forKey: .mood) ?? .okay
+        notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        routineCompleted = try container.decodeIfPresent(Bool.self, forKey: .routineCompleted) ?? false
+        score = try container.decodeIfPresent(Int.self, forKey: .score) ?? 0
+        energyEarned = try container.decodeIfPresent(Int.self, forKey: .energyEarned) ?? 0
+        isEstimated = try container.decodeIfPresent(Bool.self, forKey: .isEstimated) ?? false
+        totalSleep = try container.decodeIfPresent(TimeInterval.self, forKey: .totalSleep)
+        timeInBed = try container.decodeIfPresent(TimeInterval.self, forKey: .timeInBed)
+        stages = try container.decodeIfPresent(SleepStagesEstimate.self, forKey: .stages)
+        readinessScore = try container.decodeIfPresent(Int.self, forKey: .readinessScore)
+        energyLevel = try container.decodeIfPresent(String.self, forKey: .energyLevel)
+        insight = try container.decodeIfPresent(String.self, forKey: .insight)
+        recoveryMessage = try container.decodeIfPresent(String.self, forKey: .recoveryMessage)
+        source = try container.decodeIfPresent(SleepDataSource.self, forKey: .source)
+        didCompleteMorningCheckIn = try container.decodeIfPresent(Bool.self, forKey: .didCompleteMorningCheckIn) ?? false
     }
 }

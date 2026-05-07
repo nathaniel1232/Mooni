@@ -75,11 +75,9 @@ struct Pet: Codable {
 
         static func from(score: Int) -> Mood {
             switch score {
-            case 90...:    return .energized
-            case 80..<90:  return .cozy
-            case 70..<80:  return .calm
-            case 60..<70:  return .sleepy
-            case 45..<60:  return .groggy
+            case 85...:    return .energized
+            case 70..<85:  return .calm
+            case 50..<70:  return .sleepy
             default:       return .restless
             }
         }

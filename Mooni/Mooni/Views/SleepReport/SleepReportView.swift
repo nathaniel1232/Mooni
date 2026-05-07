@@ -1,574 +1,668 @@
 import SwiftUI
 
-/// Sleep explains last night in plain language. It is intentionally quieter than
-/// a dashboard: one summary, one trend, one useful explanation.
+/// The Sleep Report tab.
+/// Free users see last night, basic score, 7-day trend, simple explanation.
+/// Premium users additionally see sleep debt, consistency, best window, habit lift,
+/// and recovery prediction.
 struct SleepReportView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     @Binding var showPaywall: Bool
 
-    @StateObject private var healthKit = HealthKitManager.shared
-    @State private var showManualLog = false
-
     var body: some View {
         NavigationStack {
             ZStack {
                 MooniGradient.night.ignoresSafeArea()
-                StarsBackground(count: 28)
-
                 ScrollView {
                     VStack(spacing: 16) {
                         if let entry = appState.lastEntry {
                             lastNightCard(entry)
                             trendCard
-                            if appState.entries.count >= 7 {
-                                weeklyRecapCard
-                            }
                             explanationCard(entry)
-                            premiumSection
+
+                            if subscriptionManager.isPro {
+                                premiumInsights
+                            } else {
+                                premiumTeaser
+                            }
                         } else {
-                            emptyActivation
+                            emptyState
                         }
                     }
                     .padding(20)
-                    .padding(.bottom, 96)
                 }
             }
-            .navigationTitle("Sleep")
+            .navigationTitle("Sleep Report")
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .sheet(isPresented: $showManualLog) {
-                LogSleepSheet()
-            }
         }
     }
 
     // MARK: - Free sections
 
     private func lastNightCard(_ entry: SleepEntry) -> some View {
-        MooniCard {
-            VStack(alignment: .leading, spacing: 16) {
+        let stages = stages(for: entry)
+        let readiness = entry.readinessScore ?? entry.score
+        let energy = entry.energyLevel ?? SleepScoringManager.energyLevel(for: readiness)
+        let stageTotal = max(stages.totalSleep + stages.awakeTime, 1)
+        let durationProgress = min(1, entry.totalSleepDuration / max(appState.goalHours * 3600, 1))
+
+        return MooniCard {
+            VStack(alignment: .leading, spacing: 18) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Last night")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.accentSoft)
-                            .textCase(.uppercase)
-                        Text("Luna's sleep result")
-                            .font(MooniFont.title(20))
-                            .foregroundColor(MooniColor.textPrimary)
-                    }
+                    Text("Last night")
+                        .font(MooniFont.title(15))
+                        .foregroundColor(MooniColor.textSecondary)
                     Spacer()
                     Text(entry.wakeTime.shortDateString)
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.textMuted)
                 }
 
-                HStack(spacing: 18) {
-                    SleepScoreRing(score: entry.score, size: 92, lineWidth: 9)
+                HStack(spacing: 12) {
+                    ScoreOrbit(score: entry.score, title: "Sleep", color: scoreColor(entry.score))
+                    ScoreOrbit(score: readiness, title: "Ready", color: scoreColor(readiness))
 
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 10) {
                         Text(entry.formattedDuration)
-                            .font(MooniFont.display(30))
+                            .font(MooniFont.display(28))
                             .foregroundColor(MooniColor.textPrimary)
-                        Text(scoreLabel(entry.score))
-                            .font(MooniFont.body(14))
+                        Text("\(entry.bedtime.hourMinuteString) → \(entry.wakeTime.hourMinuteString)")
+                            .font(MooniFont.caption(12))
                             .foregroundColor(MooniColor.textSecondary)
+                        EnergyMeter(label: energy, score: readiness)
                     }
-
                     Spacer()
                 }
 
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    MooniStatPill(icon: "moon.zzz.fill", value: entry.formattedDuration, label: "Duration")
-                    MooniStatPill(icon: "bed.double.fill", value: entry.bedtime.hourMinuteString, label: "Bedtime")
-                    MooniStatPill(icon: "sunrise.fill", value: entry.wakeTime.hourMinuteString, label: "Wake time", color: MooniColor.warning)
-                    MooniStatPill(icon: "gauge.with.dots.needle.67percent", value: "\(entry.score)", label: "Basic score", color: scoreColor(entry.score))
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Sleep area")
+                        .font(MooniFont.title(14))
+                        .foregroundColor(MooniColor.textPrimary)
+                    SleepStageTimeline(stages: stages)
+                    StageLegend()
                 }
+
+                StageProgressGrid(stages: stages, totalSleep: stageTotal)
+
+                VStack(spacing: 10) {
+                    MeterRow(
+                        title: "Goal progress",
+                        value: entry.formattedDuration,
+                        progress: durationProgress,
+                        color: MooniColor.accent
+                    )
+                    MeterRow(
+                        title: "Recovery charge",
+                        value: "\(readiness)%",
+                        progress: Double(readiness) / 100,
+                        color: scoreColor(readiness)
+                    )
+                }
+
+                Text("Mooni uses HealthKit sleep stages when available; otherwise it fills the chart from sleep duration and your check-in.")
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.textMuted)
             }
+        }
+    }
+
+    private func stages(for entry: SleepEntry) -> SleepStagesEstimate {
+        if let stages = entry.stages {
+            return stages
+        }
+        let total = max(entry.totalSleepDuration, appState.goalHours * 3600, 8 * 3600)
+        return SleepScoringManager.estimateStages(
+            totalSleep: total,
+            timeInBed: entry.timeInBed ?? entry.duration,
+            date: entry.wakeTime,
+            quality: entry.quality,
+            checkIn: appState.checkIn(for: entry)
+        )
+    }
+
+    private func scoreColor(_ score: Int) -> Color {
+        switch score {
+        case 85...: return MooniColor.success
+        case 70..<85: return MooniColor.accent
+        case 50..<70: return MooniColor.warning
+        default: return MooniColor.danger
         }
     }
 
     private var trendCard: some View {
         let recent = appState.recentEntries
-        let average = recent.isEmpty ? 0 : recent.map(\.hours).reduce(0, +) / Double(recent.count)
-
         return MooniCard {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("7-day rhythm")
-                            .font(MooniFont.title(18))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Text(recent.isEmpty ? "Your first week will fill in softly." : String(format: "Average %.1fh", average))
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textSecondary)
-                    }
+                    Text("Last 7 nights")
+                        .font(MooniFont.title(15))
+                        .foregroundColor(MooniColor.textPrimary)
                     Spacer()
+                    let avg = recent.isEmpty ? 0 : recent.map(\.hours).reduce(0, +) / Double(recent.count)
+                    Text(String(format: "avg %.1fh", avg))
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
                 }
-
                 trendBars(entries: recent)
             }
         }
     }
 
     private func trendBars(entries: [SleepEntry]) -> some View {
-        let maxHours = max(entries.map(\.hours).max() ?? appState.goalHours, appState.goalHours, 8)
-
+        let max = max(entries.map(\.hours).max() ?? 8, 9)
         return HStack(alignment: .bottom, spacing: 8) {
-            ForEach(entries.reversed()) { entry in
-                VStack(spacing: 6) {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [MooniColor.accentSoft, scoreColor(entry.score)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .frame(height: max(24, CGFloat(entry.hours / maxHours) * 116))
-
-                    Text(entry.wakeTime.weekdayShort)
+            ForEach(entries.reversed()) { e in
+                VStack(spacing: 4) {
+                    SleepStackBar(stages: stages(for: e), maxHeight: CGFloat(e.hours / max) * 120)
+                    Text(e.wakeTime.weekdayShort)
                         .font(MooniFont.caption(10))
                         .foregroundColor(MooniColor.textMuted)
                 }
                 .frame(maxWidth: .infinity)
             }
-
             if entries.count < 7 {
                 ForEach(0..<(7 - entries.count), id: \.self) { _ in
-                    VStack(spacing: 6) {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    VStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 4)
                             .fill(Color.white.opacity(0.06))
-                            .frame(height: 24)
-                        Text(" ")
+                            .frame(height: 18)
+                        Text("0h")
                             .font(MooniFont.caption(10))
+                            .foregroundColor(MooniColor.textMuted)
                     }
                     .frame(maxWidth: .infinity)
                 }
             }
         }
-        .frame(height: 138)
+        .frame(height: 140)
     }
 
     private func explanationCard(_ entry: SleepEntry) -> some View {
-        MooniCard {
+        let petName = appState.pet.name
+        let isLate: Bool = {
+            let cal = Calendar.current
+            let bedHM = cal.dateComponents([.hour, .minute], from: entry.bedtime)
+            let targetHM = cal.dateComponents([.hour, .minute], from: appState.targetBedtime)
+            let aMin = (bedHM.hour ?? 0) * 60 + (bedHM.minute ?? 0)
+            let bMin = (targetHM.hour ?? 0) * 60 + (targetHM.minute ?? 0)
+            let diff = min(abs(aMin - bMin), 1440 - abs(aMin - bMin))
+            return diff > 30 && aMin > bMin
+        }()
+        let summary: String = {
+            if let insight = entry.insight {
+                return insight
+            }
+            if entry.score >= 80 {
+                return "\(petName) feels great. Keep this rhythm going."
+            } else if entry.score >= 65 {
+                return "\(petName) feels okay\(isLate ? ", but bedtime was later than your goal." : ".")"
+            } else {
+                return "\(petName) is recovering. Aim to be in bed earlier tonight."
+            }
+        }()
+        return MooniCard {
             HStack(spacing: 14) {
                 Image(systemName: "text.bubble.fill")
                     .foregroundColor(MooniColor.accentSoft)
-                    .frame(width: 40, height: 40)
-                    .background(MooniColor.accentSoft.opacity(0.14))
-                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Why Luna feels this way")
-                        .font(MooniFont.title(16))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Text(explanation(for: entry))
-                        .font(MooniFont.body(14))
-                        .foregroundColor(MooniColor.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
+                    .frame(width: 32, height: 32)
+                    .background(MooniColor.accentSoft.opacity(0.16))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                Text(summary)
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
                 Spacer()
             }
         }
     }
 
-    // MARK: - Premium
-
-    @ViewBuilder
-    private var premiumSection: some View {
-        if subscriptionManager.isPro {
-            premiumInsights
-        } else {
-            lockedInsights
-        }
-    }
+    // MARK: - Premium sections
 
     private var premiumInsights: some View {
-        VStack(spacing: 12) {
-            advancedCard(
-                icon: "moon.zzz.fill",
-                title: "Sleep debt",
-                value: SleepInsights.formatDebt(appState.currentSleepDebt),
-                detail: appState.currentSleepDebt == 0
-                    ? "You are not carrying measurable sleep debt this week."
-                    : "This is the gap between your goal and recent sleep."
-            )
-
-            advancedCard(
-                icon: "face.dashed.fill",
-                title: "Why you woke tired",
-                value: tiredReasonValue,
-                detail: tiredReasonDetail
-            )
-
-            advancedCard(
-                icon: "target",
-                title: "Best sleep window",
-                value: bestWindowValue,
-                detail: "Your strongest nights tend to start in this window."
-            )
-
-            advancedCard(
-                icon: "calendar.badge.clock",
-                title: "Consistency analysis",
-                value: "\(appState.bedtimeConsistencyDays) nights",
-                detail: "Nights within 30 minutes of your target build Luna's sleep rhythm."
-            )
-
-            advancedCard(
-                icon: "heart.fill",
-                title: "Recovery prediction",
-                value: "\(recoveryPrediction)%",
-                detail: "Estimated recovery if you sleep your goal tonight."
-            )
-
-            advancedCard(
-                icon: "chart.line.uptrend.xyaxis",
-                title: "Long-term trends",
-                value: monthlyAverageText,
-                detail: "Your broader rhythm appears here as more nights are tracked."
-            )
+        VStack(spacing: 14) {
+            sleepDebtCard
+            consistencyCard
+            bestWindowCard
+            habitLiftCard
+            recoveryCard
         }
     }
 
-    private var lockedInsights: some View {
-        VStack(spacing: 12) {
-            Text("Deeper insights")
-                .font(MooniFont.title(18))
-                .foregroundColor(MooniColor.textPrimary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 4)
-                .padding(.top, 4)
+    private var sleepDebtCard: some View {
+        let debt = SleepInsights.sleepDebt(entries: appState.entries, goalHours: appState.goalHours)
+        return premiumCard(icon: "moon.zzz.fill", color: MooniColor.danger,
+                           title: "Sleep debt",
+                           value: SleepInsights.formatDebt(debt),
+                           detail: "\(appState.pet.name)'s energy is lower because of accumulated sleep debt this week.")
+    }
 
-            ForEach(lockedInsightCards) { card in
-                MooniPremiumLockCard(
-                    icon: card.icon,
-                    title: card.title,
-                    subtitle: card.subtitle,
-                    actionTitle: card.actionTitle
-                ) {
-                    showPaywall = true
-                }
+    private var consistencyCard: some View {
+        let variance = SleepInsights.wakeTimeVariance(entries: appState.entries)
+        let h = variance / 60
+        let m = variance % 60
+        let formatted = h > 0 ? "\(h)h \(m)m" : "\(m)m"
+        return premiumCard(icon: "calendar.badge.clock", color: MooniColor.warning,
+                           title: "Wake-time variance",
+                           value: formatted,
+                           detail: "Your wake time varied by \(formatted) this week. Lower is calmer for your body clock.")
+    }
+
+    private var bestWindowCard: some View {
+        let win = SleepInsights.bestSleepWindow(entries: appState.entries)
+        let value: String = {
+            guard let w = win else {
+                let start = Calendar.current.date(byAdding: .minute, value: -30, to: appState.targetBedtime) ?? appState.targetBedtime
+                let end = Calendar.current.date(byAdding: .minute, value: 30, to: appState.targetBedtime) ?? appState.targetBedtime
+                return "\(start.hourMinuteString)–\(end.hourMinuteString)"
             }
-        }
+            return "\(w.start.hourMinuteString)–\(w.end.hourMinuteString)"
+        }()
+        let detail: String = win == nil
+            ? "Starting with your target window until Mooni has more nights."
+            : "Your best nights happen when you fall asleep in this window."
+        return premiumCard(icon: "target", color: MooniColor.accent,
+                           title: "Best sleep window",
+                           value: value,
+                           detail: detail)
     }
 
-    private func advancedCard(icon: String, title: String, value: String, detail: String) -> some View {
-        MooniCard(padding: 16, cornerRadius: 24) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    Image(systemName: icon)
-                        .foregroundColor(MooniColor.accent)
-                        .frame(width: 32, height: 32)
-                        .background(MooniColor.accent.opacity(0.14))
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    Text(title)
-                        .font(MooniFont.title(15))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Spacer()
-                    Text(value)
-                        .font(MooniFont.title(15))
-                        .foregroundColor(MooniColor.accentSoft)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                }
-
-                Text(detail)
-                    .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+    private var habitLiftCard: some View {
+        let lift = SleepInsights.windDownLift(entries: appState.entries)
+        let value = lift > 0 ? "+\(lift) min" : "0 min"
+        let detail = lift > 0
+            ? "You sleep \(lift) minutes longer on nights when you complete wind-down."
+            : "Mooni will update this once routine nights stack up."
+        return premiumCard(icon: "checklist", color: MooniColor.success,
+                           title: "Wind-down lift",
+                           value: value,
+                           detail: detail)
     }
 
-    // MARK: - Empty
-
-    private var emptyActivation: some View {
-        VStack(spacing: 18) {
-            LunaMoodHero(
-                pet: appState.pet,
-                mood: .cozy,
-                size: 190,
-                caption: "After Luna wakes up, this page will explain your sleep in plain English."
-            )
-
-            MooniCard {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Tonight starts the pattern")
-                        .font(MooniFont.title(20))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Text("After Luna wakes up, this page will explain your sleep in plain English.")
-                        .font(MooniFont.body(14))
-                        .foregroundColor(MooniColor.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text("What Luna will learn")
-                        .font(MooniFont.title(16))
-                        .foregroundColor(MooniColor.textPrimary)
-
-                    VStack(spacing: 10) {
-                        MooniInfoRow(icon: "bed.double.fill", title: "When you went to bed", value: "Tonight")
-                        MooniInfoRow(icon: "moon.zzz.fill", title: "How long you slept", value: "After wake")
-                        MooniInfoRow(icon: "target", title: "Close to target", value: appState.targetBedtime.hourMinuteString)
-                        MooniInfoRow(icon: "flame.fill", title: "Rhythm forming", value: "Day 1", color: MooniColor.warning)
-                    }
-
-                    if isHealthConnected {
-                        HStack(spacing: 10) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .foregroundColor(MooniColor.success)
-                            Text("Connected to Apple Health")
-                                .font(MooniFont.caption(13))
-                                .foregroundColor(MooniColor.success)
-                            Spacer()
-                        }
-                        .padding(.vertical, 6)
-                    } else {
-                        PrimaryButton(title: "Connect Apple Health", icon: "heart.text.square.fill") {
-                            connectAppleHealth()
-                        }
-                    }
-
-                    SecondaryButton(title: "Add sleep manually", icon: "plus") {
-                        showManualLog = true
-                    }
-                }
-            }
-
-            tomorrowPreviewCard
-
-            lockedInsights
-        }
-    }
-
-    private var tomorrowPreviewCard: some View {
-        MooniCard(padding: 18, cornerRadius: 24) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Tomorrow you'll see")
-                    .font(MooniFont.title(18))
-                    .foregroundColor(MooniColor.textPrimary)
-
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    MooniStatPill(icon: "heart.fill", value: "Mood", label: "Luna")
-                    MooniStatPill(icon: "gauge.with.dots.needle.67percent", value: "Score", label: "Sleep")
-                    MooniStatPill(icon: "text.bubble.fill", value: "Reason", label: "Plain English", color: MooniColor.accent)
-                    MooniStatPill(icon: "moon.zzz.fill", value: "Tip", label: "Recovery", color: MooniColor.success)
-                }
-            }
-        }
-    }
-
-    private var weeklyRecapCard: some View {
-        MooniCard(padding: 18, cornerRadius: 24) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Label("7-night recap", systemImage: "calendar.badge.clock")
-                        .font(MooniFont.title(16))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Spacer()
-                    Text("Preview")
-                        .font(MooniFont.caption(11))
-                        .foregroundColor(MooniColor.background)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(MooniColor.accentSoft)
-                        .clipShape(Capsule())
-                }
-
-                Text("Luna has enough nights to spot a weekly pattern. Your next goal is one calmer bedtime window.")
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !subscriptionManager.isPro {
-                    Button {
-                        showPaywall = true
-                    } label: {
-                        Text("Unlock full weekly recap")
-                            .font(MooniFont.caption(13))
-                            .foregroundColor(MooniColor.accentSoft)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    // MARK: - Derived copy
-
-    private func scoreLabel(_ score: Int) -> String {
-        switch score {
-        case 85...: return "Luna woke up cozy."
-        case 70..<85: return "Luna woke up calm."
-        case 60..<70: return "Luna is a little sleepy."
-        default: return "Rough night. Let's recover gently."
-        }
-    }
-
-    private var isHealthConnected: Bool {
-        if case .authorized = healthKit.authState { return true }
-        return false
-    }
-
-    private func connectAppleHealth() {
-        Task {
-            _ = await healthKit.requestAuthorization()
-            await appState.importHealthKitSleep()
-        }
-    }
-
-    private func scoreColor(_ score: Int) -> Color {
-        switch score {
-        case 80...: return MooniColor.success
-        case 60..<80: return MooniColor.warning
-        default: return MooniColor.danger
-        }
-    }
-
-    private func explanation(for entry: SleepEntry) -> String {
-        let bedtimeDiff = minuteDifference(entry.bedtime, appState.targetBedtime)
-        let wakeDiff = minuteDifference(entry.wakeTime, appState.targetWakeTime)
-
-        if entry.score >= 80 {
-            return "Your sleep was close to your goal and your timing stayed steady. That helps Luna keep her rhythm."
-        }
-        if bedtimeDiff > 30 {
-            return "Bedtime was \(formattedMinutes(bedtimeDiff)) away from your target. A gentler wind-down tonight can help."
-        }
-        if wakeDiff > 45 {
-            return "Wake time moved more than usual. Keeping mornings steady helps Luna feel calmer."
-        }
-        return "Duration was the main thing holding this night back. Tonight, aim for a simple recovery night."
-    }
-
-    private var tiredReasonValue: String {
-        guard let entry = appState.lastEntry else { return "More data" }
-        if entry.hours < appState.goalHours { return "Short sleep" }
-        if minuteDifference(entry.bedtime, appState.targetBedtime) > 30 { return "Late bedtime" }
-        return "Light rhythm"
-    }
-
-    private var tiredReasonDetail: String {
-        guard let entry = appState.lastEntry else {
-            return "Track a few nights to identify what affects tired mornings."
-        }
-        if entry.hours < appState.goalHours {
-            return "The night was shorter than your goal, which can make Luna wake up slower."
-        }
-        if minuteDifference(entry.bedtime, appState.targetBedtime) > 30 {
-            return "Your bedtime shifted away from target, which can affect morning energy."
-        }
-        return "No single issue stands out yet. More nights will sharpen this explanation."
-    }
-
-    private var bestWindowValue: String {
-        guard let window = SleepInsights.bestSleepWindow(entries: appState.entries) else {
-            return "Learning"
-        }
-        return "\(window.start.hourMinuteString)-\(window.end.hourMinuteString)"
-    }
-
-    private var recoveryPrediction: Int {
-        SleepInsights.recoveryPrediction(
+    private var recoveryCard: some View {
+        let predicted = SleepInsights.recoveryPrediction(
             entries: appState.entries,
             goalHours: appState.goalHours,
             plannedHours: appState.goalHours
         )
+        return premiumCard(icon: "heart.fill", color: MooniColor.accentSoft,
+                           title: "Recovery prediction",
+                           value: "\(predicted)%",
+                           detail: "If you sleep your goal tonight, \(appState.pet.name) should recover to \(predicted)% energy tomorrow.")
     }
 
-    private var monthlyAverageText: String {
-        guard let average = monthlyAverage() else { return "Learning" }
-        return String(format: "%.1fh", average)
+    private func premiumCard(icon: String, color: Color, title: String,
+                             value: String, detail: String) -> some View {
+        MooniCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: icon)
+                        .foregroundColor(color)
+                        .frame(width: 28, height: 28)
+                        .background(color.opacity(0.16))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    Text(title)
+                        .font(MooniFont.title(14))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Spacer()
+                    Text(value)
+                        .font(MooniFont.title(16))
+                        .foregroundColor(color)
+                }
+                Text(detail)
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+        }
     }
 
-    private func monthlyAverage() -> Double? {
-        let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-        let recent = appState.entries.filter { $0.wakeTime >= cutoff }
-        guard !recent.isEmpty else { return nil }
-        return recent.map(\.hours).reduce(0, +) / Double(recent.count)
+    private var premiumTeaser: some View {
+        Button { showPaywall = true } label: {
+            MooniCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Label("Pro insights", systemImage: "sparkles")
+                            .font(MooniFont.title(15))
+                            .foregroundColor(MooniColor.accent)
+                        Spacer()
+                        Image(systemName: "lock.fill")
+                            .foregroundColor(MooniColor.textMuted)
+                    }
+                    Text("Unlock sleep debt, consistency analysis, your best sleep window, habit correlations, and recovery prediction.")
+                        .font(MooniFont.caption(13))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
-    private func minuteDifference(_ a: Date, _ b: Date) -> Int {
-        let cal = Calendar.current
-        let aComps = cal.dateComponents([.hour, .minute], from: a)
-        let bComps = cal.dateComponents([.hour, .minute], from: b)
-        let aMinutes = (aComps.hour ?? 0) * 60 + (aComps.minute ?? 0)
-        let bMinutes = (bComps.hour ?? 0) * 60 + (bComps.minute ?? 0)
-        let diff = abs(aMinutes - bMinutes)
-        return min(diff, 1440 - diff)
+    private var emptyState: some View {
+        MooniCard {
+            VStack(spacing: 10) {
+                Image(systemName: "moon.zzz")
+                    .font(.system(size: 36))
+                    .foregroundColor(MooniColor.accentSoft)
+                Text("No sleep yet")
+                    .font(MooniFont.title(17))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text("Once you've slept a night, your report will show up here.")
+                    .font(MooniFont.caption(13))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.vertical, 16)
+        }
+    }
+}
+
+private struct ScoreOrbit: View {
+    let score: Int
+    let title: String
+    let color: Color
+
+    private var progress: Double { Double(min(max(score, 0), 100)) / 100 }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.white.opacity(0.08), lineWidth: 8)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(
+                    AngularGradient(colors: [color.opacity(0.55), color, color.opacity(0.85)], center: .center),
+                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 1) {
+                Text("\(score)")
+                    .font(MooniFont.display(22))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text(title)
+                    .font(MooniFont.caption(10))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+        }
+        .frame(width: 76, height: 76)
+    }
+}
+
+private struct EnergyMeter: View {
+    let label: String
+    let score: Int
+
+    private var progress: Double { Double(min(max(score, 0), 100)) / 100 }
+    private var color: Color {
+        switch score {
+        case 85...: return MooniColor.success
+        case 70..<85: return MooniColor.accent
+        case 50..<70: return MooniColor.warning
+        default: return MooniColor.danger
+        }
     }
 
-    private func formattedMinutes(_ minutes: Int) -> String {
-        if minutes < 60 { return "\(minutes) minutes" }
-        let hours = minutes / 60
-        let remainder = minutes % 60
-        return remainder == 0 ? "\(hours) hour\(hours == 1 ? "" : "s")" : "\(hours)h \(remainder)m"
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(color)
+                Text(label)
+                    .font(MooniFont.title(13))
+                    .foregroundColor(MooniColor.textPrimary)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.09))
+                    Capsule()
+                        .fill(LinearGradient(colors: [color.opacity(0.65), color],
+                                             startPoint: .leading, endPoint: .trailing))
+                        .frame(width: geo.size.width * CGFloat(progress))
+                }
+            }
+            .frame(height: 8)
+        }
     }
+}
 
-    private var lockedInsightCards: [LockedInsightCard] {
+private struct SleepStageTimeline: View {
+    let stages: SleepStagesEstimate
+
+    private var segments: [(name: String, duration: TimeInterval, color: Color, height: CGFloat)] {
         [
-            .init(
-                icon: "moon.zzz.fill",
-                title: "Sleep debt",
-                subtitle: "See how much recovery Luna may need this week.",
-                actionTitle: "Unlock recovery depth"
-            ),
-            .init(
-                icon: "face.dashed.fill",
-                title: "Why you woke up tired",
-                subtitle: "Connect timing, duration, and routine patterns.",
-                actionTitle: "Find the pattern"
-            ),
-            .init(
-                icon: "target",
-                title: "Best sleep window",
-                subtitle: "Discover when your strongest nights usually begin.",
-                actionTitle: "Reveal your window"
-            ),
-            .init(
-                icon: "calendar.badge.clock",
-                title: "Consistency analysis",
-                subtitle: "Understand what protects Luna's rhythm.",
-                actionTitle: "Analyze rhythm"
-            ),
-            .init(
-                icon: "heart.fill",
-                title: "Recovery prediction",
-                subtitle: "Preview how tonight could help after a rough night.",
-                actionTitle: "Plan recovery"
-            ),
-            .init(
-                icon: "chart.line.uptrend.xyaxis",
-                title: "Long-term trends",
-                subtitle: "Watch sleep improve across weeks and seasons.",
-                actionTitle: "See the bigger picture"
-            )
+            ("Deep", stages.deepSleep, MooniColor.success, 24),
+            ("Light", stages.lightSleep, MooniColor.accentSoft, 36),
+            ("REM", stages.remSleep, MooniColor.accent, 50),
+            ("Awake", stages.awakeTime, MooniColor.warning, 18)
+        ].filter { $0.duration > 0 }
+    }
+
+    private var total: TimeInterval {
+        max(segments.reduce(0) { $0 + $1.duration }, 1)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            HStack(alignment: .bottom, spacing: 3) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(LinearGradient(colors: [segment.color.opacity(0.68), segment.color],
+                                             startPoint: .top, endPoint: .bottom))
+                        .frame(
+                            width: max(12, geo.size.width * CGFloat(segment.duration / total) - 3),
+                            height: segment.height
+                        )
+                        .overlay(alignment: .bottom) {
+                            if segment.duration / total > 0.16 {
+                                Text(segment.name)
+                                    .font(MooniFont.caption(9))
+                                    .foregroundColor(MooniColor.background.opacity(0.85))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                    .padding(.bottom, 5)
+                            }
+                        }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        }
+        .frame(height: 58)
+        .padding(.horizontal, 2)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct StageLegend: View {
+    private let items: [(String, Color)] = [
+        ("Deep", MooniColor.success),
+        ("Light", MooniColor.accentSoft),
+        ("REM", MooniColor.accent),
+        ("Awake", MooniColor.warning)
+    ]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(items, id: \.0) { title, color in
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 7, height: 7)
+                    Text(title)
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+}
+
+private struct SleepStackBar: View {
+    let stages: SleepStagesEstimate
+    let maxHeight: CGFloat
+
+    private var segments: [(duration: TimeInterval, color: Color)] {
+        [
+            (stages.deepSleep, MooniColor.success),
+            (stages.lightSleep, MooniColor.accentSoft),
+            (stages.remSleep, MooniColor.accent),
+            (stages.awakeTime, MooniColor.warning)
+        ].filter { $0.duration > 0 }
+    }
+
+    private var total: TimeInterval {
+        max(segments.reduce(0) { $0 + $1.duration }, 1)
+    }
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(segment.color)
+                    .frame(height: max(5, maxHeight * CGFloat(segment.duration / total)))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: max(24, maxHeight), alignment: .bottom)
+    }
+}
+
+private struct StageProgressGrid: View {
+    let stages: SleepStagesEstimate
+    let totalSleep: TimeInterval
+
+    private var stageItems: [(title: String, duration: TimeInterval, color: Color)] {
+        [
+            ("REM", stages.remSleep, MooniColor.accent),
+            ("Deep", stages.deepSleep, MooniColor.success),
+            ("Light", stages.lightSleep, MooniColor.accentSoft),
+            ("Awake", stages.awakeTime, MooniColor.warning)
         ]
     }
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            ForEach(stageItems, id: \.title) { item in
+                StageProgressTile(
+                    title: item.title,
+                    duration: item.duration,
+                    progress: item.duration / max(totalSleep, 1),
+                    color: item.color
+                )
+            }
+        }
+    }
 }
 
-private struct LockedInsightCard: Identifiable {
-    let id = UUID()
-    let icon: String
+private struct StageProgressTile: View {
     let title: String
-    let subtitle: String
-    let actionTitle: String
+    let duration: TimeInterval
+    let progress: Double
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                MiniProgressCircle(progress: progress, color: color)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(MooniFont.title(13))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text(duration.stageDurationString)
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.textSecondary)
+                }
+                Spacer(minLength: 0)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule()
+                        .fill(color)
+                        .frame(width: geo.size.width * CGFloat(min(max(progress, 0), 1)))
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.055))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
 }
 
+private struct MiniProgressCircle: View {
+    let progress: Double
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.white.opacity(0.08), lineWidth: 5)
+            Circle()
+                .trim(from: 0, to: min(max(progress, 0), 1))
+                .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 34, height: 34)
+    }
+}
+
+private struct MeterRow: View {
+    let title: String
+    let value: String
+    let progress: Double
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(title)
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textSecondary)
+                Spacer()
+                Text(value)
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textPrimary)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule()
+                        .fill(LinearGradient(colors: [color.opacity(0.65), color],
+                                             startPoint: .leading, endPoint: .trailing))
+                        .frame(width: geo.size.width * CGFloat(min(max(progress, 0), 1)))
+                }
+            }
+            .frame(height: 9)
+        }
+    }
+}
+
+// MARK: - Date helpers used here
 private extension Date {
     var weekdayShort: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE"
-        return formatter.string(from: self)
+        let f = DateFormatter()
+        f.dateFormat = "EEE"
+        return f.string(from: self)
     }
-
     var shortDateString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        return formatter.string(from: self)
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f.string(from: self)
+    }
+}
+
+private extension TimeInterval {
+    var stageDurationString: String {
+        let totalMinutes = max(0, Int((self / 60).rounded()))
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        if hours == 0 { return "\(minutes)m" }
+        return minutes == 0 ? "\(hours)h" : "\(hours)h \(minutes)m"
     }
 }
 
