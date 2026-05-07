@@ -209,8 +209,8 @@ struct MorningCheckInView: View {
                             wakeTime: wakeTime,
                             quality: quality,
                             mood: mood,
-                            notes: "",
-                            routineCompleted: appState.routine.isFullyCompleted
+                            notes: phoneAway == true ? "📵 Phone away" : "",
+                            routineCompleted: phoneAway == true
                         )
                         savedEntry = entry
                         withAnimation { step = .summary }

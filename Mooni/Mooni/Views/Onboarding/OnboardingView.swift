@@ -137,7 +137,7 @@ struct OnboardingView: View {
 
                     ScrollView(showsIndicators: false) {
                         content
-                            .padding(.top, 36)          // breathing room from progress bar
+                            .padding(.top, 16)
                             .frame(maxWidth: .infinity)
                             .id(step)
                             .transition(transition)
@@ -327,7 +327,10 @@ struct OnboardingView: View {
                 }
             case .healthPerm:
                 VStack(spacing: 10) {
-                    PrimaryButton(title: "Connect Apple Health", icon: "heart.text.square.fill") {
+                    PrimaryButton(
+                        title: health.authState == .authorized ? "Continue" : "Connect Apple Health",
+                        icon: health.authState == .authorized ? "checkmark.seal.fill" : "heart.text.square.fill"
+                    ) {
                         Task {
                             if health.authState == .notDetermined && health.isAvailable {
                                 _ = await health.requestAuthorization()
@@ -338,7 +341,9 @@ struct OnboardingView: View {
                             advance()
                         }
                     }
-                    SecondaryButton(title: "I'll add sleep manually") { advance() }
+                    if health.authState != .authorized {
+                        SecondaryButton(title: "I'll add sleep manually") { advance() }
+                    }
                 }
             case .analyzingAnswers, .generatingPlan, .prePaywall:
                 EmptyView()
@@ -1325,7 +1330,7 @@ private struct StruggleDurationScreen: View {
         case .fewMonths: return "calendar.badge.clock"
         case .oneYear: return "hourglass"
         case .severalYears: return "infinity"
-        case .asLongAsRemember: return "questionmark.circle.fill"
+        case .asLongAsRemember: return "clock.arrow.circlepath"
         }
     }
 }
@@ -2558,95 +2563,73 @@ private struct GeneratingPlanScreen: View {
 // MARK: - Screen: Social proof
 
 private struct SocialProofScreen: View {
-    @State private var index: Int = 0
-    private let timer = Timer.publish(every: 2.6, on: .main, in: .common).autoconnect()
-
     private struct Review {
         let text: String
         let author: String
-        let stat: String
     }
     private let reviews: [Review] = [
         Review(text: "I haven't woken up tired in 3 weeks. The pet thing actually worked on me.",
-               author: "Sarah, 28", stat: "+38% energy"),
-        Review(text: "Stopped scrolling in bed because I didn't want my fox to be sad. Wild.",
-               author: "Marco, 34", stat: "1.2 hrs more sleep"),
+               author: "Sarah, 28"),
+        Review(text: "Stopped scrolling in bed because I didn't want my fox to be sad.",
+               author: "Marco, 34"),
         Review(text: "First app that actually fixed my schedule. Tiny daily wins compound.",
-               author: "Priya, 41", stat: "14-day streak"),
-        Review(text: "I sleep when my pet sleeps. It rewired me in a week.",
-               author: "Jake, 22", stat: "Score: 86 / 100")
+               author: "Priya, 41")
     ]
 
     var body: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 6) {
-                HStack(spacing: 4) {
-                    ForEach(0..<5) { _ in
-                        Image(systemName: "star.fill").foregroundColor(MooniColor.warning)
+        VStack(spacing: 14) {
+            VStack(spacing: 4) {
+                HStack(spacing: 3) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(MooniColor.warning)
                     }
+                    Text("4.9")
+                        .font(MooniFont.title(13))
+                        .foregroundColor(MooniColor.warning)
+                        .padding(.leading, 4)
                 }
-                Text("Loved by 2.4 million sleepers")
+                Text("Loved by sleepers like you")
                     .font(MooniFont.display(22))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("4.9 average rating. Real people, real change.")
-                    .font(MooniFont.body(13))
-                    .foregroundColor(MooniColor.textSecondary)
             }
-            .padding(.top, 8)
+            .padding(.top, 4)
 
-            ZStack {
+            VStack(spacing: 10) {
                 ForEach(reviews.indices, id: \.self) { i in
-                    if i == index {
-                        reviewCard(reviews[i])
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.95)),
-                                removal: .opacity.combined(with: .scale(scale: 1.05))))
-                    }
+                    reviewCard(reviews[i])
                 }
             }
-            .frame(minHeight: 200)
-            .animation(.easeInOut(duration: 0.45), value: index)
-            .padding(.horizontal, 24)
-
-            HStack(spacing: 6) {
-                ForEach(reviews.indices, id: \.self) { i in
-                    Capsule()
-                        .fill(i == index ? MooniColor.accent : Color.white.opacity(0.20))
-                        .frame(width: i == index ? 22 : 8, height: 4)
-                        .animation(.spring(response: 0.4), value: index)
-                }
-            }
-        }
-        .onReceive(timer) { _ in
-            withAnimation { index = (index + 1) % reviews.count }
+            .padding(.horizontal, 16)
         }
     }
 
     private func reviewCard(_ review: Review) -> some View {
-        VStack(spacing: 14) {
-            Text("\u{201C}\(review.text)\u{201D}")
-                .font(MooniFont.body(15))
-                .foregroundColor(MooniColor.textPrimary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 16)
-            HStack(spacing: 10) {
-                Text(review.author)
-                    .font(MooniFont.caption(13))
-                    .foregroundColor(MooniColor.textSecondary)
-                Text("·").foregroundColor(MooniColor.textMuted)
-                Text(review.stat)
-                    .font(MooniFont.caption(13))
-                    .foregroundColor(MooniColor.success)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 3) {
+                ForEach(0..<5, id: \.self) { _ in
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(MooniColor.warning)
+                }
             }
+            Text("\u{201C}\(review.text)\u{201D}")
+                .font(MooniFont.body(14))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.leading)
+            Text("— \(review.author)")
+                .font(MooniFont.caption(12))
+                .foregroundColor(MooniColor.textSecondary)
         }
-        .padding(20)
-        .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
     }
 }

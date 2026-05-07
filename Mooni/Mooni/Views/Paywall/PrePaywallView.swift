@@ -100,10 +100,41 @@ struct PrePaywallView: View {
     private var phaseProgressBar: some View {
         HStack(spacing: 6) {
             ForEach(Phase.allCases, id: \.rawValue) { p in
-                Capsule()
-                    .fill(p.rawValue <= phase.rawValue ? Color.white : Color.white.opacity(0.25))
-                    .frame(height: 4)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.25))
+                        Capsule()
+                            .fill(Color.white)
+                            .frame(width: geo.size.width * progressFraction(for: p))
+                            .animation(.spring(response: 0.4), value: phase)
+                            .animation(.spring(response: 0.4), value: subStage)
+                            .animation(.spring(response: 0.4), value: revealedTransformations)
+                    }
+                }
+                .frame(height: 4)
             }
+        }
+    }
+
+    /// 0…1 fill for a single phase pill, taking sub-stage progress into account
+    /// so the bar inches forward on every tap rather than jumping once per phase.
+    private func progressFraction(for p: Phase) -> CGFloat {
+        if p.rawValue < phase.rawValue { return 1 }
+        if p.rawValue > phase.rawValue { return 0 }
+        switch phase {
+        case .badSleep:      return CGFloat(subStage + 1) / 3
+        case .goodSleep:     return CGFloat(subStage + 1) / 3
+        case .yesLadder:     return CGFloat(subStage + 1) / CGFloat(Self.yesLadderCount)
+        case .signature:
+            let typed = typedCommitment.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let typedDone: CGFloat = typed == "i am committed" ? 0.5 : CGFloat(min(typed.count, 14)) / 14 * 0.5
+            let signed: CGFloat   = signatureStrokes.isEmpty ? 0 : 0.5
+            return min(typedDone + signed, 1)
+        case .transformAnim: return 0.5
+        case .transformList:
+            let total = TransformListStage.items.count
+            return total == 0 ? 1 : CGFloat(revealedTransformations) / CGFloat(total)
+        case .commitment:    return 1
         }
     }
 
@@ -886,13 +917,13 @@ private struct TransformListStage: View {
         ("bolt.fill",                MooniColor.warning, "+92% daily energy"),
         ("brain.head.profile",       MooniColor.accent,  "Sharper focus & memory"),
         ("heart.fill",               .pink,              "Lower heart strain"),
-        ("flame.fill",               MooniColor.danger,  "Less weight gain"),
+        ("flame.fill",               MooniColor.danger,  "Easier weight control"),
         ("face.smiling.fill",        MooniColor.accent,  "Brighter, less puffy face"),
         ("waveform.path.ecg",        MooniColor.success, "Lower cortisol"),
         ("shield.fill",              MooniColor.accent,  "Stronger immune system"),
         ("dollarsign.circle.fill",   MooniColor.success, "Better money decisions"),
         ("figure.run",               MooniColor.warning, "Faster fitness recovery"),
-        ("staroflife.fill",          .pink,              "Lower long-term disease risk")
+        ("staroflife.fill",          .pink,              "Lower disease risk")
     ]
 
     private let timer = Timer.publish(every: 0.55, on: .main, in: .common).autoconnect()
@@ -913,24 +944,26 @@ private struct TransformListStage: View {
 
             VStack(spacing: 8) {
                 ForEach(Array(Self.items.enumerated()), id: \.offset) { idx, item in
-                    HStack(spacing: 14) {
+                    HStack(spacing: 12) {
                         Image(systemName: item.icon)
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(item.color)
-                            .frame(width: 36, height: 36)
+                            .frame(width: 32, height: 32)
                             .background(item.color.opacity(0.16))
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                         Text(item.text)
-                            .font(MooniFont.title(14))
+                            .font(MooniFont.title(13))
                             .foregroundColor(MooniColor.textPrimary)
-                        Spacer()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         Image(systemName: "checkmark")
                             .foregroundColor(MooniColor.success)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 11, weight: .bold))
                             .opacity(idx < revealed ? 1 : 0)
                     }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
                     .background(Color.white.opacity(0.07))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .opacity(idx < revealed ? 1 : 0)

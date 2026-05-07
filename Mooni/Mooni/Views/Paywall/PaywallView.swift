@@ -92,35 +92,35 @@ struct PaywallView: View {
                 .padding(.top, 16)
 
                 // Hero spirit
-                DreamSpiritView(pet: heroPet, size: 160)
-                    .padding(.top, 4)
+                DreamSpiritView(pet: heroPet, size: 120)
+                    .padding(.top, 0)
                     .scaleEffect(animateIn ? 1.0 : 0.85)
                     .opacity(animateIn ? 1 : 0)
                     .animation(.spring(response: 0.6, dampingFraction: 0.7), value: animateIn)
 
                 // Title
-                VStack(spacing: 8) {
+                VStack(spacing: 4) {
                     HStack(spacing: 6) {
                         Image(systemName: "sparkles")
                             .foregroundColor(MooniColor.warning)
                         Text("Mooni Pro")
-                            .font(MooniFont.display(32))
+                            .font(MooniFont.display(28))
                             .foregroundColor(MooniColor.textPrimary)
                         Image(systemName: "sparkles")
                             .foregroundColor(MooniColor.warning)
                     }
                     Text("Sleep better. Grow stronger.")
-                        .font(MooniFont.body(17))
+                        .font(MooniFont.body(15))
                         .foregroundColor(MooniColor.textSecondary)
                 }
-                .padding(.top, 8)
+                .padding(.top, 4)
                 .offset(y: animateIn ? 0 : 12)
                 .opacity(animateIn ? 1 : 0)
                 .animation(.easeOut(duration: 0.5).delay(0.15), value: animateIn)
 
                 // Features
                 featuresSection
-                    .padding(.top, 24)
+                    .padding(.top, 16)
                     .padding(.horizontal, 20)
                     .offset(y: animateIn ? 0 : 16)
                     .opacity(animateIn ? 1 : 0)
@@ -128,7 +128,7 @@ struct PaywallView: View {
 
                 // Plan picker
                 planPicker
-                    .padding(.top, 20)
+                    .padding(.top, 14)
                     .padding(.horizontal, 20)
                     .offset(y: animateIn ? 0 : 16)
                     .opacity(animateIn ? 1 : 0)
@@ -141,18 +141,18 @@ struct PaywallView: View {
                         .foregroundColor(MooniColor.danger)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
-                        .padding(.top, 10)
+                        .padding(.top, 8)
                 }
 
                 // Purchase CTA
                 purchaseButton
-                    .padding(.top, 20)
+                    .padding(.top, 14)
                     .padding(.horizontal, 20)
 
                 // Footer links
                 footerLinks
-                    .padding(.top, 14)
-                    .padding(.bottom, 32)
+                    .padding(.top, 10)
+                    .padding(.bottom, 20)
             }
         }
         .onAppear {
@@ -171,46 +171,47 @@ struct PaywallView: View {
     // MARK: - Features
 
     private var featuresSection: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             proFeatureRow(icon: "chart.bar.fill", color: MooniColor.accent,
                           title: "Full Sleep History",
-                          detail: "Unlimited logs with trends & insights")
+                          detail: "Unlimited logs with trends")
             proFeatureRow(icon: "sparkles", color: MooniColor.warning,
                           title: "Exclusive Spirit Items",
-                          detail: "Unlock all hats, colors & backgrounds")
+                          detail: "All hats, colors & backgrounds")
             proFeatureRow(icon: "waveform.path.ecg", color: MooniColor.success,
                           title: "Advanced Analytics",
-                          detail: "Sleep score breakdowns & patterns")
+                          detail: "Sleep score breakdowns")
             proFeatureRow(icon: "checklist", color: MooniColor.accentSoft,
-                          title: "Unlimited Routine Habits",
-                          detail: "Customize your perfect wind-down")
+                          title: "Unlimited Habits",
+                          detail: "Customize your wind-down")
         }
     }
 
     private func proFeatureRow(icon: String, color: Color, title: String, detail: String) -> some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(color)
-                .frame(width: 36, height: 36)
+                .frame(width: 32, height: 32)
                 .background(color.opacity(0.16))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(MooniFont.title(14))
+                    .font(MooniFont.title(13))
                     .foregroundColor(MooniColor.textPrimary)
                 Text(detail)
-                    .font(MooniFont.caption(12))
+                    .font(MooniFont.caption(11))
                     .foregroundColor(MooniColor.textSecondary)
             }
             Spacer()
             Image(systemName: "checkmark")
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 11, weight: .bold))
                 .foregroundColor(MooniColor.success)
         }
-        .padding(14)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
         .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: - Plan Picker
@@ -342,7 +343,7 @@ struct PaywallView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 56)
+            .frame(height: 52)
             .background(
                 LinearGradient(
                     colors: [MooniColor.accentSoft, MooniColor.accent],
@@ -350,8 +351,8 @@ struct PaywallView: View {
                     endPoint: .trailing
                 )
             )
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .shadow(color: MooniColor.accent.opacity(0.5), radius: 16, y: 6)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: MooniColor.accent.opacity(0.5), radius: 14, y: 5)
         }
         .buttonStyle(.plain)
         .disabled(manager.isLoading || selectedPackage == nil)
