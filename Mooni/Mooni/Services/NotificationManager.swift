@@ -15,9 +15,11 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
     @Published private(set) var authState: AuthState = .notDetermined
 
     /// Identifier prefix for "are you awake?" probe notifications.
-    private static let wakeProbePrefix = "mooni.wakeProbe."
+    /// `nonisolated` so the UNUserNotificationCenterDelegate callbacks
+    /// (which are non-isolated) can read it without an actor hop.
+    nonisolated static let wakeProbePrefix = "mooni.wakeProbe."
     /// Action ID for the "I'm awake" tap on a wake-probe notification.
-    private static let wakeProbeAction = "mooni.wakeProbe.iAmAwake"
+    nonisolated static let wakeProbeAction = "mooni.wakeProbe.iAmAwake"
 
     /// Posted when the user confirms they're awake — either via a probe
     /// notification or by tapping wake on the sleep-lock overlay.
@@ -166,7 +168,7 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
             let fireTS = userInfo["fireDate"] as? TimeInterval
             let tapTime = fireTS.map { Date(timeIntervalSince1970: $0) } ?? Date()
             Task { @MainActor in
-                self.recordWakeConfirmation(at: tapTime)
+                NotificationManager.shared.recordWakeConfirmation(at: tapTime)
             }
         }
         completionHandler()

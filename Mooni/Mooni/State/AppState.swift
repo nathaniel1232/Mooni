@@ -178,12 +178,16 @@ final class AppState: ObservableObject {
         evaluateMorningPrompt()
 
         // Wake-probe notification taps push us into the morning check-in.
+        // Capture self weakly in BOTH the outer observer block and the
+        // inner Task so Swift 6 strict concurrency doesn't flag the hop.
         NotificationCenter.default.addObserver(
             forName: NotificationManager.didConfirmWakeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.handleConfirmedWake() }
+            Task { @MainActor [weak self] in
+                self?.handleConfirmedWake()
+            }
         }
     }
 
@@ -278,7 +282,7 @@ final class AppState: ObservableObject {
     // MARK: - Onboarding
     func completeOnboarding(name: String, goalHours: Double, bedtime: Date, wakeTime: Date) {
         var newPet = pet
-        newPet.name = name.isEmpty ? "Luna" : name
+        newPet.name = name.isEmpty ? "Mooni" : name
         self.pet = newPet
         self.goalHours = goalHours
         self.targetBedtime = bedtime
@@ -761,7 +765,7 @@ extension AppState {
         let s = AppState()
         s.hasCompletedOnboarding = true
         var p = s.pet
-        p.name = "Luna"
+        p.name = "Mooni"
         p.level = 4
         p.dreamEnergy = 240
         p.lastSleepScore = 84

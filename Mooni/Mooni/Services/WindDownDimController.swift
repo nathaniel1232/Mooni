@@ -26,14 +26,17 @@ final class WindDownDimController: ObservableObject {
 
     private init() {
         // Re-apply the dim if user backgrounds and returns while in wind-down.
+        // Hop into a MainActor Task and reach the singleton directly to
+        // avoid Swift 6 captured-self diagnostics.
         phaseObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { _ in
             Task { @MainActor in
-                guard let self, self.isActive else { return }
-                self.applyDim()
+                let c = WindDownDimController.shared
+                guard c.isActive else { return }
+                c.applyDim()
             }
         }
         // Restore brightness when leaving so we don't dim other apps.
@@ -41,9 +44,9 @@ final class WindDownDimController: ObservableObject {
             forName: UIApplication.willResignActiveNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { _ in
             Task { @MainActor in
-                self?.restoreBrightness()
+                WindDownDimController.shared.restoreBrightness()
             }
         }
     }
@@ -67,16 +70,27 @@ final class WindDownDimController: ObservableObject {
         restoreBrightness()
     }
 
-    private func applyDim() {
-        if savedBrightness == nil {
-            savedBrightness = UIScreen.main.brightness
-        }
-        UIScreen.main.brightness = dimmedBrightness
+    /// The active screen via the connected window scene — required by
+    /// iOS 26+, which deprecated `UIScreen.main`. Returns nil if no
+    /// foreground scene exists yet (we simply skip the brightness call).
+    private var activeScreen: UIScreen? {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.screen
     }
 
-    private func restoreBrightness() {
+    fileprivate func applyDim() {
+        guard let screen = activeScreen else { return }
+        if savedBrightness == nil {
+            savedBrightness = screen.brightness
+        }
+        screen.brightness = dimmedBrightness
+    }
+
+    fileprivate func restoreBrightness() {
+        guard let screen = activeScreen else { return }
         if let saved = savedBrightness {
-            UIScreen.main.brightness = saved
+            screen.brightness = saved
             savedBrightness = nil
         }
     }

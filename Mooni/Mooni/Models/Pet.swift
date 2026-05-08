@@ -117,7 +117,7 @@ struct Pet: Codable {
     }
 
     // MARK: - Stored
-    var name: String = "Luna"
+    var name: String = "Mooni"
     var species: PetSpecies = .owl
     var room: PetRoom = .moonBedroom
     var stage: EvolutionStage = .baby

@@ -29,9 +29,18 @@ struct HomeView: View {
                     header
                         .padding(.top, 8)
 
+                    if let event = morningBriefing?.rareEvent {
+                        RareEventBanner(event: event)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
                     heroSection
 
                     mainCard
+
+                    if let achievement = morningBriefing?.achievement {
+                        AchievementChip(achievement: achievement)
+                    }
 
                     stateSupportCards
 
@@ -87,6 +96,25 @@ struct HomeView: View {
         return entry.score < 60 ? .recovery(entry) : .morning(entry)
     }
 
+    /// Generated daily briefing — only available in morning/recovery
+    /// modes. All hero copy, cards, achievements, and rare events
+    /// flow from this so the home screen feels different every morning.
+    private var morningBriefing: HomeIntelligence.Briefing? {
+        switch mode {
+        case .morning(let entry), .recovery(let entry):
+            return HomeIntelligence.briefing(
+                for: entry,
+                all: appState.entries,
+                targetBedtime: appState.targetBedtime,
+                targetWakeTime: appState.targetWakeTime,
+                goalHours: appState.goalHours,
+                petName: appState.pet.name
+            )
+        default:
+            return nil
+        }
+    }
+
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 6) {
@@ -121,11 +149,13 @@ struct HomeView: View {
 
     private var heroSection: some View {
         VStack(spacing: 12) {
-            LunaMoodHero(
+            if let briefing = morningBriefing {
+                DailyAuraBadge(aura: briefing.aura, deck: briefing.auraDeck)
+            }
+            InteractiveLunaHero(
                 pet: appState.pet,
                 mood: heroMood,
-                size: 218,
-                caption: nil
+                size: 218
             )
             LunaSpeechBubble(text: lunaSpeech)
                 .padding(.horizontal, 12)
@@ -153,7 +183,7 @@ struct HomeView: View {
                     Text("Tonight's mission")
                         .font(MooniFont.title(20))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text("Help Luna get cozy before \(appState.targetBedtime.hourMinuteString).")
+                    Text("Help \(appState.pet.name) get cozy before \(appState.targetBedtime.hourMinuteString).")
                         .font(MooniFont.body(14))
                         .foregroundColor(MooniColor.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -193,7 +223,7 @@ struct HomeView: View {
                         Text("Tonight's mission")
                             .font(MooniFont.title(20))
                             .foregroundColor(MooniColor.textPrimary)
-                        Text("Help Luna get cozy before sleep.")
+                        Text("Help \(appState.pet.name) get cozy before sleep.")
                             .font(MooniFont.caption(12))
                             .foregroundColor(MooniColor.textSecondary)
                     }
@@ -229,37 +259,28 @@ struct HomeView: View {
     }
 
     private func morningResultCard(_ entry: SleepEntry) -> some View {
-        MooniCard {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .center, spacing: 16) {
-                    SleepScoreRing(score: entry.score, size: 88, lineWidth: 9)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Last night")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textSecondary)
-                        Text(entry.formattedDuration)
-                            .font(MooniFont.display(28))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Text("\(entry.bedtime.hourMinuteString) to \(entry.wakeTime.hourMinuteString)")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textMuted)
+        VStack(spacing: 16) {
+            if let briefing = morningBriefing {
+                MooniCard(padding: 18, cornerRadius: 24) {
+                    HStack(alignment: .center, spacing: 16) {
+                        SleepScoreRing(score: entry.score, size: 84, lineWidth: 9)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 10) {
+                                miniStat(icon: "moon.zzz.fill",
+                                         value: entry.formattedDuration,
+                                         label: "Slept")
+                                miniStat(icon: "bed.double.fill",
+                                         value: entry.bedtime.hourMinuteString,
+                                         label: "Bed")
+                                miniStat(icon: "sunrise.fill",
+                                         value: entry.wakeTime.hourMinuteString,
+                                         label: "Up")
+                            }
+                        }
                     }
-                    Spacer()
                 }
 
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    MooniStatPill(icon: "moon.zzz.fill", value: entry.formattedDuration, label: "Sleep duration")
-                    MooniStatPill(icon: "gauge.with.dots.needle.67percent", value: "\(entry.score)", label: "Sleep score", color: scoreColor(entry.score))
-                    MooniStatPill(icon: "bed.double.fill", value: bedtimeConsistencyLabel(for: entry), label: "Bedtime rhythm", color: MooniColor.success)
-                    MooniStatPill(icon: "sunrise.fill", value: wakeConsistencyLabel(for: entry), label: "Wake rhythm", color: MooniColor.warning)
-                }
-
-                MooniInfoRow(
-                    icon: "sparkles",
-                    title: "Quest reward",
-                    value: entry.routineCompleted ? "+20 dream stars" : "+0 dream stars",
-                    color: MooniColor.warning
-                )
+                MorningCardCarousel(cards: briefing.cards)
 
                 PrimaryButton(title: "See why", icon: "text.magnifyingglass") {
                     showWhy = true
@@ -268,26 +289,47 @@ struct HomeView: View {
         }
     }
 
+    private func miniStat(icon: String, value: String, label: String) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(MooniColor.accentSoft)
+            Text(value)
+                .font(MooniFont.title(14))
+                .foregroundColor(MooniColor.textPrimary)
+            Text(label)
+                .font(MooniFont.caption(10))
+                .foregroundColor(MooniColor.textMuted)
+                .textCase(.uppercase)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
     private func recoveryCard(_ entry: SleepEntry) -> some View {
-        MooniCard {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Recovery plan")
-                    .font(MooniFont.title(18))
-                    .foregroundColor(MooniColor.textPrimary)
+        VStack(spacing: 16) {
+            // Same dopamine layout, but with a recovery footer button.
+            morningResultCard(entry)
 
-                Text("Small steps still help Luna. Tonight, keep it simple and gentle.")
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            MooniCard(padding: 16, cornerRadius: 22) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "heart.fill")
+                            .foregroundColor(MooniColor.danger)
+                        Text("Tonight: gentle recovery")
+                            .font(MooniFont.title(15))
+                            .foregroundColor(MooniColor.textPrimary)
+                    }
+                    Text("Earlier wind-down at \(recoveryWindDownTime.hourMinuteString) and a 2-minute breathing reset.")
+                        .font(MooniFont.body(13))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                VStack(spacing: 10) {
-                    MooniInfoRow(icon: "moon.zzz.fill", title: "Earlier wind-down", value: recoveryWindDownTime.hourMinuteString, color: MooniColor.success)
-                    MooniInfoRow(icon: "wind", title: "Calming breathing", value: "2 minutes", color: MooniColor.accent)
-                    MooniInfoRow(icon: "sunrise.fill", title: "Simple wake target", value: appState.targetWakeTime.hourMinuteString, color: MooniColor.warning)
-                }
-
-                PrimaryButton(title: "Start recovery night", icon: "heart.fill") {
-                    showRecoveryPlan = true
+                    SecondaryButton(title: "Open recovery plan", icon: "heart.fill") {
+                        showRecoveryPlan = true
+                    }
                 }
             }
         }
@@ -315,7 +357,7 @@ struct HomeView: View {
                     Text("Tomorrow morning")
                         .font(MooniFont.title(18))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text("Luna will wake up based on your sleep.")
+                    Text("\(appState.pet.name) will wake up based on your sleep.")
                         .font(MooniFont.body(14))
                         .foregroundColor(MooniColor.textSecondary)
                 }
@@ -338,7 +380,7 @@ struct HomeView: View {
                     .background(MooniColor.warning.opacity(0.14))
                     .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
 
-                Text("Tomorrow Luna wakes up with you based on tonight's sleep.")
+                Text("Tomorrow \(appState.pet.name) wakes up with you based on tonight's sleep.")
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -369,12 +411,7 @@ struct HomeView: View {
 
     @ViewBuilder
     private var insightPreview: some View {
-        switch mode {
-        case .firstNight:
-            EmptyView()
-        case .evening:
-            EmptyView()
-        case .morning(let entry), .recovery(let entry):
+        if let briefing = morningBriefing {
             MooniCard(padding: 16, cornerRadius: 24) {
                 HStack(spacing: 12) {
                     Image(systemName: "lightbulb.fill")
@@ -383,14 +420,23 @@ struct HomeView: View {
                         .background(MooniColor.warning.opacity(0.14))
                         .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
 
-                    Text(insightText(for: entry))
-                        .font(MooniFont.body(14))
-                        .foregroundColor(MooniColor.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Why you feel this way")
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(MooniColor.warning)
+                            .textCase(.uppercase)
+                            .tracking(0.5)
+                        Text(briefing.whyLine)
+                            .font(MooniFont.body(14))
+                            .foregroundColor(MooniColor.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     Spacer()
                 }
             }
+        } else {
+            EmptyView()
         }
     }
 
@@ -398,7 +444,7 @@ struct HomeView: View {
         MooniCard(padding: 16, cornerRadius: 24) {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Next: Luna becomes \(nextStageName)")
+                    Text("Next: \(appState.pet.name) becomes \(nextStageName)")
                         .font(MooniFont.title(18))
                         .foregroundColor(MooniColor.textPrimary)
                     Text(growthCopy)
@@ -436,7 +482,7 @@ struct HomeView: View {
                         .foregroundColor(MooniColor.accentSoft)
                 }
 
-                Text("Luna is learning your rhythm. Your next goal is one calmer bedtime window this week.")
+                Text("\(appState.pet.name) is learning your rhythm. Your next goal is one calmer bedtime window this week.")
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -458,30 +504,34 @@ struct HomeView: View {
     // MARK: - Copy
 
     private var title: String {
+        if let briefing = morningBriefing {
+            return briefing.heroLine
+        }
         switch mode {
         case .firstNight:
-            return "Tonight is Luna's first night"
+            return "Tonight is \(appState.pet.name)'s first night"
         case .evening:
-            return "Luna is getting sleepy"
-        case .morning(let entry):
-            return "Luna woke up \(moodWord(for: entry.score))"
-        case .recovery:
-            return "Luna had a rough night"
+            return "\(appState.pet.name) is getting sleepy"
+        case .morning, .recovery:
+            return "\(appState.pet.name) woke up"
         }
     }
 
     private var subtitle: String {
+        if let briefing = morningBriefing {
+            return briefing.heroSubline
+        }
         switch mode {
         case .firstNight:
-            return "Help her settle in and wake up together tomorrow."
+            return "Help \(appState.pet.name) settle in and wake up together tomorrow."
         case .evening:
-            return "Start wind-down by \(windDownTime.hourMinuteString) to help her rest."
-        case .morning(let entry):
-            if entry.score >= 85 { return "Your rhythm gave her a bright, cozy morning." }
-            if entry.score >= 70 { return "A steady night helped her wake up calmly." }
-            return "She is a little sleepy, but tonight is a fresh start."
-        case .recovery:
-            return "Let's help her recover gently tonight."
+            return HomeIntelligence.eveningAnticipation(
+                bedtimeConsistencyDays: appState.bedtimeConsistencyDays,
+                targetBedtime: appState.targetBedtime,
+                petName: appState.pet.name
+            )
+        case .morning, .recovery:
+            return ""
         }
     }
 
@@ -497,7 +547,7 @@ struct HomeView: View {
     private var heroCaption: String {
         switch mode {
         case .firstNight:
-            return "Luna is settling into her room and waiting for your first calm night together."
+            return "\(appState.pet.name) is settling into the room and waiting for your first calm night together."
         case .evening:
             return "A tiny wind-down now makes bedtime feel softer later."
         case .morning(let entry):
@@ -508,32 +558,33 @@ struct HomeView: View {
     }
 
     private var lunaSpeech: String {
+        if let briefing = morningBriefing {
+            return briefing.speech
+        }
         switch mode {
         case .firstNight:
             return "Is tonight our first calm night?"
         case .evening:
             return "Can we get cozy soon?"
-        case .morning(let entry):
-            return entry.score >= 85 ? "I woke up glowing." : entry.score >= 70 ? "I woke up cozy." : "I am a little sleepy, but okay."
-        case .recovery:
-            return "Let's recover gently tonight."
+        case .morning, .recovery:
+            return "Let's reset tonight."
         }
     }
 
     private var growthCopy: String {
         guard let next = appState.nextEvolutionStage else {
-            return "Luna is fully grown"
+            return "\(appState.pet.name) is fully grown"
         }
 
         let nights = appState.nightsUntilNextEvolution
         if nights == 0 {
-            return "Luna is ready to grow into \(next.label)"
+            return "\(appState.pet.name) is ready to grow into \(next.label)"
         }
-        return "\(nights) calm night\(nights == 1 ? "" : "s") until Luna becomes \(next.label)"
+        return "\(nights) calm night\(nights == 1 ? "" : "s") until \(appState.pet.name) becomes \(next.label)"
     }
 
     private var nextStageName: String {
-        appState.nextEvolutionStage?.label ?? "Dream Luna"
+        appState.nextEvolutionStage?.label ?? "Dream form"
     }
 
     private var greeting: String {
@@ -624,9 +675,9 @@ struct HomeView: View {
             return "You slept better when bedtime stayed within 30 minutes."
         }
         if entry.score < 60 {
-            return "A shorter recovery quest tonight can help Luna bounce back without pressure."
+            return "A shorter recovery quest tonight can help \(appState.pet.name) bounce back without pressure."
         }
-        return "Keeping bedtime close to \(appState.targetBedtime.hourMinuteString) helps Luna wake up cozier."
+        return "Keeping bedtime close to \(appState.targetBedtime.hourMinuteString) helps \(appState.pet.name) wake up cozier."
     }
 }
 
@@ -652,7 +703,7 @@ private struct WindDownSheet: View {
                             pet: appState.pet,
                             mood: .sleepy,
                             size: 150,
-                            caption: "Screen is dimmed. Luna is settling in with you."
+                            caption: "Screen is dimmed. \(appState.pet.name) is settling in with you."
                         )
                         .padding(.top, 8)
 
@@ -775,7 +826,7 @@ private struct StartSleepSheet: View {
                         pet: appState.pet,
                         mood: .sleepy,
                         size: 150,
-                        caption: "Sleep well. Luna is settling in with you."
+                        caption: "Sleep well. \(appState.pet.name) is settling in with you."
                     )
 
                     MooniCard {
@@ -872,7 +923,7 @@ private struct MorningWhySheet: View {
                             icon: "sparkles",
                             title: "Deeper sleep insight",
                             subtitle: "Unlock sleep debt, best sleep window, and recovery prediction.",
-                            actionTitle: "See Luna's full pattern"
+                            actionTitle: "See your full pattern"
                         ) {
                             showPaywall = true
                             dismiss()
@@ -895,13 +946,14 @@ private struct MorningWhySheet: View {
     }
 
     private var explanation: String {
+        let name = appState.pet.name
         if entry.score >= 80 {
-            return "Luna woke up cozy because your sleep duration and timing were close to your goal."
+            return "\(name) woke up cozy because your sleep duration and timing were close to your goal."
         }
         if entry.score >= 60 {
-            return "Luna had an okay night. A steadier bedtime tonight should make tomorrow feel softer."
+            return "\(name) had an okay night. A steadier bedtime tonight should make tomorrow feel softer."
         }
-        return "Rough night. A small recovery quest tonight is enough to help Luna start bouncing back."
+        return "Rough night. A small recovery quest tonight is enough to help \(name) start bouncing back."
     }
 
     private var bedtimeDetail: String {

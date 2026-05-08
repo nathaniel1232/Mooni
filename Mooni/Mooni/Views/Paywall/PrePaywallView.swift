@@ -126,8 +126,8 @@ struct PrePaywallView: View {
         case .goodSleep:     return CGFloat(subStage + 1) / 3
         case .yesLadder:     return CGFloat(subStage + 1) / CGFloat(Self.yesLadderCount)
         case .signature:
-            let typed = typedCommitment.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let typedDone: CGFloat = typed == "i am committed" ? 0.5 : CGFloat(min(typed.count, 14)) / 14 * 0.5
+            let typed = typedCommitment.trimmingCharacters(in: .whitespacesAndNewlines)
+            let typedDone: CGFloat = Self.isCommitmentPhraseMatched(typed) ? 0.5 : CGFloat(min(typed.count, 14)) / 14 * 0.5
             let signed: CGFloat   = signatureStrokes.isEmpty ? 0 : 0.5
             return min(typedDone + signed, 1)
         case .transformAnim: return 0.5
@@ -157,13 +157,74 @@ struct PrePaywallView: View {
     private var canAdvanceFromCurrent: Bool {
         switch phase {
         case .signature:
-            let trimmed = typedCommitment.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            return trimmed == "i am committed" && !signatureStrokes.isEmpty
+            return Self.isCommitmentPhraseMatched(typedCommitment) && !signatureStrokes.isEmpty
         case .transformList:
             return revealedTransformations >= TransformListStage.items.count
         default:
             return true
         }
+    }
+
+    fileprivate static func isCommitmentPhraseMatched(_ text: String) -> Bool {
+        let words = normalizedCommitmentWords(text)
+        guard !words.isEmpty else { return false }
+
+        let normalized = words.joined()
+        let exactTargets = [
+            "iamcommitted",
+            "iamcommited",
+            "imcommitted",
+            "imcommited"
+        ]
+
+        if exactTargets.contains(normalized) { return true }
+        if exactTargets.contains(where: { editDistance(normalized, $0) <= 3 }) { return true }
+
+        let selfWords = ["i", "im", "iam", "me", "my"]
+        let commitmentWords = ["committed", "commited", "commit", "promise", "ready", "agree", "dedicated"]
+        let hasSelfWord = words.contains { selfWords.contains($0) }
+        let hasCommitmentWord = words.contains { word in
+            commitmentWords.contains(word) ||
+            editDistance(word, "committed") <= 2 ||
+            editDistance(word, "commit") <= 1 ||
+            editDistance(word, "promise") <= 2
+        }
+
+        return hasSelfWord && hasCommitmentWord
+    }
+
+    private static func normalizedCommitmentWords(_ text: String) -> [String] {
+        text
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .replacingOccurrences(of: "’", with: "'")
+            .replacingOccurrences(of: "‘", with: "'")
+            .components(separatedBy: CharacterSet.letters.inverted)
+            .filter { !$0.isEmpty }
+    }
+
+    private static func editDistance(_ lhs: String, _ rhs: String) -> Int {
+        let a = Array(lhs)
+        let b = Array(rhs)
+        if a.isEmpty { return b.count }
+        if b.isEmpty { return a.count }
+
+        var previous = Array(0...b.count)
+        var current = Array(repeating: 0, count: b.count + 1)
+
+        for i in 1...a.count {
+            current[0] = i
+            for j in 1...b.count {
+                let substitution = previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1)
+                current[j] = min(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    substitution
+                )
+            }
+            swap(&previous, &current)
+        }
+
+        return previous[b.count]
     }
 
     @ViewBuilder
@@ -650,7 +711,7 @@ private struct SignatureStage: View {
     @State private var current: [CGPoint] = []
 
     private var matched: Bool {
-        typedCommitment.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "i am committed"
+        PrePaywallView.isCommitmentPhraseMatched(typedCommitment)
     }
 
     var body: some View {
@@ -690,6 +751,8 @@ private struct SignatureStage: View {
                         .padding(.horizontal, 14)
                         .focused($fieldFocused)
                         .submitLabel(.done)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
                 }
                 .background(Color.white.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -1004,7 +1067,7 @@ private struct TransformListStage: View {
 #Preview {
     PrePaywallView(
         petName: "Nova",
-        species: .fox,
+        species: .owl,
         profile: OnboardingProfile(),
         onContinue: {}
     )

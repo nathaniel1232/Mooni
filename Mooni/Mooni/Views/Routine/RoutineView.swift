@@ -80,7 +80,7 @@ struct RoutineView: View {
                         .foregroundColor(MooniColor.textSecondary)
                 }
                 progressBar(value: appState.routine.completion)
-                Text("Each completed step supports Luna's sleep rhythm.")
+                Text("Each completed step supports your sleep rhythm.")
                     .font(MooniFont.caption(12))
                     .foregroundColor(MooniColor.textMuted)
             }

@@ -52,7 +52,7 @@ struct PetScreenView: View {
                     .padding(.bottom, 96)
                 }
             }
-            .navigationTitle("Luna")
+            .navigationTitle(appState.pet.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -81,7 +81,7 @@ struct PetScreenView: View {
     private var hero: some View {
         VStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Luna")
+                Text(appState.pet.name)
                     .font(MooniFont.display(32))
                     .foregroundColor(MooniColor.textPrimary)
                 Text("\(appState.pet.name) feels \(appState.pet.mood.label.lowercased()).")
@@ -109,7 +109,7 @@ struct PetScreenView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Next: \(nextStageName) Luna")
+                        Text("Next: \(nextStageName) \(appState.pet.name)")
                             .font(MooniFont.title(20))
                             .foregroundColor(MooniColor.textPrimary)
                         Text(evolutionCopy)
@@ -150,7 +150,7 @@ struct PetScreenView: View {
                         icon: "moon.stars.fill",
                         title: "Full evolution path",
                         subtitle: "Unlock adult, dream form, rare animations, and seasonal forms.",
-                        actionTitle: "Let Luna keep growing"
+                        actionTitle: "Let \(appState.pet.name) keep growing"
                     ) {
                         showPaywall = true
                     }
@@ -206,7 +206,7 @@ struct PetScreenView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(personality.label) Luna")
+                    Text("\(personality.label) \(appState.pet.name)")
                         .font(MooniFont.title(16))
                         .foregroundColor(MooniColor.textPrimary)
                     Text(personalityCopy(personality))
@@ -224,7 +224,7 @@ struct PetScreenView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Customize Luna")
+                    Text("Customize \(appState.pet.name)")
                         .font(MooniFont.title(20))
                         .foregroundColor(MooniColor.textPrimary)
                     Text("\(appState.dreamStars) dream stars")
@@ -512,16 +512,16 @@ struct PetScreenView: View {
 
     private var evolutionCopy: String {
         guard let next = appState.nextEvolutionStage else {
-            return "Luna has reached her brightest dream form."
+            return "\(appState.pet.name) has reached the brightest dream form."
         }
 
         if !subscriptionManager.isPro && isPremiumStage(next) {
-            return "Luna is ready for deeper dream forms. Premium unlocks the full path."
+            return "\(appState.pet.name) is ready for deeper dream forms. Premium unlocks the full path."
         }
 
         let nights = appState.nightsUntilNextEvolution
         if nights == 0 {
-            return "Luna is ready to grow into \(next.label)."
+            return "\(appState.pet.name) is ready to grow into \(next.label)."
         }
         return "\(nights) more consistent night\(nights == 1 ? "" : "s") until \(next.label)."
     }
@@ -638,7 +638,7 @@ private struct EvolutionPathSheet: View {
                             pet: appState.pet,
                             mood: .cozy,
                             size: 170,
-                            caption: "Sleep rhythm helps Luna grow."
+                            caption: "Sleep rhythm helps \(appState.pet.name) grow."
                         )
 
                         ForEach(stages, id: \.self) { stage in
@@ -711,8 +711,8 @@ private struct EvolutionPathSheet: View {
     }
 
     private func stageCopy(_ stage: Pet.EvolutionStage, isCurrent: Bool, isLocked: Bool) -> String {
-        if isCurrent { return "Current stage. Keep Luna's rhythm steady." }
-        if isLocked { return "Premium unlock. A deeper Luna form waits here." }
+        if isCurrent { return "Current stage. Keep your rhythm steady." }
+        if isLocked { return "Premium unlock. A deeper form waits here." }
         return "\(stage.consistencyRequired) calm nights to reach this stage."
     }
 }

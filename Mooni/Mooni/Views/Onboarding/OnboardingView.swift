@@ -58,7 +58,6 @@ struct OnboardingView: View {
         case emotionalDiscomfort      // S4 "your body remembers every late night"
         case hopeTransformation       // S5 brighter hope visual
         case petAttachment            // S6 healthy vs exhausted pet
-        case pickPet
         case namePet
         case bondMessage              // emotional copy after naming
         case demo
@@ -66,13 +65,13 @@ struct OnboardingView: View {
         case genderQuestion
         case heightQuestion
         case weightQuestion
+        case typicalSleepHours        // collected BEFORE bodyFact / sleepDebtFact reference it
         case bodyFact                 // animated chart: how body shapes sleep needs
         case sleepGoal
         case motivationQuestion
         case pseudoAnalysis           // S8 "users like you tend to…"
         case struggleDuration
         case biggestProblem
-        case typicalSleepHours
         case sleepDebtFact            // animated chart: sleep debt accumulating
         case phoneBeforeBed
         case phoneScreenTime
@@ -268,10 +267,6 @@ struct OnboardingView: View {
         case .emotionalDiscomfort: EmotionalDiscomfortScreen()
         case .hopeTransformation:  HopeTransformationScreen()
         case .petAttachment:       PetAttachmentScreen(species: species)
-        case .pickPet:             PickPetScreen(selected: $species, onPick: { picked in
-            species = picked
-            petName = picked.defaultName
-        })
         case .namePet:             NamePetScreen(species: species, name: $petName)
         case .bondMessage:         BondMessageScreen(petName: petName, species: species)
         case .demo:                DemoScreen(species: species, stage: $demoStage)
@@ -380,7 +375,6 @@ struct OnboardingView: View {
         case .petAttachment:      return "Meet your sleep pet"
         case .pseudoAnalysis:     return "Continue"
         case .anticipation:       return "Let's go"
-        case .pickPet:            return "Choose \(species.defaultName)"
         case .namePet:            return "\(petName.isEmpty ? species.defaultName : petName) is officially yours"
         case .bondMessage:        return "Continue"
         case .demo:               return demoStage < 2 ? "Continue" : "I get it"
@@ -423,7 +417,6 @@ struct OnboardingView: View {
 
     private var canAdvance: Bool {
         switch step {
-        case .pickPet:           return true
         case .namePet:           return !petName.trimmingCharacters(in: .whitespaces).isEmpty
         case .ageQuestion:       return profile.age != nil
         case .heightQuestion:    return profile.heightCm != nil
@@ -799,99 +792,6 @@ private struct SleepImpactStatScreen: View {
 }
 
 // MARK: - Screen 2: Pick pet
-
-private struct PickPetScreen: View {
-    @Binding var selected: PetSpecies
-    let onPick: (PetSpecies) -> Void
-
-    var body: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 6) {
-                Text("Pick your sleep pet")
-                    .font(MooniFont.display(28))
-                    .foregroundColor(MooniColor.textPrimary)
-                Text("Each one feels different. Pick the one that's most you.")
-                    .font(MooniFont.body(15))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            .padding(.top, 8)
-
-            // Big preview of selected pet
-            ZStack {
-                Circle()
-                    .fill(selected.tint.opacity(0.20))
-                    .frame(width: 180, height: 180)
-                    .blur(radius: 24)
-                DreamSpiritView(pet: { var p = Pet(); p.species = selected; p.mood = .cozy; p.equippedHat = nil; return p }(), size: 140)
-            }
-            .id(selected)
-            .transition(.scale.combined(with: .opacity))
-
-            VStack(spacing: 10) {
-                ForEach(PetSpecies.allCases) { sp in
-                    PetCardRow(species: sp, isSelected: selected == sp) {
-                        withAnimation(.spring(response: 0.35)) {
-                            selected = sp
-                            onPick(sp)
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 4)
-
-            Text("\(selected.defaultName) chose you too.")
-                .font(MooniFont.caption(13))
-                .foregroundColor(MooniColor.accentSoft)
-                .transition(.opacity)
-                .id(selected)
-        }
-        .padding(.horizontal, 20)
-    }
-}
-
-private struct PetCardRow: View {
-    let species: PetSpecies
-    let isSelected: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(species.tint.opacity(0.30))
-                        .frame(width: 52, height: 52)
-                    Image(systemName: species.icon)
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(species.tint)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(species.defaultName) the \(species.displayName)")
-                        .font(MooniFont.title(16))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Text(species.tagline)
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.textSecondary)
-                }
-                Spacer()
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? MooniColor.accent : MooniColor.textMuted)
-                    .font(.system(size: 22))
-            }
-            .padding(14)
-            .background(Color.white.opacity(isSelected ? 0.13 : 0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(isSelected ? species.tint : Color.white.opacity(0.10),
-                            lineWidth: isSelected ? 1.5 : 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
 
 // MARK: - Screen 3: Name pet
 
@@ -2691,7 +2591,7 @@ private struct GeneratingPlanScreen: View {
     }
 
     private var previewPet: Pet {
-        var p = Pet(); p.species = .fox; p.mood = .cozy; p.equippedHat = "hat_nightcap"
+        var p = Pet(); p.species = .owl; p.mood = .cozy; p.equippedHat = "hat_nightcap"
         return p
     }
 

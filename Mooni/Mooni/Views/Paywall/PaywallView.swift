@@ -260,7 +260,7 @@ struct PaywallView: View {
                     }
                     if isAnnual {
                         let weeklyEquiv = (package.storeProduct.price as Decimal) / 52
-                        Text(String(format: "~$%.2f / week", NSDecimalNumber(decimal: weeklyEquiv).floatValue))
+                        Text(String(format: "Only ~$%.2f / week", NSDecimalNumber(decimal: weeklyEquiv).floatValue))
                             .font(MooniFont.caption(12))
                             .foregroundColor(MooniColor.textMuted)
                     }

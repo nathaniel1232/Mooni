@@ -56,7 +56,7 @@ struct BedtimeQuestView: View {
             Text("Tonight's Quest")
                 .font(MooniFont.display(30))
                 .foregroundColor(MooniColor.textPrimary)
-            Text("Help Luna get cozy before \(appState.targetBedtime.hourMinuteString).")
+            Text("Help \(appState.pet.name) get cozy before \(appState.targetBedtime.hourMinuteString).")
                 .font(MooniFont.body(15))
                 .foregroundColor(MooniColor.textSecondary)
         }
@@ -122,7 +122,7 @@ struct BedtimeQuestView: View {
                     MooniStatPill(icon: "sparkles", value: "+\(earnedStars)", label: "Dream stars", color: MooniColor.warning)
                 }
 
-                Text(completedCount == 3 ? "Tonight's rhythm is protected." : "Complete tonight's quest to earn dream stars and support Luna's rhythm.")
+                Text(completedCount == 3 ? "Tonight's rhythm is protected." : "Complete tonight's quest to earn dream stars and support \(appState.pet.name)'s rhythm.")
                     .font(MooniFont.caption(12))
                     .foregroundColor(MooniColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -272,11 +272,12 @@ struct BedtimeQuestView: View {
     }
 
     private var primaryQuestCopy: String {
+        let name = appState.pet.name
         switch completedCount {
-        case 0: return "Help Luna settle down"
-        case 1: return "Luna is getting calmer"
+        case 0: return "Help \(name) settle down"
+        case 1: return "\(name) is getting calmer"
         case 2: return "Almost ready for sleep"
-        default: return "Luna feels cozy now"
+        default: return "\(name) feels cozy now"
         }
     }
 
@@ -530,7 +531,7 @@ private struct QuestFlowView: View {
 
             MooniCard {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Luna is cozy now")
+                    Text("\(appState.pet.name) is cozy now")
                         .font(MooniFont.display(28))
                         .foregroundColor(MooniColor.textPrimary)
                     Text("You earned +20 dream stars. Sleep by \(appState.targetBedtime.hourMinuteString) to keep your rhythm.")
@@ -588,7 +589,7 @@ private struct QuestFlowView: View {
 
     private func title(for index: Int) -> String {
         switch index {
-        case 0: return "Breathe with Luna"
+        case 0: return "Breathe together"
         case 1: return "Quick journal"
         default: return "Put phone away"
         }
@@ -650,7 +651,7 @@ private struct ReadyForSleepSheet: View {
                     pet: appState.pet,
                     mood: .cozy,
                     size: 170,
-                    caption: "Luna feels cozy now."
+                    caption: "\(appState.pet.name) feels cozy now."
                 )
 
                 MooniCard {
@@ -658,7 +659,7 @@ private struct ReadyForSleepSheet: View {
                         Text("Ready for sleep")
                             .font(MooniFont.title(20))
                             .foregroundColor(MooniColor.textPrimary)
-                        Text("Put the phone away and let tonight be simple. Luna will wake up with you tomorrow.")
+                        Text("Put the phone away and let tonight be simple. \(appState.pet.name) will wake up with you tomorrow.")
                             .font(MooniFont.body(14))
                             .foregroundColor(MooniColor.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)

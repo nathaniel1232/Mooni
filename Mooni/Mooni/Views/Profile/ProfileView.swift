@@ -211,7 +211,7 @@ struct ProfileView: View {
                             .foregroundColor(MooniColor.accentSoft)
                     }
 
-                    Text("Unlock Luna's full evolution path, rare rooms, guided wind-downs, programs, and deeper sleep insights.")
+                    Text("Unlock \(appState.pet.name)'s full evolution path, rare rooms, guided wind-downs, programs, and deeper sleep insights.")
                         .font(MooniFont.body(14))
                         .foregroundColor(MooniColor.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)

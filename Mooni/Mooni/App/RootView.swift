@@ -170,7 +170,7 @@ struct MainTabView: View {
                 .tag(Tab.quest)
 
             PetScreenView(showPaywall: $showPaywall)
-                .tabItem { Label("Luna", systemImage: "sparkles") }
+                .tabItem { Label(appState.pet.name, systemImage: "sparkles") }
                 .tag(Tab.luna)
 
             ProfileView(showPaywall: $showPaywall)

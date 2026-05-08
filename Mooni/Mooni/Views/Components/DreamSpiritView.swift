@@ -16,12 +16,12 @@ struct DreamSpiritView: View {
         MooniGradient.night.ignoresSafeArea()
         VStack(spacing: 20) {
             HStack(spacing: 14) {
-                DreamSpiritView(pet: { var p = Pet(); p.species = .fox;   p.mood = .rested; return p }(), size: 130)
-                DreamSpiritView(pet: { var p = Pet(); p.species = .panda; p.mood = .good;   return p }(), size: 130)
+                DreamSpiritView(pet: { var p = Pet(); p.mood = .rested; return p }(), size: 130)
+                DreamSpiritView(pet: { var p = Pet(); p.mood = .good;   return p }(), size: 130)
             }
             HStack(spacing: 14) {
-                DreamSpiritView(pet: { var p = Pet(); p.species = .owl;   p.mood = .tired;  return p }(), size: 130)
-                DreamSpiritView(pet: { var p = Pet(); p.species = .fox;   p.mood = .low;    return p }(), size: 130)
+                DreamSpiritView(pet: { var p = Pet(); p.mood = .tired;  return p }(), size: 130)
+                DreamSpiritView(pet: { var p = Pet(); p.mood = .low;    return p }(), size: 130)
             }
         }
     }
