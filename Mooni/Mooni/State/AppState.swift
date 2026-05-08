@@ -120,11 +120,18 @@ final class AppState: ObservableObject {
            let decoded = try? JSONDecoder().decode(Routine.self, from: data) {
             self.routine = decoded
         } else {
-            self.routine = Routine(habits: [
-                RoutineHabit.library.first { $0.id == "no_phone" }!,
-                RoutineHabit.library.first { $0.id == "breathing" }!,
-                RoutineHabit.library.first { $0.id == "journal" }!
-            ])
+            // Pull defaults from the library by id; if any id is ever
+            // renamed in the library, fall back to whatever's available
+            // rather than crashing on launch.
+            let defaultIds = ["no_phone", "breathing", "journal"]
+            let defaultHabits = defaultIds.compactMap { id in
+                RoutineHabit.library.first { $0.id == id }
+            }
+            self.routine = Routine(
+                habits: defaultHabits.isEmpty
+                    ? Array(RoutineHabit.library.prefix(3))
+                    : defaultHabits
+            )
         }
 
         // Entries

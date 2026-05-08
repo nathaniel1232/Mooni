@@ -9,9 +9,15 @@ struct PrimaryButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                if let icon { Image(systemName: icon) }
-                Text(title)
-                    .font(MooniFont.title(17))
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(MooniColor.background)
+                } else {
+                    if let icon { Image(systemName: icon) }
+                    Text(title)
+                        .font(MooniFont.title(17))
+                }
             }
             .foregroundColor(MooniColor.background)
             .frame(maxWidth: .infinity)
@@ -25,8 +31,10 @@ struct PrimaryButton: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .shadow(color: MooniColor.accent.opacity(0.4), radius: 18, y: 8)
+            .opacity(isLoading ? 0.7 : 1)
         }
         .disabled(isLoading)
+        .animation(.easeInOut(duration: 0.18), value: isLoading)
     }
 }
 

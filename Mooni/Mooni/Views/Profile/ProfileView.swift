@@ -10,6 +10,10 @@ struct ProfileView: View {
     @StateObject private var healthKit = HealthKitManager.shared
     @StateObject private var notifications = NotificationManager.shared
 
+    #if DEBUG
+    @State private var showMarketingVideo = false
+    #endif
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -42,6 +46,11 @@ struct ProfileView: View {
                 healthKit.refreshAuthState()
                 await notifications.refreshAuthState()
             }
+            #if DEBUG
+            .fullScreenCover(isPresented: $showMarketingVideo) {
+                MarketingVideoView()
+            }
+            #endif
         }
     }
 
@@ -267,6 +276,34 @@ struct ProfileView: View {
                 .foregroundColor(MooniColor.textMuted)
                 .textCase(.uppercase)
                 .padding(.top, 4)
+
+            // Hidden marketing-video launcher. Distinct visual style so it's
+            // easy to find when recording TikTok / Reels demos.
+            Button {
+                showMarketingVideo = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Start Marketing Video")
+                        .font(MooniFont.title(14))
+                    Spacer()
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .foregroundColor(MooniColor.background)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 14)
+                .background(
+                    LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
 
             devButton("Skip Onboarding", icon: "fast.forward.fill") {
                 appState.hasCompletedOnboarding = true

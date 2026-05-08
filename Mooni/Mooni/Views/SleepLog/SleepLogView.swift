@@ -153,11 +153,11 @@ struct LogSleepSheet: View {
                 }
             }
             .onAppear {
-                if bedtime > wakeTime {
-                    bedtime = Calendar.current.date(byAdding: .day, value: -1, to: bedtime) ?? bedtime
-                }
+                normalizeOrder()
                 routineCompleted = appState.routine.isFullyCompleted
             }
+            .onChange(of: bedtime) { _, _ in normalizeOrder() }
+            .onChange(of: wakeTime) { _, _ in normalizeOrder() }
         }
     }
 
@@ -281,6 +281,15 @@ struct LogSleepSheet: View {
         let h = Int(interval) / 3600
         let m = (Int(interval) % 3600) / 60
         return "\(h)h \(String(format: "%02d", m))m"
+    }
+
+    /// Keeps bedtime strictly before wakeTime by shifting bedtime back a day
+    /// when needed. The DatePicker only edits hour/minute, so two values on
+    /// the same day are common and need this nudge.
+    private func normalizeOrder() {
+        guard bedtime >= wakeTime else { return }
+        let cal = Calendar.current
+        bedtime = cal.date(byAdding: .day, value: -1, to: bedtime) ?? bedtime
     }
 }
 

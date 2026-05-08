@@ -9,9 +9,10 @@ final class SubscriptionManager: ObservableObject {
 
     // MARK: - Published
 
-    @Published var isPro: Bool = false {
-        didSet { UserDefaults.standard.set(isPro && devForcePro, forKey: "mooni.devForcePro") }
-    }
+    /// Sourced from RevenueCat at launch (with the `devForcePro` override
+    /// taking precedence). Intentionally not persisted — entitlement status
+    /// is the source of truth and is re-fetched on app start.
+    @Published var isPro: Bool = false
     @Published var currentOffering: Offering?
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
