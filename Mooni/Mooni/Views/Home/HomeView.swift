@@ -45,8 +45,14 @@ struct HomeView: View {
                 .padding(.bottom, 96)
             }
         }
-        .sheet(isPresented: $showWindDown) {
+        .sheet(isPresented: $showWindDown, onDismiss: {
+            // Sheet dismissed without sleeping — release the tint/dim.
+            if !appState.isSleeping {
+                WindDownDimController.shared.end()
+            }
+        }) {
             WindDownSheet()
+                .onAppear { WindDownDimController.shared.begin() }
         }
         .sheet(isPresented: $showStartSleep) {
             StartSleepSheet()
@@ -627,6 +633,7 @@ struct HomeView: View {
 private struct WindDownSheet: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @State private var systemTask: WindDownSystemTask?
 
     private var questHabits: [RoutineHabit] {
         ["breathing", "journal", "no_phone"].compactMap { id in
@@ -645,9 +652,13 @@ private struct WindDownSheet: View {
                             pet: appState.pet,
                             mood: .sleepy,
                             size: 150,
-                            caption: "Help Luna get cozy before sleep."
+                            caption: "Screen is dimmed. Luna is settling in with you."
                         )
                         .padding(.top, 8)
+
+                        if let task = systemTask {
+                            WindDownSystemTaskCard(task: task)
+                        }
 
                         MooniCard {
                             VStack(alignment: .leading, spacing: 14) {
@@ -675,6 +686,12 @@ private struct WindDownSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
                         .foregroundColor(MooniColor.accent)
+                }
+            }
+            .onAppear {
+                if systemTask == nil, let task = WindDownSystemTaskStore.shared.taskForTonight {
+                    systemTask = task
+                    WindDownSystemTaskStore.shared.markShown(task)
                 }
             }
         }

@@ -25,6 +25,10 @@ final class AppState: ObservableObject {
         static let questRewardedSteps = "mooni.questRewardedSteps"
         static let isSleeping = "mooni.isSleeping"
         static let sleepStartedAt = "mooni.sleepStartedAt"
+        static let wakeTappedAt = "mooni.wakeTappedAt"
+        static let appOpenedAfterWakeAt = "mooni.appOpenedAfterWakeAt"
+        static let lastSystemTaskShown = "mooni.lastSystemTaskShownAt"
+        static let lastSystemTaskIndex = "mooni.lastSystemTaskIndex"
         static let devForcePro = "mooni.devForcePro"
     }
 
@@ -172,6 +176,27 @@ final class AppState: ObservableObject {
         rolloverRoutineIfNeeded()
         // Maybe surface morning check-in
         evaluateMorningPrompt()
+
+        // Wake-probe notification taps push us into the morning check-in.
+        NotificationCenter.default.addObserver(
+            forName: NotificationManager.didConfirmWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.handleConfirmedWake() }
+        }
+    }
+
+    private func handleConfirmedWake() {
+        guard isSleeping else { return }
+        // First-app-open delay starts from this moment.
+        if UserDefaults.standard.object(forKey: Key.appOpenedAfterWakeAt) == nil {
+            UserDefaults.standard.set(Date(), forKey: Key.appOpenedAfterWakeAt)
+        }
+        WindDownDimController.shared.end()
+        NotificationManager.shared.cancelWakeProbes()
+        isSleeping = false
+        showMorningCheckIn = true
     }
 
     // MARK: - Computed helpers
@@ -532,10 +557,51 @@ final class AppState: ObservableObject {
         var p = pet
         p.mood = .sleepy
         self.pet = p
+        // Clear stale wake-up timestamps from any prior night.
+        UserDefaults.standard.removeObject(forKey: Key.wakeTappedAt)
+        UserDefaults.standard.removeObject(forKey: Key.appOpenedAfterWakeAt)
+        // Schedule the "are you awake?" probes for tomorrow's wake target.
+        NotificationManager.shared.scheduleWakeProbes(
+            wakeTime: nextWakeProbeAnchor,
+            petName: pet.name
+        )
+    }
+
+    /// The next anchor date used to schedule "are you awake?" probes.
+    /// Always strictly in the future (rolls forward to tomorrow if the
+    /// target wake time has already passed today).
+    var nextWakeProbeAnchor: Date {
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.hour, .minute], from: targetWakeTime)
+        let now = Date()
+        var anchor = cal.date(bySettingHour: comps.hour ?? 7,
+                              minute: comps.minute ?? 0,
+                              second: 0,
+                              of: now) ?? now
+        if anchor <= now.addingTimeInterval(15 * 60) {
+            anchor = cal.date(byAdding: .day, value: 1, to: anchor) ?? anchor
+        }
+        return anchor
+    }
+
+    /// Time the user tapped "I'm awake" (notification or sleep-lock screen).
+    var wakeTappedAt: Date? {
+        UserDefaults.standard.object(forKey: Key.wakeTappedAt) as? Date
+    }
+
+    /// Time the user first opened the morning check-in after waking.
+    var appOpenedAfterWakeAt: Date? {
+        UserDefaults.standard.object(forKey: Key.appOpenedAfterWakeAt) as? Date
     }
 
     /// Wake-up tap from the sleep-lock screen. Surfaces the morning check-in.
     func wakeUpFromSleepMode() {
+        let now = Date()
+        UserDefaults.standard.set(now, forKey: Key.wakeTappedAt)
+        // First app-open after wake = wake-tap time itself.
+        UserDefaults.standard.set(now, forKey: Key.appOpenedAfterWakeAt)
+        WindDownDimController.shared.end()
+        NotificationManager.shared.cancelWakeProbes()
         isSleeping = false
         showMorningCheckIn = true
     }

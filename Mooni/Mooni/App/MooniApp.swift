@@ -10,6 +10,9 @@ struct MooniApp: App {
     init() {
         Self.registerCustomFonts()
         SubscriptionManager.shared.configure()
+        // Force-init so the UNUserNotificationCenter delegate is set
+        // before any wake-probe notification can be tapped.
+        _ = NotificationManager.shared
     }
 
     var body: some Scene {

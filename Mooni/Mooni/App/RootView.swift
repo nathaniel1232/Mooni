@@ -22,6 +22,11 @@ struct RootView: View {
                     .transition(.opacity)
                     .zIndex(10)
             }
+
+            // Warm-red tint while wind-down is active. Above all UI but
+            // ignores hit-testing so the user can still tap.
+            WindDownTintOverlay()
+                .zIndex(20)
         }
         .animation(.easeInOut(duration: 0.4), value: appState.hasCompletedOnboarding)
         .animation(.easeInOut(duration: 0.4), value: appState.isSleeping)
@@ -34,53 +39,104 @@ struct RootView: View {
 }
 
 /// Full-screen lock that stays in front of the tab bar while the user is
-/// sleeping. The only escape is "Wake up", which kicks them into the morning
+/// sleeping. The only escape is "I'm awake", which kicks them into the morning
 /// check-in. This is the in-app version of a screen-time block.
 struct SleepingOverlay: View {
     @EnvironmentObject var appState: AppState
+    @State private var auraPulse: CGFloat = 0.85
 
     var body: some View {
         ZStack {
             MooniGradient.night.ignoresSafeArea()
-            StarsBackground(count: 70)
+            StarsBackground(count: 90)
 
-            VStack(spacing: 22) {
+            // Soft moon glow behind Luna for depth.
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [MooniColor.accent.opacity(0.34), .clear],
+                        center: .center,
+                        startRadius: 6,
+                        endRadius: 240
+                    )
+                )
+                .frame(width: 460, height: 460)
+                .scaleEffect(auraPulse)
+                .opacity(0.85)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 4.2).repeatForever(autoreverses: true)) {
+                        auraPulse = 1.05
+                    }
+                }
+
+            VStack(spacing: 26) {
                 Spacer()
 
                 LunaMoodHero(
                     pet: appState.pet,
                     mood: .sleepy,
-                    size: 200,
+                    size: 210,
                     caption: nil
                 )
 
-                VStack(spacing: 10) {
+                VStack(spacing: 12) {
                     Text("\(appState.pet.name) is sleeping")
-                        .font(MooniFont.display(28))
+                        .font(MooniFont.display(30))
                         .foregroundColor(MooniColor.textPrimary)
                         .multilineTextAlignment(.center)
-                    Text("The app is resting too. Tap wake up when you're up — Luna will ask you a couple of questions before unlocking the day.")
+
+                    if let started = appState.sleepStartedAt {
+                        HStack(spacing: 12) {
+                            sleepStat(
+                                icon: "moon.stars.fill",
+                                value: started.hourMinuteString,
+                                label: "Asleep at"
+                            )
+                            sleepStat(
+                                icon: "sunrise.fill",
+                                value: appState.targetWakeTime.hourMinuteString,
+                                label: "Target wake"
+                            )
+                        }
+                        .padding(.top, 4)
+                    }
+
+                    Text("Tap when you're awake — \(appState.pet.name) will ask a few quick questions before unlocking the day.")
                         .font(MooniFont.body(14))
                         .foregroundColor(MooniColor.textSecondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
-                }
-
-                if let started = appState.sleepStartedAt {
-                    Text("Sleep started at \(started.hourMinuteString)")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.textMuted)
+                        .padding(.top, 10)
                 }
 
                 Spacer()
 
-                PrimaryButton(title: "Wake up", icon: "sun.max.fill") {
+                PrimaryButton(title: "I'm awake", icon: "sun.max.fill") {
                     appState.wakeUpFromSleepMode()
                 }
                 .padding(.horizontal, 28)
-                .padding(.bottom, 32)
+                .padding(.bottom, 28)
             }
         }
+    }
+
+    private func sleepStat(icon: String, value: String, label: String) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .foregroundColor(MooniColor.accentSoft)
+                .font(.system(size: 14, weight: .semibold))
+            Text(value)
+                .font(MooniFont.title(15))
+                .foregroundColor(MooniColor.textPrimary)
+            Text(label)
+                .font(MooniFont.caption(11))
+                .foregroundColor(MooniColor.textMuted)
+                .textCase(.uppercase)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 

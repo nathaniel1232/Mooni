@@ -5,7 +5,7 @@ import Combine
 /// Thin wrapper around UNUserNotificationCenter so onboarding can show its
 /// own pre-permission screen and only trigger the system prompt on opt-in.
 @MainActor
-final class NotificationManager: ObservableObject {
+final class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
 
     enum AuthState {
@@ -14,7 +14,19 @@ final class NotificationManager: ObservableObject {
 
     @Published private(set) var authState: AuthState = .notDetermined
 
-    private init() {
+    /// Identifier prefix for "are you awake?" probe notifications.
+    private static let wakeProbePrefix = "mooni.wakeProbe."
+    /// Action ID for the "I'm awake" tap on a wake-probe notification.
+    private static let wakeProbeAction = "mooni.wakeProbe.iAmAwake"
+
+    /// Posted when the user confirms they're awake — either via a probe
+    /// notification or by tapping wake on the sleep-lock overlay.
+    static let didConfirmWakeNotification = Notification.Name("mooni.didConfirmWake")
+
+    private override init() {
+        super.init()
+        UNUserNotificationCenter.current().delegate = self
+        registerCategories()
         Task { await refreshAuthState() }
     }
 
@@ -61,5 +73,111 @@ final class NotificationManager: ObservableObject {
 
         let request = UNNotificationRequest(identifier: "mooni.bedtime", content: content, trigger: trigger)
         center.add(request)
+    }
+
+    // MARK: - Wake probes
+
+    /// Schedules five "are you awake?" probes at T-60, T-45, T-30, T-15
+    /// and T relative to `wakeTime`. Tapping any one (or its action)
+    /// records the user's actual wake moment.
+    func scheduleWakeProbes(wakeTime: Date, petName: String) {
+        let center = UNUserNotificationCenter.current()
+        cancelWakeProbes()
+
+        let offsets: [Int] = [-60, -45, -30, -15, 0]
+        let now = Date()
+
+        for (idx, minutes) in offsets.enumerated() {
+            let fireDate = wakeTime.addingTimeInterval(TimeInterval(minutes * 60))
+            // Skip any probe that's already in the past.
+            guard fireDate > now.addingTimeInterval(5) else { continue }
+
+            let content = UNMutableNotificationContent()
+            content.title = minutes == 0
+                ? "\(petName) is waking up"
+                : "\(petName) is checking in"
+            content.body = minutes == 0
+                ? "Are you awake yet? Tap so we can log it."
+                : "If you're up, tap so we can record exactly when you woke."
+            content.sound = .default
+            content.categoryIdentifier = "mooni.wakeProbe"
+            content.userInfo = ["fireDate": fireDate.timeIntervalSince1970]
+
+            let comps = Calendar.current.dateComponents(
+                [.year, .month, .day, .hour, .minute],
+                from: fireDate
+            )
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+
+            let id = "\(Self.wakeProbePrefix)\(idx)"
+            let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+            center.add(request)
+        }
+    }
+
+    /// Removes any pending wake probes — call when the user wakes early
+    /// or sleep mode otherwise ends.
+    func cancelWakeProbes() {
+        let ids = (0..<5).map { "\(Self.wakeProbePrefix)\($0)" }
+        UNUserNotificationCenter.current()
+            .removePendingNotificationRequests(withIdentifiers: ids)
+        UNUserNotificationCenter.current()
+            .removeDeliveredNotifications(withIdentifiers: ids)
+    }
+
+    private func registerCategories() {
+        let action = UNNotificationAction(
+            identifier: Self.wakeProbeAction,
+            title: "I'm awake",
+            options: [.foreground]
+        )
+        let category = UNNotificationCategory(
+            identifier: "mooni.wakeProbe",
+            actions: [action],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+    }
+
+    // MARK: - UNUserNotificationCenterDelegate
+
+    /// Show the probe banner even when Mooni is foreground so the user
+    /// has a one-tap "I'm awake" affordance.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let id = response.notification.request.identifier
+        if id.hasPrefix(Self.wakeProbePrefix) {
+            // Use the notification's scheduled fire date as the wake-tap
+            // moment. The first app-open is captured separately when the
+            // app actually becomes active.
+            let userInfo = response.notification.request.content.userInfo
+            let fireTS = userInfo["fireDate"] as? TimeInterval
+            let tapTime = fireTS.map { Date(timeIntervalSince1970: $0) } ?? Date()
+            Task { @MainActor in
+                self.recordWakeConfirmation(at: tapTime)
+            }
+        }
+        completionHandler()
+    }
+
+    /// Persists a wake-tap timestamp and broadcasts so AppState can react.
+    func recordWakeConfirmation(at date: Date) {
+        if UserDefaults.standard.object(forKey: "mooni.wakeTappedAt") == nil {
+            UserDefaults.standard.set(date, forKey: "mooni.wakeTappedAt")
+        }
+        cancelWakeProbes()
+        NotificationCenter.default.post(name: Self.didConfirmWakeNotification, object: nil)
     }
 }
