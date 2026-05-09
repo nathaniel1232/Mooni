@@ -8,7 +8,7 @@ import Combine
 /// system Color Filter, or change brightness while backgrounded. So this
 /// controller does what we *can* do: lower `UIScreen.main.brightness` and
 /// publish a flag that views observe to render a warm red overlay. The
-/// effect lasts only while Mooni is foreground; the user gets a separate
+/// effect lasts only while SleepOwl is foreground; the user gets a separate
 /// rotating tip card teaching them how to flip the system-level toggles.
 @MainActor
 final class WindDownDimController: ObservableObject {

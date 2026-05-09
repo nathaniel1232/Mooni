@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Warm red blend overlay rendered on top of the whole app when the
 /// wind-down dim controller is active. iOS won't let us flip the system
-/// red Color Filter, so we approximate it inside Mooni.
+/// red Color Filter, so we approximate it inside SleepOwl.
 struct WindDownTintOverlay: View {
     @ObservedObject private var controller = WindDownDimController.shared
 

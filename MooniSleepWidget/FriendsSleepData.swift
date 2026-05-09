@@ -89,8 +89,7 @@ enum FriendsWidgetStore {
     private static let storageKey = "mooni.widget.friends"
 
     private static var defaults: UserDefaults? {
-        guard let id = WidgetDataStore.appGroupIdentifier else { return nil }
-        return UserDefaults(suiteName: id)
+        UserDefaults(suiteName: WidgetDataStore.appGroupIdentifier)
     }
 
     static func read() -> FriendsWidgetData {

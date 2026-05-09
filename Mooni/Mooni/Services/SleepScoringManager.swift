@@ -289,7 +289,7 @@ enum SleepScoringManager {
             return "You reported dreams, so your REM line may run higher than usual."
         }
         if readinessScore >= 90 || sleepScore >= 90 {
-            return "Good recovery night - your Mooni pet is fully charged."
+            return "Good recovery night - your SleepOwl pet is fully charged."
         }
         if checkIn?.feeling == .tired || checkIn?.feeling == .exhausted {
             return "Your body might need a slower start today."
@@ -298,7 +298,7 @@ enum SleepScoringManager {
             return "Your sleep duration looks solid. Today is good for focused work."
         }
         if stages.isEstimated {
-            return "Based on your check-in, Mooni filled in tonight's sleep chart."
+            return "Based on your check-in, SleepOwl filled in tonight's sleep chart."
         }
         return "Looks like a steady night. Keep the rhythm gentle today."
     }

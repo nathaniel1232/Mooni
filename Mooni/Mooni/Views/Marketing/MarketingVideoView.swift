@@ -3,7 +3,7 @@ import SwiftUI
 /// Hidden 10-second auto-looping marketing animation used to record
 /// TikTok / Reels demo clips. Visuals are emotionally obvious without
 /// sound: owl asleep → night timeline draws → score calculates → result
-/// card → "Wake up smarter with Mooni." Then loops.
+/// card → "Wake up smarter with SleepOwl." Then loops.
 ///
 /// Surfaced from Profile → Dev Tools → "Start Marketing Video" so it
 /// never reaches a real user.
@@ -61,7 +61,7 @@ struct MarketingVideoView: View {
 
     private var sleepyPet: Pet {
         var p = Pet()
-        p.name = "Mooni"
+        p.name = "SleepOwl"
         p.species = .owl
         p.mood = .sleepy
         return p
@@ -126,7 +126,7 @@ struct MarketingVideoView: View {
             Spacer()
             Spacer()
             VStack(spacing: 8) {
-                Text("Mooni watches your sleep")
+                Text("SleepOwl watches your sleep")
                     .font(MooniFont.display(28))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
@@ -179,7 +179,7 @@ struct MarketingVideoView: View {
 
     private var analysisContent: some View {
         VStack(spacing: 14) {
-            Text("Mooni analyzes everything")
+            Text("SleepOwl analyzes everything")
                 .font(MooniFont.display(24))
                 .foregroundColor(MooniColor.textPrimary)
                 .multilineTextAlignment(.center)
@@ -252,7 +252,7 @@ struct MarketingVideoView: View {
                 Text("Wake up smarter")
                     .font(MooniFont.display(34))
                     .foregroundColor(MooniColor.textPrimary)
-                Text("with Mooni")
+                Text("with SleepOwl")
                     .font(MooniFont.display(34))
                     .foregroundStyle(
                         LinearGradient(

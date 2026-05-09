@@ -103,7 +103,7 @@ struct PaywallView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "sparkles")
                             .foregroundColor(MooniColor.warning)
-                        Text("Mooni Pro")
+                        Text("SleepOwl Pro")
                             .font(MooniFont.display(28))
                             .foregroundColor(MooniColor.textPrimary)
                         Image(systemName: "sparkles")
@@ -398,7 +398,7 @@ struct PaywallView: View {
                     .font(MooniFont.display(30))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("Lumi is glowing brighter than ever.\nEnjoy all of Mooni Pro.")
+                Text("Lumi is glowing brighter than ever.\nEnjoy all of SleepOwl Pro.")
                     .font(MooniFont.body(16))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)

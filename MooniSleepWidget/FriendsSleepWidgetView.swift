@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Medium "Sleep Circle" widget — you + up to 2 friends side by side.
 /// Each card shows: avatar in a score ring, score number, name, sleep
-/// duration, and the bed → wake time range. "Mooni" branding sits subtly
+/// duration, and the bed → wake time range. "SleepOwl" branding sits subtly
 /// in the top-right corner.
 struct FriendsSleepWidgetView: View {
     let data: FriendsWidgetData
@@ -36,7 +36,7 @@ struct FriendsSleepWidgetView: View {
             Spacer(minLength: 0)
             Image(systemName: "moon.stars.fill")
                 .font(.system(size: 10, weight: .semibold))
-            Text("Mooni")
+            Text("SleepOwl")
                 .font(.system(size: 10, weight: .heavy, design: .rounded))
                 .tracking(0.5)
         }

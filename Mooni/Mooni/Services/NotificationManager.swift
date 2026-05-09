@@ -144,7 +144,7 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
 
     // MARK: - UNUserNotificationCenterDelegate
 
-    /// Show the probe banner even when Mooni is foreground so the user
+    /// Show the probe banner even when SleepOwl is foreground so the user
     /// has a one-tap "I'm awake" affordance.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,

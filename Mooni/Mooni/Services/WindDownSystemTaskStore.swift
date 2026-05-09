@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-/// Tasks Mooni surfaces during wind-down to nudge the user into using
+/// Tasks SleepOwl surfaces during wind-down to nudge the user into using
 /// system features Apple won't let us toggle for them (Night Shift, the
 /// red Color Filter, low brightness, focus modes). One task is shown
 /// every few days, rotating through the catalog.

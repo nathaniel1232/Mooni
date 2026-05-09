@@ -21,7 +21,7 @@ struct MorningCheckIn: Codable, Hashable {
     var lateCaffeine: Bool?
     /// Self-reported minutes to fall asleep last night.
     var minutesToFallAsleep: Int?
-    /// Minutes between Mooni's wake-tap and the user actually opening
+    /// Minutes between SleepOwl's wake-tap and the user actually opening
     /// the morning check-in. Used to refine wake-time accuracy.
     var minutesFromWakeToAppOpen: Int?
 }

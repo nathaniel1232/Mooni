@@ -2299,7 +2299,7 @@ private struct SleepScoreRevealScreen: View {
                     .font(MooniFont.display(22))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("Don't worry, \(petName). Mooni Pro members average \(profile.derivedSleepScore + 24) within 14 days.")
+                Text("Don't worry, \(petName). SleepOwl Pro members average \(profile.derivedSleepScore + 24) within 14 days.")
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
@@ -3563,7 +3563,7 @@ private struct StressFactScreen: View {
 
                 HStack(spacing: 8) {
                     Image(systemName: "wind").foregroundColor(MooniColor.accent)
-                    Text("Mooni's wind-down crashes cortisol so deep sleep returns.")
+                    Text("SleepOwl's wind-down crashes cortisol so deep sleep returns.")
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.accentSoft)
                 }
@@ -4023,12 +4023,12 @@ private struct PetAttachmentScreen: View {
     var body: some View {
         VStack(spacing: 22) {
             VStack(spacing: 10) {
-                Text("Mooni reflects\nyour sleep habits.")
+                Text("SleepOwl reflects\nyour sleep habits.")
                     .font(MooniFont.display(28))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
-                Text("Skip sleep, and your pet feels it. Take care of your sleep — and Mooni — at the same time.")
+                Text("Skip sleep, and your pet feels it. Take care of your sleep — and SleepOwl — at the same time.")
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
@@ -4151,7 +4151,7 @@ private struct PseudoAnalysisScreen: View {
             }
             .padding(.horizontal, 22)
 
-            Text("Mooni will keep finding patterns like this as you log nights.")
+            Text("SleepOwl will keep finding patterns like this as you log nights.")
                 .font(MooniFont.caption(12))
                 .foregroundColor(MooniColor.textMuted)
                 .multilineTextAlignment(.center)

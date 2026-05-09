@@ -47,44 +47,56 @@ struct SleepReportView: View {
         let stageTotal = max(stages.totalSleep + stages.awakeTime, 1)
         let durationProgress = min(1, entry.totalSleepDuration / max(appState.goalHours * 3600, 1))
 
-        return MooniCard {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Text("Last night")
-                        .font(MooniFont.title(15))
-                        .foregroundColor(MooniColor.textSecondary)
-                    Spacer()
-                    Text(entry.wakeTime.shortDateString)
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.textMuted)
-                }
-
-                HStack(spacing: 12) {
-                    ScoreOrbit(score: entry.score, title: "Sleep", color: scoreColor(entry.score))
-                    ScoreOrbit(score: readiness, title: "Ready", color: scoreColor(readiness))
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(entry.formattedDuration)
-                            .font(MooniFont.display(28))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Text("\(entry.bedtime.hourMinuteString) → \(entry.wakeTime.hourMinuteString)")
-                            .font(MooniFont.caption(12))
+        return VStack(spacing: 14) {
+            MooniCard {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack {
+                        Text("Last night")
+                            .font(MooniFont.title(15))
                             .foregroundColor(MooniColor.textSecondary)
+                        Spacer()
+                        Text(entry.wakeTime.shortDateString)
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.textMuted)
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(entry.formattedDuration)
+                            .font(MooniFont.display(44))
+                            .foregroundColor(MooniColor.textPrimary)
+
+                        HStack(spacing: 6) {
+                            Image(systemName: "moon.stars.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(MooniColor.accentSoft)
+                            Text("\(entry.bedtime.hourMinuteString) → \(entry.wakeTime.hourMinuteString)")
+                                .font(MooniFont.body(14))
+                                .foregroundColor(MooniColor.textSecondary)
+                        }
+
+                        HStack(spacing: 10) {
+                            ScoreChip(score: entry.score, title: "Sleep", color: scoreColor(entry.score))
+                            ScoreChip(score: readiness, title: "Ready", color: scoreColor(readiness))
+                            Spacer(minLength: 0)
+                        }
+
                         EnergyMeter(label: energy, score: readiness)
                     }
-                    Spacer()
                 }
+            }
 
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Sleep area")
-                        .font(MooniFont.title(14))
+            MooniCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Sleep stages")
+                        .font(MooniFont.title(15))
                         .foregroundColor(MooniColor.textPrimary)
-                    SleepStageTimeline(stages: stages)
+                    StagesBar(stages: stages)
                     StageLegend()
+                    StageProgressGrid(stages: stages, totalSleep: stageTotal)
                 }
+            }
 
-                StageProgressGrid(stages: stages, totalSleep: stageTotal)
-
+            MooniCard {
                 VStack(spacing: 10) {
                     MeterRow(
                         title: "Goal progress",
@@ -99,10 +111,6 @@ struct SleepReportView: View {
                         color: scoreColor(readiness)
                     )
                 }
-
-                Text("Mooni uses HealthKit sleep stages when available; otherwise it fills the chart from sleep duration and your check-in.")
-                    .font(MooniFont.caption(11))
-                    .foregroundColor(MooniColor.textMuted)
             }
         }
     }
@@ -258,7 +266,7 @@ struct SleepReportView: View {
             return "\(w.start.hourMinuteString)–\(w.end.hourMinuteString)"
         }()
         let detail: String = win == nil
-            ? "Starting with your target window until Mooni has more nights."
+            ? "Starting with your target window until SleepOwl has more nights."
             : "Your best nights happen when you fall asleep in this window."
         return premiumCard(icon: "target", color: MooniColor.accent,
                            title: "Best sleep window",
@@ -271,7 +279,7 @@ struct SleepReportView: View {
         let value = lift > 0 ? "+\(lift) min" : "0 min"
         let detail = lift > 0
             ? "You sleep \(lift) minutes longer on nights when you complete wind-down."
-            : "Mooni will update this once routine nights stack up."
+            : "SleepOwl will update this once routine nights stack up."
         return premiumCard(icon: "checklist", color: MooniColor.success,
                            title: "Wind-down lift",
                            value: value,
@@ -356,34 +364,35 @@ struct SleepReportView: View {
     }
 }
 
-private struct ScoreOrbit: View {
+private struct ScoreChip: View {
     let score: Int
     let title: String
     let color: Color
 
-    private var progress: Double { Double(min(max(score, 0), 100)) / 100 }
-
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.white.opacity(0.08), lineWidth: 8)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(
-                    AngularGradient(colors: [color.opacity(0.55), color, color.opacity(0.85)], center: .center),
-                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 1) {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.08), lineWidth: 4)
+                    .frame(width: 36, height: 36)
+                Circle()
+                    .trim(from: 0, to: Double(min(max(score, 0), 100)) / 100)
+                    .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 36, height: 36)
                 Text("\(score)")
-                    .font(MooniFont.display(22))
+                    .font(MooniFont.title(13))
                     .foregroundColor(MooniColor.textPrimary)
-                Text(title)
-                    .font(MooniFont.caption(10))
-                    .foregroundColor(MooniColor.textSecondary)
             }
+            Text(title)
+                .font(MooniFont.caption(12))
+                .foregroundColor(MooniColor.textSecondary)
+                .textCase(.uppercase)
         }
-        .frame(width: 76, height: 76)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.05))
+        .clipShape(Capsule())
     }
 }
 
@@ -425,15 +434,15 @@ private struct EnergyMeter: View {
     }
 }
 
-private struct SleepStageTimeline: View {
+private struct StagesBar: View {
     let stages: SleepStagesEstimate
 
-    private var segments: [(name: String, duration: TimeInterval, color: Color, height: CGFloat)] {
+    private var segments: [(name: String, duration: TimeInterval, color: Color)] {
         [
-            ("Deep", stages.deepSleep, MooniColor.success, 24),
-            ("Light", stages.lightSleep, MooniColor.accentSoft, 36),
-            ("REM", stages.remSleep, MooniColor.accent, 50),
-            ("Awake", stages.awakeTime, MooniColor.warning, 18)
+            ("Deep",  stages.deepSleep,  MooniColor.success),
+            ("Light", stages.lightSleep, MooniColor.accentSoft),
+            ("REM",   stages.remSleep,   MooniColor.accent),
+            ("Awake", stages.awakeTime,  MooniColor.warning)
         ].filter { $0.duration > 0 }
     }
 
@@ -443,34 +452,34 @@ private struct SleepStageTimeline: View {
 
     var body: some View {
         GeometryReader { geo in
-            HStack(alignment: .bottom, spacing: 3) {
+            let spacing: CGFloat = 2
+            let count = max(segments.count, 1)
+            let available = max(geo.size.width - spacing * CGFloat(count - 1), 1)
+
+            HStack(spacing: spacing) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(LinearGradient(colors: [segment.color.opacity(0.68), segment.color],
-                                             startPoint: .top, endPoint: .bottom))
-                        .frame(
-                            width: max(12, geo.size.width * CGFloat(segment.duration / total) - 3),
-                            height: segment.height
+                    let frac = CGFloat(segment.duration / total)
+                    let width = max(20, available * frac)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(LinearGradient(
+                            colors: [segment.color.opacity(0.78), segment.color],
+                            startPoint: .top, endPoint: .bottom
+                        ))
+                        .frame(width: width, height: 44)
+                        .overlay(
+                            Text(segment.name)
+                                .font(MooniFont.caption(10))
+                                .foregroundColor(MooniColor.background.opacity(0.88))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .padding(.horizontal, 6)
+                                .opacity(frac > 0.12 ? 1 : 0)
                         )
-                        .overlay(alignment: .bottom) {
-                            if segment.duration / total > 0.16 {
-                                Text(segment.name)
-                                    .font(MooniFont.caption(9))
-                                    .foregroundColor(MooniColor.background.opacity(0.85))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
-                                    .padding(.bottom, 5)
-                            }
-                        }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 58)
-        .padding(.horizontal, 2)
-        .padding(.vertical, 10)
-        .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .frame(height: 44)
     }
 }
 

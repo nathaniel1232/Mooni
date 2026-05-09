@@ -117,7 +117,7 @@ struct Pet: Codable {
     }
 
     // MARK: - Stored
-    var name: String = "Mooni"
+    var name: String = "SleepOwl"
     var species: PetSpecies = .owl
     var room: PetRoom = .moonBedroom
     var stage: EvolutionStage = .baby
@@ -128,7 +128,7 @@ struct Pet: Codable {
     var lastSleepScore: Int? = nil
 
     var unlockedItems: Set<String> = ["default_color", "hat_nightcap"]
-    var equippedHat: String? = "hat_nightcap"
+    var equippedHat: String? = nil
     var equippedColor: String = "default_color"
     var equippedBackground: String? = nil
 

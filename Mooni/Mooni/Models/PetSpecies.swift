@@ -9,7 +9,7 @@ enum PetSpecies: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var defaultName: String { "Mooni" }
+    var defaultName: String { "SleepOwl" }
     var displayName: String { "Owl" }
     var tagline: String { "Wise, quiet, loves moonlight." }
 

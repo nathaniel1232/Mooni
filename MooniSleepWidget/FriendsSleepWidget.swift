@@ -51,7 +51,7 @@ struct MooniFriendsSleepWidget: Widget {
         StaticConfiguration(kind: kind, provider: FriendsSleepProvider()) { entry in
             FriendsSleepWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("Mooni Sleep Circle")
+        .configurationDisplayName("SleepOwl Sleep Circle")
         .description("Compare your night with your friends.")
         .supportedFamilies([.systemMedium])
         .contentMarginsDisabled()

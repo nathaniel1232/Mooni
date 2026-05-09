@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Circular progress ring around the Mooni mascot.
+/// Circular progress ring around the SleepOwl mascot.
 /// Track adapts to light/dark; progress arc uses an angular gradient + glow.
 struct SleepScoreRing<Center: View>: View {
     let progress: Double

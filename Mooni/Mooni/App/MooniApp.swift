@@ -24,7 +24,7 @@ struct MooniApp: App {
         }
     }
 
-    /// Registers Outfit .ttf files bundled under Mooni/Fonts at runtime, so
+    /// Registers Outfit .ttf files bundled under SleepOwl/Fonts at runtime, so
     /// MooniFont can use Outfit-* postscript names without needing Info.plist
     /// UIAppFonts entries (Xcode's auto-generated Info.plist drops array values).
     private static func registerCustomFonts() {

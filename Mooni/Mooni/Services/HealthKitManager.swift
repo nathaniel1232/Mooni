@@ -19,11 +19,28 @@ final class HealthKitManager: ObservableObject {
         HKObjectType.categoryType(forIdentifier: .sleepAnalysis)
     }
 
+    /// HealthKit never reports read-only permission status, so we persist
+    /// a flag once the user has gone through the system sheet — that's
+    /// the only reliable way to know we're "connected" from the UI.
+    private static let didConnectKey = "mooni.health.didConnect"
+    private var didCompleteConnection: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.didConnectKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.didConnectKey) }
+    }
+
     private init() {
         refreshAuthState()
     }
 
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
+
+    /// True once the user has tapped through the HealthKit prompt at
+    /// least once and didn't end up in an explicit "denied" state.
+    var isConnected: Bool {
+        if case .authorized = authState { return true }
+        if case .denied = authState { return false }
+        return didCompleteConnection
+    }
 
     func refreshAuthState() {
         guard isAvailable, let type = sleepType else {
@@ -48,8 +65,12 @@ final class HealthKitManager: ObservableObject {
         do {
             try await store.requestAuthorization(toShare: [], read: [type])
             refreshAuthState()
-            // We can't introspect read-permission directly; assume success unless explicitly denied.
-            return authState != .denied
+            if authState != .denied {
+                didCompleteConnection = true
+                objectWillChange.send()
+                return true
+            }
+            return false
         } catch {
             lastImportError = error.localizedDescription
             return false

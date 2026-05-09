@@ -46,11 +46,24 @@ struct SleepingOverlay: View {
     @State private var auraPulse: CGFloat = 0.85
 
     var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            content(now: context.date)
+        }
+    }
+
+    @ViewBuilder
+    private func content(now: Date) -> some View {
+        let wakeAnchor = appState.nextWakeProbeAnchor
+        let openSecondsBeforeWake: TimeInterval = 60 * 60        // 1 hour
+        let lateOpenAfterStart: TimeInterval = (appState.goalHours + 0.5) * 3600
+        let started = appState.sleepStartedAt
+        let isLate = started.map { now.timeIntervalSince($0) >= lateOpenAfterStart } ?? false
+        let canWake = now.timeIntervalSince(wakeAnchor) >= -openSecondsBeforeWake || isLate
+
         ZStack {
             MooniGradient.night.ignoresSafeArea()
             StarsBackground(count: 90)
 
-            // Soft moon glow behind Luna for depth.
             Circle()
                 .fill(
                     RadialGradient(
@@ -85,7 +98,7 @@ struct SleepingOverlay: View {
                         .foregroundColor(MooniColor.textPrimary)
                         .multilineTextAlignment(.center)
 
-                    if let started = appState.sleepStartedAt {
+                    if let started {
                         HStack(spacing: 12) {
                             sleepStat(
                                 icon: "moon.stars.fill",
@@ -94,14 +107,16 @@ struct SleepingOverlay: View {
                             )
                             sleepStat(
                                 icon: "sunrise.fill",
-                                value: appState.targetWakeTime.hourMinuteString,
+                                value: wakeAnchor.hourMinuteString,
                                 label: "Target wake"
                             )
                         }
                         .padding(.top, 4)
                     }
 
-                    Text("Tap when you're awake — \(appState.pet.name) will ask a few quick questions before unlocking the day.")
+                    Text(canWake
+                         ? "Tap when you're awake — \(appState.pet.name) will ask a few quick questions before unlocking the day."
+                         : "\(appState.pet.name) will check in around \(wakeAnchor.addingTimeInterval(-openSecondsBeforeWake).hourMinuteString). Sleep tight.")
                         .font(MooniFont.body(14))
                         .foregroundColor(MooniColor.textSecondary)
                         .multilineTextAlignment(.center)
@@ -111,12 +126,43 @@ struct SleepingOverlay: View {
 
                 Spacer()
 
-                PrimaryButton(title: "I'm awake", icon: "sun.max.fill") {
-                    appState.wakeUpFromSleepMode()
+                if canWake {
+                    PrimaryButton(title: "Are you awake?", icon: "sun.max.fill") {
+                        appState.wakeUpFromSleepMode()
+                    }
+                    .frame(maxWidth: 280)
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 28)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                } else {
+                    VStack(spacing: 14) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "moon.zzz.fill")
+                                .foregroundColor(MooniColor.accentSoft)
+                            Text("Sleep mode active")
+                                .font(MooniFont.caption(13))
+                                .foregroundColor(MooniColor.textMuted)
+                                .textCase(.uppercase)
+                        }
+                        #if DEBUG
+                        Button {
+                            appState.wakeUpFromSleepMode()
+                        } label: {
+                            Text("Dev: exit sleep mode")
+                                .font(MooniFont.caption(11))
+                                .foregroundColor(MooniColor.danger)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Capsule())
+                                .overlay(Capsule().stroke(MooniColor.danger.opacity(0.4), lineWidth: 1))
+                        }
+                        #endif
+                    }
+                    .padding(.bottom, 36)
                 }
-                .padding(.horizontal, 28)
-                .padding(.bottom, 28)
             }
+            .animation(.easeInOut(duration: 0.35), value: canWake)
         }
     }
 
@@ -152,7 +198,7 @@ struct MainTabView: View {
     }
 
     enum Tab: Hashable {
-        case home, sleep, quest, luna, me
+        case home, sleep, quest, sounds, me
     }
 
     var body: some View {
@@ -169,9 +215,9 @@ struct MainTabView: View {
                 .tabItem { Label("Quest", systemImage: "checklist") }
                 .tag(Tab.quest)
 
-            PetScreenView(showPaywall: $showPaywall)
-                .tabItem { Label(appState.pet.name, systemImage: "sparkles") }
-                .tag(Tab.luna)
+            FallAsleepView()
+                .tabItem { Label("Sounds", systemImage: "waveform") }
+                .tag(Tab.sounds)
 
             ProfileView(showPaywall: $showPaywall)
                 .tabItem { Label("Me", systemImage: "person.crop.circle.fill") }

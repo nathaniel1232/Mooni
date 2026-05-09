@@ -429,7 +429,7 @@ private struct GoodSleepStage: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("With Mooni…")
+            Text("With SleepOwl…")
                 .font(MooniFont.caption(13))
                 .foregroundColor(.white.opacity(0.85))
                 .textCase(.uppercase)
@@ -472,7 +472,7 @@ private struct GoodSleepStage: View {
                 .font(MooniFont.display(26))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
-            Text("Mooni Pro members report it in their first week.")
+            Text("SleepOwl Pro members report it in their first week.")
                 .font(MooniFont.body(15))
                 .foregroundColor(.white.opacity(0.9))
                 .multilineTextAlignment(.center)

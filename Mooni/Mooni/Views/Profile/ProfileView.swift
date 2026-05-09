@@ -249,6 +249,7 @@ struct ProfileView: View {
     }
 
     private var healthStatusText: String {
+        if healthKit.isConnected { return "Connected" }
         switch healthKit.authState {
         case .authorized: return "Connected"
         case .denied: return "Needs access"

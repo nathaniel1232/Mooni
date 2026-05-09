@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Small widget — tight, balanced layout. Mooni brand top, mascot+ring
+/// Small widget — tight, balanced layout. SleepOwl brand top, mascot+ring
 /// in the middle, time range across the bottom so you always see when
 /// you slept at a glance.
 struct SmallSleepWidgetView: View {
@@ -13,7 +13,7 @@ struct SmallSleepWidgetView: View {
                 Image(systemName: "moon.stars.fill")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(SleepWidgetPalette.textSecondary)
-                Text("Mooni")
+                Text("SleepOwl")
                     .font(.system(size: 11, weight: .heavy, design: .rounded))
                     .tracking(0.5)
                     .foregroundStyle(SleepWidgetPalette.textPrimary)

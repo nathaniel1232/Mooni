@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Medium widget — clean two-pane layout.
-/// LEFT: hero ring with the Mooni mascot, no separate score number under it.
+/// LEFT: hero ring with the SleepOwl mascot, no separate score number under it.
 /// RIGHT: big score, quality subtitle, then the three detail rows.
-/// "Mooni" wordmark sits subtly in the top-right so the brand is always visible.
+/// "SleepOwl" wordmark sits subtly in the top-right so the brand is always visible.
 struct MediumSleepWidgetView: View {
     let data: SleepWidgetData
 
@@ -26,7 +26,7 @@ struct MediumSleepWidgetView: View {
                     Spacer(minLength: 0)
                     Image(systemName: "moon.stars.fill")
                         .font(.system(size: 10, weight: .semibold))
-                    Text("Mooni")
+                    Text("SleepOwl")
                         .font(.system(size: 10, weight: .heavy, design: .rounded))
                         .tracking(0.5)
                 }

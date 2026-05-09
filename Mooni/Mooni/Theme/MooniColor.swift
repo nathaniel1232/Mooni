@@ -32,9 +32,10 @@ enum MooniGradient {
 
     static let dawn = LinearGradient(
         colors: [
-            Color(red: 0.20, green: 0.18, blue: 0.40),
-            Color(red: 0.45, green: 0.30, blue: 0.55),
-            Color(red: 0.85, green: 0.55, blue: 0.55)
+            Color(red: 0.06, green: 0.07, blue: 0.18),
+            Color(red: 0.16, green: 0.13, blue: 0.32),
+            Color(red: 0.32, green: 0.24, blue: 0.48),
+            Color(red: 0.55, green: 0.45, blue: 0.78)
         ],
         startPoint: .top,
         endPoint: .bottom

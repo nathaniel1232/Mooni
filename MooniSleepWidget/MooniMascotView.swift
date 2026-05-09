@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Mooni owl mascot inside a soft circular bubble.
+/// SleepOwl owl mascot inside a soft circular bubble.
 ///
 /// If you've added the existing `owl_base` asset to the widget target's
 /// asset catalog (or a shared catalog), it will render that. Otherwise

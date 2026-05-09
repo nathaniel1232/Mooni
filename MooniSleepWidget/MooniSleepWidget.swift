@@ -69,7 +69,7 @@ struct MooniSleepWidget: Widget {
         StaticConfiguration(kind: kind, provider: SleepWidgetProvider()) { entry in
             MooniSleepWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("Mooni Sleep")
+        .configurationDisplayName("SleepOwl Sleep")
         .description("Your latest sleep score, at a glance.")
         .supportedFamilies([.systemSmall, .systemMedium])
         .contentMarginsDisabled()

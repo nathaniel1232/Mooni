@@ -102,7 +102,7 @@ struct DiscountPaywallView: View {
 
                     // Why this offer
                     VStack(spacing: 10) {
-                        offerRow(icon: "checkmark.seal.fill", text: "Full Mooni Pro — every feature unlocked")
+                        offerRow(icon: "checkmark.seal.fill", text: "Full SleepOwl Pro — every feature unlocked")
                         offerRow(icon: "pawprint.fill", text: "All pet evolutions & rare forms")
                         offerRow(icon: "wind", text: "Sleep stories, breathing & 7-day reset")
                         offerRow(icon: "chart.bar.fill", text: "Advanced analytics & sleep coach")

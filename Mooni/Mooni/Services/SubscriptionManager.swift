@@ -55,7 +55,7 @@ final class SubscriptionManager: ObservableObject {
         if devForcePro { isPro = true; return }
         do {
             let info = try await Purchases.shared.customerInfo()
-            isPro = info.entitlements.active["Mooni Pro"] != nil
+            isPro = info.entitlements.active["SleepOwl Pro"] != nil
         } catch {
             // Silently fail — no internet or sandbox; treat as non-pro
         }
@@ -102,7 +102,7 @@ final class SubscriptionManager: ObservableObject {
         defer { isLoading = false }
         do {
             let info = try await Purchases.shared.restorePurchases()
-            isPro = info.entitlements.active["Mooni Pro"] != nil
+            isPro = info.entitlements.active["SleepOwl Pro"] != nil
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -117,7 +117,7 @@ private final class MooniPurchasesDelegate: NSObject, RevenueCat.PurchasesDelega
 
     func purchases(_ purchases: Purchases, receivedUpdated customerInfo: CustomerInfo) {
         Task { @MainActor in
-            SubscriptionManager.shared.isPro = customerInfo.entitlements.active["Mooni Pro"] != nil
+            SubscriptionManager.shared.isPro = customerInfo.entitlements.active["SleepOwl Pro"] != nil
         }
     }
 }

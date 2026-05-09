@@ -175,7 +175,7 @@ struct SunLockView: View {
                     .font(MooniFont.display(28))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("Mooni needs the camera to detect morning\nsunlight. Enable it in Settings to continue.")
+                Text("SleepOwl needs the camera to detect morning\nsunlight. Enable it in Settings to continue.")
                     .font(MooniFont.body(15))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)

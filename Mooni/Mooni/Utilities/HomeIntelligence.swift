@@ -4,7 +4,7 @@ import SwiftUI
 /// Generates the morning "briefing" copy for the Home screen.
 ///
 /// The goal is variability + emotional intelligence: the user opens
-/// Mooni each morning and sees a fresh aura, fresh predictions, and
+/// SleepOwl each morning and sees a fresh aura, fresh predictions, and
 /// occasionally a rare-event surprise — but the values are deterministic
 /// per day, so refreshing the screen doesn't shuffle them.
 enum HomeIntelligence {
@@ -73,7 +73,7 @@ enum HomeIntelligence {
             switch self {
             case .energy:      return "Today's energy"
             case .recovery:    return "Recovery"
-            case .mood:        return "Mooni's mood"
+            case .mood:        return "SleepOwl's mood"
             case .consistency: return "Consistency"
             case .focus:       return "Focus"
             }
@@ -407,7 +407,7 @@ enum HomeIntelligence {
             detail: pick(recoveryDetails(score: score, hours: hours), seed: seed, salt: 53)
         )
 
-        // Mood (Mooni)
+        // Mood (SleepOwl)
         let mood = MorningCard(
             kind: .mood,
             headline: aura.label,
@@ -591,7 +591,7 @@ enum HomeIntelligence {
             )
         }
 
-        // Sprinkle a "Mooni feels amazing" rare card on ~1 in 12 days
+        // Sprinkle a "SleepOwl feels amazing" rare card on ~1 in 12 days
         // when score is good — adds variability without lying.
         if score >= 80 && (seed % 12) == 0 {
             return RareEvent(
@@ -604,7 +604,7 @@ enum HomeIntelligence {
         return nil
     }
 
-    private static var petNameFallback: String { "Mooni" }
+    private static var petNameFallback: String { "SleepOwl" }
 
     // MARK: - Why line
 

@@ -29,18 +29,9 @@ struct HomeView: View {
                     header
                         .padding(.top, 8)
 
-                    if let event = morningBriefing?.rareEvent {
-                        RareEventBanner(event: event)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-
                     heroSection
 
                     mainCard
-
-                    if let achievement = morningBriefing?.achievement {
-                        AchievementChip(achievement: achievement)
-                    }
 
                     stateSupportCards
 
@@ -149,9 +140,6 @@ struct HomeView: View {
 
     private var heroSection: some View {
         VStack(spacing: 12) {
-            if let briefing = morningBriefing {
-                DailyAuraBadge(aura: briefing.aura, deck: briefing.auraDeck)
-            }
             InteractiveLunaHero(
                 pet: appState.pet,
                 mood: heroMood,
@@ -180,37 +168,32 @@ struct HomeView: View {
         MooniCard {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Tonight's mission")
+                    Text("Tonight")
                         .font(MooniFont.title(20))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text("Help \(appState.pet.name) get cozy before \(appState.targetBedtime.hourMinuteString).")
+                    Text("Sleep at \(appState.targetBedtime.hourMinuteString).")
                         .font(MooniFont.body(14))
                         .foregroundColor(MooniColor.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
                 VStack(spacing: 10) {
-                    MooniInfoRow(icon: "moon.zzz.fill", title: "Wind-down starts", value: windDownTime.hourMinuteString, color: MooniColor.success)
-                    MooniInfoRow(icon: "bed.double.fill", title: "Bedtime target", value: appState.targetBedtime.hourMinuteString)
-                    MooniInfoRow(icon: "sunrise.fill", title: "Wake target", value: appState.targetWakeTime.hourMinuteString, color: MooniColor.warning)
+                    MooniInfoRow(icon: "moon.zzz.fill", title: "Wind down at", value: windDownTime.hourMinuteString, color: MooniColor.success)
+                    MooniInfoRow(icon: "bed.double.fill", title: "Sleep at", value: appState.targetBedtime.hourMinuteString)
+                    MooniInfoRow(icon: "sunrise.fill", title: "Wake at", value: appState.targetWakeTime.hourMinuteString, color: MooniColor.warning)
                 }
 
                 VStack(spacing: 10) {
-                    PrimaryButton(title: "Start wind-down", icon: "moon.zzz.fill") {
+                    PrimaryButton(title: "Wind down", icon: "moon.zzz.fill") {
                         showWindDown = true
                     }
 
                     if !isHealthConnected {
-                        SecondaryButton(title: "Connect Apple Health", icon: "heart.text.square.fill") {
+                        SecondaryButton(title: "Use Apple Health", icon: "heart.text.square.fill") {
                             connectAppleHealth()
                         }
                     }
                 }
-
-                Text("Complete tonight's quest to earn +20 dream stars.")
-                    .font(MooniFont.caption(13))
-                    .foregroundColor(MooniColor.warning)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -614,12 +597,7 @@ struct HomeView: View {
         ["breathing", "journal", "no_phone"]
     }
 
-    private var isHealthConnected: Bool {
-        if case .authorized = healthKit.authState {
-            return true
-        }
-        return false
-    }
+    private var isHealthConnected: Bool { healthKit.isConnected }
 
     private func connectAppleHealth() {
         Task {

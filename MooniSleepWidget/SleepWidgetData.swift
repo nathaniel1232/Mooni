@@ -60,7 +60,7 @@ struct SleepWidgetData: Codable, Hashable {
 ///
 /// To wire up real data later:
 ///   1. In Xcode → Signing & Capabilities, add the **App Groups** capability
-///      to BOTH the `Mooni` app target and the `MooniSleepWidget` target.
+///      to BOTH the `SleepOwl` app target and the `MooniSleepWidget` target.
 ///   2. Use the same group id for both, e.g. `group.com.sabaiduka.mooni`.
 ///   3. Set `WidgetDataStore.appGroupIdentifier` below to that id.
 ///   4. From the app, after each new sleep night, call:
@@ -69,22 +69,22 @@ struct SleepWidgetData: Codable, Hashable {
 ///   5. The widget will read from the shared `UserDefaults(suiteName:)`
 ///      automatically — no other widget code changes are needed.
 enum WidgetDataStore {
-    /// Set this to your real App Group id once the capability is enabled on
-    /// both targets. Until then we fall back to the sample data.
-    static let appGroupIdentifier: String? = nil  // e.g. "group.com.sabaiduka.mooni"
+    /// App Group id shared between host app and widget extension.
+    /// The "App Groups" capability must be enabled on BOTH targets in
+    /// Xcode with this identifier for the snapshot to cross the process
+    /// boundary; otherwise we fall back to the bundled sample.
+    static let appGroupIdentifier: String = "group.com.sabaiduka.mooni"
 
     private static let storageKey = "mooni.widget.latestSleep"
 
-    private static var defaults: UserDefaults? {
-        guard let id = appGroupIdentifier else { return nil }
-        return UserDefaults(suiteName: id)
+    private static var defaults: UserDefaults {
+        UserDefaults(suiteName: appGroupIdentifier) ?? .standard
     }
 
     /// Read the latest snapshot. Falls back to the bundled sample so the
-    /// widget always has something nice to render.
+    /// widget always has something nice to render before the first night.
     static func read() -> SleepWidgetData {
         guard
-            let defaults,
             let data = defaults.data(forKey: storageKey),
             let decoded = try? JSONDecoder().decode(SleepWidgetData.self, from: data)
         else {
@@ -95,7 +95,6 @@ enum WidgetDataStore {
 
     /// Called from the **main app** (not the widget) when a new night lands.
     static func write(_ snapshot: SleepWidgetData) {
-        guard let defaults else { return }
         if let data = try? JSONEncoder().encode(snapshot) {
             defaults.set(data, forKey: storageKey)
         }

@@ -39,7 +39,14 @@ final class AppState: ObservableObject {
 
     @Published var pet: Pet { didSet { persistPet() } }
     @Published var routine: Routine { didSet { persistRoutine() } }
-    @Published var entries: [SleepEntry] { didSet { persistEntries() } }
+    @Published var entries: [SleepEntry] {
+        didSet {
+            persistEntries()
+            if let latest = entries.sorted(by: { $0.wakeTime > $1.wakeTime }).first {
+                WidgetSnapshotPublisher.publish(latest)
+            }
+        }
+    }
 
     @Published var goalHours: Double { didSet { UserDefaults.standard.set(goalHours, forKey: Key.goalHours) } }
     @Published var targetBedtime: Date {
@@ -110,7 +117,11 @@ final class AppState: ObservableObject {
         // Pet
         if let data = defaults.data(forKey: Key.petData),
            let decoded = try? JSONDecoder().decode(Pet.self, from: data) {
-            self.pet = decoded
+            var migrated = decoded
+            // Hats / cosmetics aren't shipping yet — strip any equipped
+            // accessories so the owl_base appears bare for everyone.
+            migrated.equippedHat = nil
+            self.pet = migrated
         } else {
             self.pet = Pet()
         }
@@ -289,7 +300,7 @@ final class AppState: ObservableObject {
     // MARK: - Onboarding
     func completeOnboarding(name: String, goalHours: Double, bedtime: Date, wakeTime: Date) {
         var newPet = pet
-        newPet.name = name.isEmpty ? "Mooni" : name
+        newPet.name = name.isEmpty ? "SleepOwl" : name
         self.pet = newPet
         self.goalHours = goalHours
         self.targetBedtime = bedtime
@@ -611,6 +622,31 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(now, forKey: Key.wakeTappedAt)
         // First app-open after wake = wake-tap time itself.
         UserDefaults.standard.set(now, forKey: Key.appOpenedAfterWakeAt)
+        // Create a SleepEntry seeded from the captured sleep window so the
+        // morning check-in has something to refine. The check-in step
+        // shifts bedtime by "minutes to fall asleep" and wakeTime back by
+        // the auto-captured wake-tap → app-open delay.
+        if let started = sleepStartedAt,
+           !entries.contains(where: { $0.dayKey == now.dayKey }) {
+            var entry = SleepEntry(
+                bedtime: started,
+                wakeTime: now,
+                quality: .good,
+                mood: .okay,
+                notes: "Logged from sleep mode",
+                routineCompleted: !routine.completedToday.isEmpty,
+                isEstimated: false,
+                timeInBed: max(0, now.timeIntervalSince(started)),
+                source: .userAdjusted
+            )
+            SleepScoringManager.update(
+                entry: &entry,
+                goalHours: goalHours,
+                consistencyDays: bedtimeConsistencyDays,
+                checkIn: nil
+            )
+            entries.append(entry)
+        }
         WindDownDimController.shared.end()
         NotificationManager.shared.cancelWakeProbes()
         isSleeping = false
@@ -633,6 +669,23 @@ final class AppState: ObservableObject {
 
         var entry = entries[idx]
         let previousEnergy = entry.energyEarned
+
+        // Refine bedtime / wake based on the user's self-reported timing:
+        //   real bedtime    = sleepStartedAt + "minutes to fall asleep"
+        //   real wake time  = wake-tap time − "minutes from waking to opening app"
+        // Both bound to keep duration sane.
+        if let asleepMins = checkIn.minutesToFallAsleep, asleepMins > 0 {
+            let shifted = entry.bedtime.addingTimeInterval(TimeInterval(asleepMins) * 60)
+            if shifted < entry.wakeTime { entry.bedtime = shifted }
+        }
+        if let openDelay = checkIn.minutesFromWakeToAppOpen, openDelay > 0 {
+            let shifted = entry.wakeTime.addingTimeInterval(-TimeInterval(openDelay) * 60)
+            if shifted > entry.bedtime { entry.wakeTime = shifted }
+        }
+        entry.timeInBed = max(0, entry.wakeTime.timeIntervalSince(entry.bedtime))
+        entry.totalSleep = entry.timeInBed
+        entry.didCompleteMorningCheckIn = true
+
         SleepScoringManager.update(
             entry: &entry,
             goalHours: goalHours,
@@ -643,6 +696,7 @@ final class AppState: ObservableObject {
         applyReward(energy: max(0, entry.energyEarned - previousEnergy), score: entry.score)
         UserDefaults.standard.set(dayKey, forKey: Key.lastMorningPrompt)
         showMorningCheckIn = false
+        WidgetSnapshotPublisher.publish(entry)
         return entry
     }
 
@@ -772,7 +826,7 @@ extension AppState {
         let s = AppState()
         s.hasCompletedOnboarding = true
         var p = s.pet
-        p.name = "Mooni"
+        p.name = "SleepOwl"
         p.level = 4
         p.dreamEnergy = 240
         p.lastSleepScore = 84

@@ -100,6 +100,9 @@ struct MorningCheckInView: View {
     var body: some View {
         ZStack {
             MooniGradient.dawn.ignoresSafeArea()
+            StarsBackground(count: 40)
+                .opacity(0.45)
+                .allowsHitTesting(false)
             VStack(spacing: 24) {
                 topBar
 
@@ -172,7 +175,7 @@ struct MorningCheckInView: View {
                 .clipShape(Capsule())
             }
 
-            Text("A few quick taps tune last night's Mooni score.")
+            Text("A few quick taps tune last night's SleepOwl score.")
                 .font(MooniFont.body(15))
                 .foregroundColor(MooniColor.textSecondary)
                 .multilineTextAlignment(.center)
@@ -191,7 +194,7 @@ struct MorningCheckInView: View {
     }
 
     private var openDelayView: some View {
-        questionView(title: "How long after waking did you open Mooni?") {
+        questionView(title: "How long after waking did you open SleepOwl?") {
             ForEach(OpenDelayBucket.allCases) { option in
                 pickerRow(label: option.label, selected: openDelayBucket == option) {
                     openDelayBucket = option
@@ -201,7 +204,7 @@ struct MorningCheckInView: View {
     }
 
     /// Friendly one-liner shown under the greeting that pulls from the
-    /// timestamps Mooni captured automatically (wake tap + first
+    /// timestamps SleepOwl captured automatically (wake tap + first
     /// app-open) so the user sees the system is paying attention.
     private var wakeContextLine: String? {
         guard let wake = appState.wakeTappedAt,
@@ -211,7 +214,7 @@ struct MorningCheckInView: View {
         if delay <= 0 {
             return "Wake logged at \(wakeStr)."
         }
-        return "Woke at \(wakeStr) · opened Mooni \(delay) min later."
+        return "Woke at \(wakeStr) · opened SleepOwl \(delay) min later."
     }
 
     private var feelingView: some View {
@@ -316,7 +319,7 @@ struct MorningCheckInView: View {
                     }
                 }
             } else {
-                Text("Mooni is still gathering last night's sleep.")
+                Text("SleepOwl is still gathering last night's sleep.")
                     .font(MooniFont.body(15))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
@@ -346,6 +349,7 @@ struct MorningCheckInView: View {
                 PrimaryButton(title: "Done", icon: "checkmark") {
                     dismiss()
                 }
+                .frame(maxWidth: 280)
             } else {
                 if step != .greeting {
                     SecondaryButton(title: "Back") {
@@ -360,8 +364,10 @@ struct MorningCheckInView: View {
                         withAnimation { step = nextStep(of: step) }
                     }
                 }
+                .frame(maxWidth: 280)
             }
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func saveCheckIn() {
