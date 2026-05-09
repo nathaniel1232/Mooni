@@ -74,7 +74,7 @@ final class AppState: ObservableObject {
     @Published var isSleeping: Bool {
         didSet {
             UserDefaults.standard.set(isSleeping, forKey: Key.isSleeping)
-            if isSleeping {
+            if isSleeping && UserDefaults.standard.object(forKey: Key.sleepStartedAt) == nil {
                 UserDefaults.standard.set(Date(), forKey: Key.sleepStartedAt)
             }
         }
@@ -211,10 +211,15 @@ final class AppState: ObservableObject {
 
     private func handleConfirmedWake() {
         guard isSleeping else { return }
+        let wakeTime = wakeTappedAt ?? Date()
         // First-app-open delay starts from this moment.
         if UserDefaults.standard.object(forKey: Key.appOpenedAfterWakeAt) == nil {
             UserDefaults.standard.set(Date(), forKey: Key.appOpenedAfterWakeAt)
         }
+        seedSleepModeEntry(
+            wakeTime: wakeTime,
+            notes: "Logged from wake notification"
+        )
         WindDownDimController.shared.end()
         NotificationManager.shared.cancelWakeProbes()
         isSleeping = false
@@ -574,7 +579,8 @@ final class AppState: ObservableObject {
     }
 
     /// Enter sleep mode. The app locks itself until morning, and the pet sleeps.
-    func enterSleepMode() {
+    func enterSleepMode(startedAt: Date = Date()) {
+        UserDefaults.standard.set(startedAt, forKey: Key.sleepStartedAt)
         isSleeping = true
         var p = pet
         p.mood = .sleepy
@@ -622,35 +628,43 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(now, forKey: Key.wakeTappedAt)
         // First app-open after wake = wake-tap time itself.
         UserDefaults.standard.set(now, forKey: Key.appOpenedAfterWakeAt)
-        // Create a SleepEntry seeded from the captured sleep window so the
-        // morning check-in has something to refine. The check-in step
-        // shifts bedtime by "minutes to fall asleep" and wakeTime back by
-        // the auto-captured wake-tap → app-open delay.
-        if let started = sleepStartedAt,
-           !entries.contains(where: { $0.dayKey == now.dayKey }) {
-            var entry = SleepEntry(
-                bedtime: started,
-                wakeTime: now,
-                quality: .good,
-                mood: .okay,
-                notes: "Logged from sleep mode",
-                routineCompleted: !routine.completedToday.isEmpty,
-                isEstimated: false,
-                timeInBed: max(0, now.timeIntervalSince(started)),
-                source: .userAdjusted
-            )
-            SleepScoringManager.update(
-                entry: &entry,
-                goalHours: goalHours,
-                consistencyDays: bedtimeConsistencyDays,
-                checkIn: nil
-            )
-            entries.append(entry)
-        }
+        seedSleepModeEntry(
+            wakeTime: now,
+            notes: "Logged from sleep mode"
+        )
         WindDownDimController.shared.end()
         NotificationManager.shared.cancelWakeProbes()
         isSleeping = false
         showMorningCheckIn = true
+    }
+
+    private func seedSleepModeEntry(wakeTime: Date, notes: String) {
+        // Create a SleepEntry from the captured sleep window so morning
+        // check-in has something to refine. The check-in step can shift
+        // bedtime by "minutes to fall asleep" and wakeTime by wake/open delay.
+        guard let started = sleepStartedAt,
+              !entries.contains(where: { $0.dayKey == wakeTime.dayKey }) else {
+            return
+        }
+
+        var entry = SleepEntry(
+            bedtime: started,
+            wakeTime: wakeTime,
+            quality: .good,
+            mood: .okay,
+            notes: notes,
+            routineCompleted: !routine.completedToday.isEmpty,
+            isEstimated: false,
+            timeInBed: max(0, wakeTime.timeIntervalSince(started)),
+            source: .userAdjusted
+        )
+        SleepScoringManager.update(
+            entry: &entry,
+            goalHours: goalHours,
+            consistencyDays: bedtimeConsistencyDays,
+            checkIn: nil
+        )
+        entries.append(entry)
     }
 
     func checkIn(for entry: SleepEntry) -> MorningCheckIn? {

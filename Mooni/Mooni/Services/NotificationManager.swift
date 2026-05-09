@@ -161,12 +161,9 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
     ) {
         let id = response.notification.request.identifier
         if id.hasPrefix(Self.wakeProbePrefix) {
-            // Use the notification's scheduled fire date as the wake-tap
-            // moment. The first app-open is captured separately when the
-            // app actually becomes active.
-            let userInfo = response.notification.request.content.userInfo
-            let fireTS = userInfo["fireDate"] as? TimeInterval
-            let tapTime = fireTS.map { Date(timeIntervalSince1970: $0) } ?? Date()
+            // Use the user's confirmation time as the wake moment. A delivered
+            // notification may sit for a while before they actually tap it.
+            let tapTime = Date()
             Task { @MainActor in
                 NotificationManager.shared.recordWakeConfirmation(at: tapTime)
             }

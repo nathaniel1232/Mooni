@@ -35,10 +35,10 @@ final class HealthKitManager: ObservableObject {
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
 
     /// True once the user has tapped through the HealthKit prompt at
-    /// least once and didn't end up in an explicit "denied" state.
+    /// least once. HealthKit does not expose read-only authorization status,
+    /// so this persisted flag is the closest reliable signal for sleep reads.
     var isConnected: Bool {
         if case .authorized = authState { return true }
-        if case .denied = authState { return false }
         return didCompleteConnection
     }
 
@@ -50,7 +50,11 @@ final class HealthKitManager: ObservableObject {
         switch store.authorizationStatus(for: type) {
         case .notDetermined: authState = .notDetermined
         case .sharingAuthorized: authState = .authorized
-        case .sharingDenied: authState = .denied
+        case .sharingDenied:
+            // `authorizationStatus(for:)` reports write/share permission only.
+            // This app requests sleep reads, not writes, so a successful prompt
+            // later still appears as `.sharingDenied` here.
+            authState = didCompleteConnection ? .authorized : .notDetermined
         @unknown default: authState = .notDetermined
         }
     }
@@ -64,15 +68,13 @@ final class HealthKitManager: ObservableObject {
         }
         do {
             try await store.requestAuthorization(toShare: [], read: [type])
+            didCompleteConnection = true
             refreshAuthState()
-            if authState != .denied {
-                didCompleteConnection = true
-                objectWillChange.send()
-                return true
-            }
-            return false
+            objectWillChange.send()
+            return true
         } catch {
             lastImportError = error.localizedDescription
+            refreshAuthState()
             return false
         }
     }

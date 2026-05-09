@@ -822,7 +822,7 @@ private struct StartSleepSheet: View {
 
                     PrimaryButton(title: "Good night", icon: "moon.stars.fill") {
                         ActivitySleepEstimator.shared.recordSleepStart(at: normalizedBedtime)
-                        appState.enterSleepMode()
+                        appState.enterSleepMode(startedAt: normalizedBedtime)
                         dismiss()
                     }
 
