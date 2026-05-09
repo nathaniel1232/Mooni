@@ -6,27 +6,27 @@ import Foundation
 struct OnboardingProfile: Codable, Equatable {
     // MARK: - Personal
     var age: Int? = nil
-    var gender: Gender = .unspecified
+    var gender: Gender? = nil
     var heightCm: Int? = nil          // stored canonically in cm
     var weightKg: Double? = nil       // stored canonically in kg
     var unitSystem: UnitSystem = .imperial
 
     // MARK: - Sleep history
     var typicalSleepHours: Double = 6.5
-    var struggleDuration: StruggleDuration = .fewMonths
-    var biggestProblem: SleepProblem = .wakingTired
+    var struggleDuration: StruggleDuration? = nil
+    var biggestProblem: SleepProblem? = nil
 
     // MARK: - Pre-bed behavior
-    var usesPhoneBeforeBed: Bool = true
+    var usesPhoneBeforeBed: Bool? = nil
     var phoneScreenMinutes: Int = 60          // last 60min before lights-out
-    var caffeineCutoff: CaffeineCutoff = .afternoon
+    var caffeineCutoff: CaffeineCutoff? = nil
     var stressLevel: Int = 6                  // 1–10
-    var racingThoughtsAtNight: Bool = true
+    var racingThoughtsAtNight: Bool? = nil
 
     // MARK: - Wake & day
-    var wakeFeeling: WakeFeeling = .groggy
-    var energyDip: EnergyDip = .afternoon
-    var napsDuringDay: Bool = true
+    var wakeFeeling: WakeFeeling? = nil
+    var energyDip: EnergyDip? = nil
+    var napsDuringDay: Bool? = nil
     var snoresOrWakesUp: Bool = false
 
     // MARK: - Sleep environment
@@ -35,7 +35,7 @@ struct OnboardingProfile: Codable, Equatable {
     var bedComfort: RoomQuality = .comfortable
 
     // MARK: - Goals & motivation
-    var motivation: Motivation = .feelBetter
+    var motivation: Motivation? = nil
     var commitmentNights: Int = 7
 
     // MARK: - Derived presentation values
@@ -45,13 +45,13 @@ struct OnboardingProfile: Codable, Equatable {
     var derivedSleepScore: Int {
         var score = 70
         if typicalSleepHours < 6 { score -= 12 } else if typicalSleepHours < 7 { score -= 6 }
-        if usesPhoneBeforeBed { score -= 6 }
+        if usesPhoneBeforeBed == true { score -= 6 }
         if phoneScreenMinutes > 90 { score -= 4 }
         if stressLevel >= 7 { score -= 5 }
-        if racingThoughtsAtNight { score -= 4 }
+        if racingThoughtsAtNight == true { score -= 4 }
         if wakeFeeling == .exhausted { score -= 6 }
         else if wakeFeeling == .groggy { score -= 3 }
-        if napsDuringDay { score -= 2 }
+        if napsDuringDay == true { score -= 2 }
         if caffeineCutoff == .evening { score -= 4 }
         if roomDarkness == .bright { score -= 2 }
         if roomNoise == .loud { score -= 2 }
@@ -62,7 +62,7 @@ struct OnboardingProfile: Codable, Equatable {
     /// Pure storytelling, but it's a strong commitment device.
     var sleepAgeYearsAdded: Int {
         let baseline = 8 - Int(typicalSleepHours.rounded())
-        let extras = (usesPhoneBeforeBed ? 1 : 0) + (stressLevel >= 7 ? 1 : 0) +
+        let extras = (usesPhoneBeforeBed == true ? 1 : 0) + (stressLevel >= 7 ? 1 : 0) +
                      (wakeFeeling == .exhausted ? 1 : 0) + (caffeineCutoff == .evening ? 1 : 0)
         return max(2, min(11, baseline + extras))
     }
@@ -77,10 +77,10 @@ struct OnboardingProfile: Codable, Equatable {
     /// Top 3 issues to surface on the "we found these" screen.
     var topIssues: [String] {
         var out: [String] = []
-        if usesPhoneBeforeBed && phoneScreenMinutes >= 30 {
+        if usesPhoneBeforeBed == true && phoneScreenMinutes >= 30 {
             out.append("Late-night screens flatten your melatonin")
         }
-        if stressLevel >= 6 || racingThoughtsAtNight {
+        if stressLevel >= 6 || racingThoughtsAtNight == true {
             out.append("Mind racing keeps you out of deep sleep")
         }
         if typicalSleepHours < 7 {
