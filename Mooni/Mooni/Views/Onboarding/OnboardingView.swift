@@ -112,6 +112,8 @@ struct OnboardingView: View {
         case analyzingAnswers         // loading 1 (long, variable)
         case sleepScoreReveal
         case topIssues
+        case scienceCredibility       // research + expert-panel credibility
+        case scienceTrust             // formula + phone fallback before plan generation
         case generatingPlan           // loading 2 (long, variable)
         case socialProof
         case rateApp                  // ask for App Store rating after social proof
@@ -168,6 +170,7 @@ struct OnboardingView: View {
                             .id(step)
                             .transition(transition)
                     }
+                    .scrollDismissesKeyboard(.interactively)
 
                     footer
                         .padding(.horizontal, 20)
@@ -351,6 +354,8 @@ struct OnboardingView: View {
                 .onAppear { runAnalyzingAnimation() }
         case .sleepScoreReveal:    SleepScoreRevealScreen(profile: profile, petName: petName)
         case .topIssues:           TopIssuesScreen(profile: profile)
+        case .scienceCredibility:   ScienceCredibilityScreen()
+        case .scienceTrust:         ScienceFormulaScreen(profile: profile)
         case .generatingPlan:
             GeneratingPlanScreen(progress: $planProgress, messageIndex: $planMessageIndex, petName: petName)
                 .onAppear { runGeneratingAnimation() }
@@ -530,7 +535,9 @@ struct OnboardingView: View {
         case .reflection:         return "Continue"
         case .roomPicker:         return "Build \(petName)'s room"
         case .sleepScoreReveal:   return "Show me the issues"
-        case .topIssues:          return "Build my plan"
+        case .topIssues:          return "Show me the science"
+        case .scienceCredibility:  return "Show me the formula"
+        case .scienceTrust:       return "Build my plan"
         case .socialProof:        return "Continue"
         case .simulatedResult:    return "See how it works"
         case .firstQuest:         return "Accept tonight's quest"
@@ -945,20 +952,38 @@ private struct NamePetScreen: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(spacing: 20) {
-            Spacer().frame(height: 12)
-            DreamSpiritView(pet: previewPet, size: 150)
+        VStack(spacing: focused ? 12 : 20) {
+            Spacer().frame(height: focused ? 2 : 12)
+
+            if !focused {
+                DreamSpiritView(pet: previewPet, size: 150)
+                    .transition(.scale.combined(with: .opacity))
+            } else {
+                Image("owl_base")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 46, height: 46)
+                    .padding(10)
+                    .background(MooniColor.accent.opacity(0.12))
+                    .clipShape(Circle())
+                    .transition(.scale.combined(with: .opacity))
+            }
+
             VStack(spacing: 8) {
                 Text("What should we call them?")
                     .font(MooniFont.title(20))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("This is the name you'll see every night. Make it count.")
-                    .font(MooniFont.caption(13))
-                    .foregroundColor(MooniColor.textMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
+                if !focused {
+                    Text("This is the name you'll see every night.")
+                        .font(MooniFont.caption(13))
+                        .foregroundColor(MooniColor.textMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                        .transition(.opacity)
+                }
             }
+
             TextField("", text: $name,
                       prompt: Text(species.defaultName).foregroundColor(MooniColor.textMuted))
                 .font(MooniFont.title(22))
@@ -975,11 +1000,10 @@ private struct NamePetScreen: View {
                 .padding(.horizontal, 32)
                 .focused($focused)
                 .submitLabel(.done)
+                .onSubmit { focused = false }
         }
         .padding(.horizontal, 20)
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { focused = true }
-        }
+        .animation(.spring(response: 0.42, dampingFraction: 0.84), value: focused)
     }
 
     private var previewPet: Pet {
@@ -2444,7 +2468,7 @@ private struct SleepScoreRevealScreen: View {
                     .font(MooniFont.display(22))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("Don't worry, \(petName). SleepOwl Pro members average \(profile.derivedSleepScore + 24) within 14 days.")
+                Text("Don't worry, \(petName). Next we'll turn the biggest blockers into a realistic first-week plan.")
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
@@ -2612,6 +2636,348 @@ private struct TopIssuesScreen: View {
         .offset(y: isRevealed ? 0 : 12)
         .scaleEffect(isRevealed ? 1 : 0.96)
     }
+}
+
+// MARK: - Screen: Science credibility
+
+private struct ScienceCredibilityScreen: View {
+    @State private var reveal = 0
+
+    private let expertRows: [(icon: String, title: String, detail: String, source: String, color: Color)] = [
+        (
+            "moon.zzz.fill",
+            "Sleep duration",
+            "Adult recommendations are anchored around 7-9 hours, with age-specific ranges.",
+            "National Sleep Foundation expert panel, Sleep Health 2015",
+            MooniColor.accent
+        ),
+        (
+            "list.clipboard.fill",
+            "Sleep quality",
+            "Duration, efficiency, disturbances, and daytime function mirror clinical sleep-quality components.",
+            "Buysse et al., Pittsburgh Sleep Quality Index, 1989",
+            MooniColor.success
+        ),
+        (
+            "figure.walk.motion",
+            "Sleep-wake patterns",
+            "Activity-based timing is useful for patterns across nights, but not a medical sleep-stage diagnosis.",
+            "American Academy of Sleep Medicine actigraphy guideline, 2018",
+            MooniColor.warning
+        ),
+        (
+            "iphone.gen3.radiowaves.left.and.right",
+            "Night screens",
+            "Light-emitting devices before bed can delay circadian timing and reduce next-morning alertness.",
+            "Chang, Aeschbach, Duffy & Czeisler, PNAS 2015",
+            Color.pink
+        ),
+        (
+            "cup.and.saucer.fill",
+            "Caffeine timing",
+            "Caffeine taken even 6 hours before bed can meaningfully disrupt sleep.",
+            "Drake, Roehrs, Shambroom & Roth, JCSM 2013",
+            MooniColor.accentSoft
+        )
+    ]
+
+    var body: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 8) {
+                Image(systemName: "books.vertical.fill")
+                    .font(.system(size: 36, weight: .semibold))
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .top,
+                        endPoint: .bottom))
+
+                Text("Built on sleep science")
+                    .font(MooniFont.display(26))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+
+                Text("SleepOwl turns peer-reviewed sleep research into a simple nightly routine. It keeps the science visible so the score feels earned.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 18)
+            }
+            .padding(.top, 4)
+
+            VStack(spacing: 10) {
+                ForEach(expertRows.indices, id: \.self) { idx in
+                    let row = expertRows[idx]
+                    scienceReceipt(row, isVisible: idx < reveal)
+                }
+            }
+
+            VStack(spacing: 8) {
+                trustPill(icon: "checkmark.shield.fill", text: "Conservative scoring, not hype")
+                trustPill(icon: "lock.shield.fill", text: "Private sleep estimate when Health is unavailable")
+                trustPill(icon: "stethoscope", text: "Coaching only, never a diagnosis")
+            }
+            .padding(.top, 2)
+        }
+        .padding(.horizontal, 20)
+        .onAppear {
+            reveal = 0
+            for i in 0..<expertRows.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16 * Double(i)) {
+                    withAnimation(.spring(response: 0.62, dampingFraction: 0.86)) {
+                        reveal = i + 1
+                    }
+                }
+            }
+        }
+    }
+
+    private func scienceReceipt(
+        _ row: (icon: String, title: String, detail: String, source: String, color: Color),
+        isVisible: Bool
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: row.icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(row.color)
+                .frame(width: 34, height: 34)
+                .background(row.color.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(row.title)
+                    .font(MooniFont.title(14))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text(row.detail)
+                    .font(MooniFont.body(12))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(row.source)
+                    .font(MooniFont.caption(10))
+                    .foregroundColor(MooniColor.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(13)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(row.color.opacity(0.15), lineWidth: 1)
+        )
+        .opacity(isVisible ? 1 : 0)
+        .offset(y: isVisible ? 0 : 12)
+    }
+
+    private func trustPill(icon: String, text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(MooniColor.accentSoft)
+            Text(text)
+                .font(MooniFont.caption(12))
+                .foregroundColor(MooniColor.textPrimary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(MooniColor.accent.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+// MARK: - Screen: Science formula
+
+private struct ScienceFormulaScreen: View {
+    let profile: OnboardingProfile
+    @State private var barPhase: CGFloat = 0
+    @State private var sourcePhase: Double = 0
+
+    private var scoreWeights: [(icon: String, label: String, value: Double, detail: String, color: Color)] {
+        [
+            ("moon.zzz.fill", "Duration", 0.40, "Total sleep vs. your goal", MooniColor.accent),
+            ("speedometer", "Efficiency", 0.15, "Sleep time / time in bed", MooniColor.success),
+            ("bed.double.fill", "Restfulness", 0.15, "Wake-ups and awake time", MooniColor.warning),
+            ("waveform.path.ecg", "Deep + REM", 0.15, "Stage balance when available", Color.pink),
+            ("calendar.badge.clock", "Timing", 0.15, "Bedtime rhythm + streak", MooniColor.accentSoft)
+        ]
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            VStack(spacing: 8) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .top, endPoint: .bottom))
+
+                Text("How SleepOwl scores sleep")
+                    .font(MooniFont.display(25))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+
+                Text("No magic. Your score uses conservative sleep markers, then clearly labels estimates when Health data is missing.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+            .padding(.top, 4)
+
+            formulaCard
+            activityEstimateCard
+        }
+        .padding(.horizontal, 20)
+        .onAppear {
+            withAnimation(.easeOut(duration: 1.0)) { barPhase = 1 }
+            withAnimation(.easeOut(duration: 0.7).delay(0.25)) { sourcePhase = 1 }
+        }
+    }
+
+    private var formulaCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Score formula", systemImage: "function")
+                    .font(MooniFont.title(15))
+                    .foregroundColor(MooniColor.textPrimary)
+                Spacer()
+                Text("100 pts")
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.accentSoft)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(MooniColor.accent.opacity(0.13))
+                    .clipShape(Capsule())
+            }
+
+            VStack(spacing: 10) {
+                ForEach(scoreWeights.indices, id: \.self) { idx in
+                    let item = scoreWeights[idx]
+                    formulaRow(item, delayIndex: idx)
+                }
+            }
+
+            Text("Short nights are capped so a 2-hour test log can never look like a healthy night.")
+                .font(MooniFont.caption(11))
+                .foregroundColor(MooniColor.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
+        }
+        .padding(16)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+    }
+
+    private func formulaRow(
+        _ item: (icon: String, label: String, value: Double, detail: String, color: Color),
+        delayIndex: Int
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: item.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(item.color)
+                .frame(width: 30, height: 30)
+                .background(item.color.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text(item.label)
+                        .font(MooniFont.title(13))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Spacer()
+                    Text("\(Int(item.value * 100))%")
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(item.color)
+                }
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.10))
+                        Capsule()
+                            .fill(LinearGradient(
+                                colors: [item.color.opacity(0.75), item.color],
+                                startPoint: .leading,
+                                endPoint: .trailing))
+                            .frame(width: geo.size.width * CGFloat(item.value) * barPhase)
+                    }
+                }
+                .frame(height: 7)
+                Text(item.detail)
+                    .font(MooniFont.caption(10))
+                    .foregroundColor(MooniColor.textMuted)
+            }
+        }
+        .opacity(sourcePhase)
+        .animation(.easeOut(duration: 0.45).delay(Double(delayIndex) * 0.05), value: sourcePhase)
+    }
+
+    private var activityEstimateCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Phone activity fallback", systemImage: "iphone.gen3")
+                    .font(MooniFont.title(15))
+                    .foregroundColor(MooniColor.textPrimary)
+                Spacer()
+                Text("Private")
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.success)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(MooniColor.success.opacity(0.14))
+                    .clipShape(Capsule())
+            }
+
+            VStack(spacing: 8) {
+                trustChip("Bed signal", "Bedtime tap or app background, 8pm-4am", "moon.fill", MooniColor.accent)
+                trustChip("Wake signal", "First morning app open, 4am-4pm", "sunrise.fill", MooniColor.warning)
+                trustChip("Sanity filter", "Drops windows under 2h or over 14h", "line.3.horizontal.decrease.circle.fill", MooniColor.success)
+                trustChip("Privacy line", "No messages, browsing, or other app content", "lock.shield.fill", MooniColor.accentSoft)
+            }
+
+            if profile.usesPhoneBeforeBed == true {
+                Text("Your \(profile.phoneScreenMinutes)-minute screen habit changes the wind-down plan, not the raw sleep score.")
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(MooniColor.accent.opacity(0.16), lineWidth: 1)
+        )
+    }
+
+    private func trustChip(_ title: String, _ text: String, _ icon: String, _ color: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 28, height: 28)
+                .background(color.opacity(0.14))
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.textMuted)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
+                Text(text)
+                    .font(MooniFont.body(12))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
 }
 
 // MARK: - Screen: Generating plan
@@ -3390,7 +3756,7 @@ private struct BodyFactScreen: View {
         FactScaffold(
             eyebrow: "What your body actually needs",
             title: "You sleep \(String(format: "%.1f", youHours)) — your body wants \(String(format: "%.1f", idealHours))",
-            source: "National Sleep Foundation · age-stratified sleep duration consensus, 2015."
+            source: "Hirshkowitz et al., Sleep Health 2015 · NSF sleep-duration consensus."
         ) {
             VStack(spacing: 18) {
                 DramaticBarChart(
@@ -3452,7 +3818,7 @@ private struct SleepDebtFactScreen: View {
         FactScaffold(
             eyebrow: "Sleep debt compounds",
             title: "You're losing sleep faster than you can repay",
-            source: "Walker MP. Why We Sleep, Ch.7 · sleep-debt accumulation literature."
+            source: "NSF Sleep Health 2015 + Consensus Sleep Diary, Sleep 2012 · duration and weekly sleep tracking."
         ) {
             VStack(spacing: 14) {
                 // Big dramatic counter — pass yearTotal directly so the count-up
@@ -3536,7 +3902,7 @@ private struct PhoneFactScreen: View {
         FactScaffold(
             eyebrow: "Phones flatten melatonin",
             title: "Your habit costs ~\(Int(sleepStolen)) minutes of real sleep",
-            source: "Chang et al. PNAS 2014 · iPad use suppresses evening melatonin by 23%."
+            source: "Chang et al., PNAS 2015 · light-emitting devices delayed circadian timing and reduced evening melatonin."
         ) {
             VStack(spacing: 14) {
                 // Big stolen-minutes counter
@@ -3620,7 +3986,7 @@ private struct CaffeineFactScreen: View {
         FactScaffold(
             eyebrow: "Caffeine half-life",
             title: "That 2pm coffee is still awake at midnight",
-            source: "Drake et al. J Clin Sleep Med 2013 · caffeine 6h before bed reduced sleep by 41 min."
+            source: "Drake et al., J Clin Sleep Med 2013 · 400mg caffeine up to 6h before bed disrupted sleep."
         ) {
             VStack(spacing: 16) {
                 // Timeline of caffeine levels
@@ -3727,8 +4093,8 @@ private struct StressFactScreen: View {
     var body: some View {
         FactScaffold(
             eyebrow: "Cortisol blocks deep sleep",
-            title: "Stress steals 40% of your deep sleep",
-            source: "Kim & Dimsdale, Behav Sleep Med 2007 · stress & slow-wave sleep meta."
+            title: "Stress can shrink deep sleep",
+            source: "Kim & Dimsdale, Behav Sleep Med 2007 · review of polysomnographic stress studies."
         ) {
             VStack(spacing: 16) {
                 // Truncated-axis bar comparison
@@ -3760,7 +4126,7 @@ private struct StressFactScreen: View {
 
                 HStack(spacing: 8) {
                     Image(systemName: "wind").foregroundColor(MooniColor.accent)
-                    Text("SleepOwl's wind-down crashes cortisol so deep sleep returns.")
+                    Text("A calmer wind-down helps your body downshift before bed.")
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.accentSoft)
                 }
@@ -3800,7 +4166,7 @@ private struct DayCycleFactScreen: View {
         FactScaffold(
             eyebrow: "Your circadian rhythm",
             title: "Same wake time every day locks your rhythm",
-            source: "Czeisler CA et al. Science 1999 · stable wake-time entrains the SCN."
+            source: "Czeisler et al., Science 1999 · human circadian pacemaker stability and timing."
         ) {
             VStack(spacing: 16) {
                 // 24-hour timeline strip
@@ -3920,7 +4286,7 @@ private struct EnvironmentFactScreen: View {
         FactScaffold(
             eyebrow: "Environment audit",
             title: "Your room scores \(Int(combined))/100 for sleep",
-            source: "Sleep Foundation · darkness, sound & comfort weight by Buysse PSQI."
+            source: "Buysse et al., Psychiatry Research 1989 · PSQI sleep quality components."
         ) {
             VStack(spacing: 14) {
                 // Big dramatic combined score
@@ -4131,7 +4497,7 @@ private struct EmotionalDiscomfortScreen: View {
 
 private struct HopeTransformationScreen: View {
     @State private var revealed = 0
-    @State private var sunRise: CGFloat = 28
+    @State private var dawnProgress: CGFloat = 0
 
     private let wins: [(String, String)] = [
         ("sunrise.fill",     "Better mornings"),
@@ -4142,72 +4508,191 @@ private struct HopeTransformationScreen: View {
     ]
 
     var body: some View {
-        VStack(spacing: 22) {
-            ZStack {
-                // Warm horizon glow that "rises" on appear.
-                LinearGradient(
-                    colors: [MooniColor.warning.opacity(0.45), .clear],
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-                .frame(height: 180)
-                .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-
-                Image(systemName: "sun.max.fill")
-                    .font(.system(size: 70, weight: .semibold))
-                    .foregroundStyle(LinearGradient(
-                        colors: [MooniColor.warning, MooniColor.accentSoft],
-                        startPoint: .top, endPoint: .bottom))
-                    .offset(y: sunRise)
-                    .shadow(color: MooniColor.warning.opacity(0.5), radius: 20)
-                    .animation(.easeOut(duration: 1.4), value: sunRise)
-            }
-            .padding(.horizontal, 24)
-            .onAppear {
-                sunRise = -10
-            }
+        VStack(spacing: 18) {
+            DawnArcCard(progress: dawnProgress)
+                .frame(height: 226)
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
 
             VStack(spacing: 10) {
-                Text("Small sleep changes\nchange your whole day.")
+                Text("Better nights create\nbetter mornings.")
                     .font(MooniFont.display(28))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
-                Text("Most users feel the difference within the first week.")
+                Text("SleepOwl starts with tiny nightly changes you can actually keep.")
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
             }
 
-            VStack(spacing: 9) {
+            VStack(spacing: 8) {
                 ForEach(Array(wins.enumerated()), id: \.offset) { idx, w in
-                    HStack(spacing: 12) {
-                        Image(systemName: w.0)
-                            .foregroundColor(MooniColor.success)
-                            .frame(width: 28)
-                        Text(w.1)
-                            .font(MooniFont.title(15))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 11)
-                    .background(MooniColor.success.opacity(0.10))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .opacity(idx < revealed ? 1 : 0)
-                    .offset(y: idx < revealed ? 0 : 10)
-                    .animation(.spring(response: 0.45, dampingFraction: 0.85), value: revealed)
+                    hopeRow(icon: w.0, title: w.1, index: idx)
                 }
             }
             .padding(.horizontal, 24)
         }
         .onAppear {
+            dawnProgress = 0
+            withAnimation(.easeInOut(duration: 2.1)) {
+                dawnProgress = 1
+            }
+            revealed = 0
             for i in 0..<wins.count {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7 + 0.14 * Double(i)) {
-                    revealed = i + 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.85 + 0.18 * Double(i)) {
+                    withAnimation(.spring(response: 0.62, dampingFraction: 0.84)) {
+                        revealed = i + 1
+                    }
                 }
             }
         }
+    }
+
+    private func hopeRow(icon: String, title: String, index: Int) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(MooniColor.success)
+                .frame(width: 30, height: 30)
+                .background(MooniColor.success.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            Text(title)
+                .font(MooniFont.title(14))
+                .foregroundColor(MooniColor.textPrimary)
+            Spacer()
+            Image(systemName: "checkmark")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(MooniColor.success)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(MooniColor.success.opacity(0.12), lineWidth: 1)
+        )
+        .opacity(index < revealed ? 1 : 0)
+        .offset(y: index < revealed ? 0 : 12)
+    }
+}
+
+private struct DawnArcCard: View {
+    let progress: CGFloat
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let height = geo.size.height
+            let clamped = min(max(progress, 0), 1)
+            let arc = CGFloat(sin(Double(clamped) * Double.pi))
+            let x = 34 + (width - 68) * clamped
+            let y = height * 0.70 - arc * height * 0.40
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.08, green: 0.08, blue: 0.22),
+                                Color(red: 0.18, green: 0.13, blue: 0.34),
+                                Color(red: 0.58, green: 0.42, blue: 0.62).opacity(0.72)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                Path { path in
+                    path.move(to: CGPoint(x: 34, y: height * 0.70))
+                    path.addQuadCurve(
+                        to: CGPoint(x: width - 34, y: height * 0.70),
+                        control: CGPoint(x: width * 0.50, y: height * 0.18)
+                    )
+                }
+                .trim(from: 0, to: progress)
+                .stroke(
+                    LinearGradient(
+                        colors: [MooniColor.accentSoft.opacity(0.45), MooniColor.warning],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ),
+                    style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [8, 8])
+                )
+
+                Circle()
+                    .fill(MooniColor.warning.opacity(0.18))
+                    .frame(width: 118, height: 118)
+                    .blur(radius: 18)
+                    .position(x: x, y: y)
+                Image(systemName: "sun.max.fill")
+                    .font(.system(size: 48, weight: .semibold))
+                    .foregroundStyle(LinearGradient(
+                        colors: [Color.white, MooniColor.warning],
+                        startPoint: .top,
+                        endPoint: .bottom))
+                    .shadow(color: MooniColor.warning.opacity(0.55), radius: 18)
+                    .position(x: x, y: y)
+
+                Image(systemName: "moon.stars.fill")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundColor(MooniColor.accentSoft.opacity(0.65 * Double(1 - clamped)))
+                    .position(x: 42, y: 38)
+
+                VStack {
+                    Spacer()
+                    HStack(spacing: 10) {
+                        dawnMetric("Tonight", "1 small quest", "moon.zzz.fill", MooniColor.accentSoft)
+                        dawnMetric("Tomorrow", "brighter start", "sunrise.fill", MooniColor.warning)
+                    }
+                    .padding(14)
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("7-night reset")
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.accentSoft)
+                        .tracking(1.3)
+                        .textCase(.uppercase)
+                    Text("From tired to steady")
+                        .font(MooniFont.title(17))
+                        .foregroundColor(MooniColor.textPrimary)
+                }
+                .padding(16)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
+        }
+    }
+
+    private func dawnMetric(_ title: String, _ value: String, _ icon: String, _ color: Color) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(color)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(MooniFont.caption(10))
+                    .foregroundColor(MooniColor.textMuted)
+                Text(value)
+                    .font(MooniFont.title(12))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.09))
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 }
 
@@ -4236,8 +4721,20 @@ private struct PetAttachmentScreen: View {
             .padding(.top, 8)
 
             HStack(spacing: 14) {
-                tiredCard
-                cozyCard
+                attachmentCard(
+                    title: "Tired",
+                    subtitle: "After rough sleep",
+                    tint: MooniColor.danger,
+                    mood: .sleepy,
+                    isHealthy: false
+                )
+                attachmentCard(
+                    title: "Glowing",
+                    subtitle: "After cozy nights",
+                    tint: MooniColor.success,
+                    mood: .cozy,
+                    isHealthy: true
+                )
             }
             .padding(.horizontal, 16)
             .onAppear {
@@ -4262,78 +4759,66 @@ private struct PetAttachmentScreen: View {
         }
     }
 
-    private var tiredCard: some View {
-        VStack(spacing: 8) {
+    private func attachmentCard(
+        title: String,
+        subtitle: String,
+        tint: Color,
+        mood: Pet.Mood,
+        isHealthy: Bool
+    ) -> some View {
+        VStack(spacing: 0) {
             ZStack {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
+                    .fill(Color.white.opacity(isHealthy ? 0.09 : 0.045))
                     .overlay(
                         RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .stroke(MooniColor.danger.opacity(0.30), lineWidth: 1)
+                            .stroke(tint.opacity(isHealthy ? 0.55 : 0.30), lineWidth: isHealthy ? 1.5 : 1)
                     )
-                // Dim haze behind tired owl
+
                 Circle()
                     .fill(
                         RadialGradient(
-                            colors: [Color.black.opacity(0.35), .clear],
+                            colors: [
+                                (isHealthy ? tint : Color.black).opacity(isHealthy ? (glowPulse ? 0.26 : 0.14) : 0.32),
+                                .clear
+                            ],
                             center: .center, startRadius: 4, endRadius: 70
                         )
                     )
-                    .frame(width: 130, height: 130)
-                DreamSpiritView(pet: tiredPet, size: 110)
-                    .saturation(0.30)
-                    .opacity(0.60)
-                    .offset(y: tiredDroop ? 3 : -2)
+                    .frame(width: isHealthy ? 148 : 126, height: isHealthy ? 148 : 126)
+                    .blur(radius: isHealthy ? 6 : 0)
+
+                DreamSpiritView(pet: pet(mood: mood), size: 98)
+                    .saturation(isHealthy ? 1.0 : 0.30)
+                    .opacity(isHealthy ? 1.0 : 0.60)
+                    .offset(y: isHealthy ? (cozyBounce ? -5 : 0) : (tiredDroop ? 3 : -2))
+
+                VStack {
+                    Spacer()
+                    VStack(spacing: 2) {
+                        Text(title)
+                            .font(MooniFont.title(14))
+                            .foregroundColor(tint)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                        Text(subtitle)
+                            .font(MooniFont.caption(10))
+                            .foregroundColor(MooniColor.textSecondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background(Color.black.opacity(0.16))
+                }
             }
-            .frame(height: 156)
-            Text("Tired")
-                .font(MooniFont.title(14))
-                .foregroundColor(MooniColor.danger)
-            Text("After bad sleep")
-                .font(MooniFont.caption(11))
-                .foregroundColor(MooniColor.textSecondary)
+            .frame(height: 174)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
     }
 
-    private var cozyCard: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.white.opacity(0.09))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .stroke(MooniColor.success.opacity(0.55), lineWidth: 1.5)
-                    )
-                // Warm glow behind glowing owl
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [MooniColor.success.opacity(glowPulse ? 0.28 : 0.14), .clear],
-                            center: .center, startRadius: 4, endRadius: 80
-                        )
-                    )
-                    .frame(width: 150, height: 150)
-                    .blur(radius: 6)
-                DreamSpiritView(pet: cozyPet, size: 110)
-                    .offset(y: cozyBounce ? -7 : 0)
-            }
-            .frame(height: 156)
-            Text("Glowing")
-                .font(MooniFont.title(14))
-                .foregroundColor(MooniColor.success)
-            Text("After cozy nights")
-                .font(MooniFont.caption(11))
-                .foregroundColor(MooniColor.textSecondary)
-        }
-    }
-
-    private var tiredPet: Pet {
-        var p = Pet(); p.species = species; p.mood = .sleepy; p.equippedColor = "default_color"
-        return p
-    }
-
-    private var cozyPet: Pet {
-        var p = Pet(); p.species = species; p.mood = .cozy; p.equippedColor = "default_color"
+    private func pet(mood: Pet.Mood) -> Pet {
+        var p = Pet(); p.species = species; p.mood = mood; p.equippedColor = "default_color"
         return p
     }
 }
@@ -4364,11 +4849,11 @@ private struct PseudoAnalysisScreen: View {
                     Image(systemName: "sparkles")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(MooniColor.accent)
-                    Text("Personalized insight")
+                    Text("Sleep pattern note")
                         .font(MooniFont.display(24))
                         .foregroundColor(MooniColor.textPrimary)
                 }
-                Text("Based on your goal — before we ask anything else.")
+                Text("A quick note from sleep science.")
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
@@ -4422,7 +4907,7 @@ private struct PseudoAnalysisScreen: View {
                         Circle()
                             .fill(MooniColor.accent.opacity(0.6))
                             .frame(width: 6, height: 6)
-                        Text("\(petName) · pattern match")
+                        Text("\(petName) · sleep note")
                             .font(MooniFont.caption(11))
                             .foregroundColor(MooniColor.textMuted)
                     }
@@ -4459,17 +4944,17 @@ private struct PseudoAnalysisScreen: View {
     private static func insight(for m: OnboardingProfile.Motivation) -> String {
         switch m {
         case .feelBetter:
-            return "People who just want to feel better usually have one or two small habits silently breaking their nights."
+            return "Sleep quality often changes when a few repeatable evening habits become easier to keep."
         case .moreEnergy:
-            return "Low daytime energy is almost always tied to inconsistent sleep timing — not just total hours."
+            return "Daytime energy is shaped by both total sleep and how consistent your sleep timing stays."
         case .mentalClarity:
-            return "Users struggling with focus tend to sleep at very different times each night, disrupting their rhythm."
+            return "Focus tends to improve when sleep timing is steadier and the morning starts less groggy."
         case .fitnessRecovery:
-            return "Recovery and strength gains are tightly linked to deep sleep — and deep sleep needs consistency."
+            return "Recovery is strongly tied to enough sleep, fewer wake-ups, and a consistent wind-down."
         case .mood:
-            return "Mood swings often track directly with how short and broken your nights have been the past week."
+            return "Mood is sensitive to short, broken nights, so we start by protecting the easiest sleep wins."
         case .longerLife:
-            return "Long-term health depends more on sleep regularity than on a handful of perfect nights."
+            return "Long-term sleep health comes from regular nights, not a handful of perfect ones."
         }
     }
 }

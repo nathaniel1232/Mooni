@@ -31,10 +31,6 @@ struct HomeView: View {
 
             ScrollView {
                 LazyVStack(spacing: 22) {
-                    SleepOwlBrandMark()
-                        .padding(.top, 6)
-                        .frame(maxWidth: .infinity, alignment: .center)
-
                     headerBar
 
                     heroCard
@@ -122,7 +118,14 @@ struct HomeView: View {
     // MARK: - Header
 
     private var headerBar: some View {
-        HStack(alignment: .center, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                SleepOwlBrandMark(size: .compact)
+                    .opacity(0.78)
+                Spacer(minLength: 8)
+                upgradeButton
+            }
+
             VStack(alignment: .leading, spacing: 3) {
                 Text(greeting.uppercased())
                     .font(MooniFont.caption(11))
@@ -134,31 +137,34 @@ struct HomeView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.top, 6)
+    }
 
-            Button { showPaywall = true } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: subscriptionManager.isPro ? "sparkles" : "crown.fill")
-                        .font(.system(size: 12, weight: .bold))
-                    Text(subscriptionManager.isPro ? "Pro" : "Upgrade")
-                        .font(MooniFont.caption(12))
-                }
-                .foregroundColor(MooniColor.background)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule().fill(
-                        LinearGradient(
-                            colors: [MooniColor.accentSoft, MooniColor.accent],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
+    private var upgradeButton: some View {
+        Button { showPaywall = true } label: {
+            HStack(spacing: 6) {
+                Image(systemName: subscriptionManager.isPro ? "sparkles" : "crown.fill")
+                    .font(.system(size: 12, weight: .bold))
+                Text(subscriptionManager.isPro ? "Pro" : "Upgrade")
+                    .font(MooniFont.caption(12))
+            }
+            .foregroundColor(MooniColor.background)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                Capsule().fill(
+                    LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .leading,
+                        endPoint: .trailing
                     )
                 )
-                .shadow(color: MooniColor.accent.opacity(0.35), radius: 10, y: 4)
-            }
-            .buttonStyle(.plain)
+            )
+            .shadow(color: MooniColor.accent.opacity(0.35), radius: 10, y: 4)
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Hero card (varies by mode)

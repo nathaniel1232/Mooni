@@ -139,31 +139,17 @@ struct BenefitSpec {
 
 struct BenefitScreen: View {
     let spec: BenefitSpec
-    @State private var animateIn = false
+    @State private var heroIn = false
+    @State private var copyIn = false
+    @State private var rowsVisible = 0
 
     var body: some View {
-        VStack(spacing: 22) {
-            Spacer(minLength: 16)
+        VStack(spacing: 16) {
+            Spacer(minLength: 8)
 
-            ZStack {
-                Circle()
-                    .fill(spec.color.opacity(animateIn ? 0.38 : 0.18))
-                    .frame(width: 200, height: 200)
-                    .blur(radius: 32)
-
-                Image(systemName: spec.icon)
-                    .font(.system(size: 64, weight: .bold))
-                    .foregroundStyle(LinearGradient(
-                        colors: [.white, spec.color],
-                        startPoint: .top, endPoint: .bottom))
-                    .shadow(color: spec.color.opacity(0.6), radius: 16)
-                    .scaleEffect(animateIn ? 1 : 0.6)
-            }
-            .onAppear {
-                withAnimation(.spring(response: 0.7, dampingFraction: 0.7)) {
-                    animateIn = true
-                }
-            }
+            BenefitHeroCard(spec: spec, isVisible: heroIn)
+                .frame(height: 228)
+                .padding(.horizontal, 2)
 
             VStack(spacing: 8) {
                 Text("Better sleep =")
@@ -173,16 +159,9 @@ struct BenefitScreen: View {
                     .textCase(.uppercase)
 
                 Text(spec.title)
-                    .font(MooniFont.display(34))
+                    .font(MooniFont.display(30))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-
-                Text(spec.stat)
-                    .font(.system(size: 56, weight: .heavy, design: .rounded))
-                    .foregroundStyle(LinearGradient(
-                        colors: [spec.color.opacity(0.85), spec.color],
-                        startPoint: .leading, endPoint: .trailing))
-                    .padding(.top, 4)
 
                 Text(spec.body)
                     .font(MooniFont.body(15))
@@ -191,29 +170,171 @@ struct BenefitScreen: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 4)
             }
+            .opacity(copyIn ? 1 : 0)
+            .offset(y: copyIn ? 0 : 10)
 
-            VStack(spacing: 10) {
-                ForEach(Array(spec.bullets.enumerated()), id: \.offset) { _, line in
-                    HStack(spacing: 12) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(spec.color)
-                        Text(line)
-                            .font(MooniFont.title(14))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Spacer()
-                    }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 14)
-                    .background(Color.white.opacity(0.07))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(spacing: 9) {
+                ForEach(Array(spec.bullets.enumerated()), id: \.offset) { index, line in
+                    BenefitProofRow(
+                        text: line,
+                        icon: index == 0 ? spec.icon : "checkmark.circle.fill",
+                        color: spec.color,
+                        progress: rowProgress(index),
+                        isVisible: index < rowsVisible
+                    )
                 }
             }
-            .padding(.horizontal, 4)
-            .padding(.top, 4)
+            .padding(.horizontal, 2)
 
             Spacer(minLength: 8)
         }
         .padding(.horizontal, 24)
+        .onAppear {
+            heroIn = false
+            copyIn = false
+            rowsVisible = 0
+            withAnimation(.spring(response: 0.85, dampingFraction: 0.82).delay(0.05)) {
+                heroIn = true
+            }
+            withAnimation(.easeOut(duration: 0.7).delay(0.35)) {
+                copyIn = true
+            }
+            for i in 0..<spec.bullets.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.68 + Double(i) * 0.18) {
+                    withAnimation(.spring(response: 0.56, dampingFraction: 0.84)) {
+                        rowsVisible = i + 1
+                    }
+                }
+            }
+        }
+    }
+
+    private func rowProgress(_ index: Int) -> CGFloat {
+        let values: [CGFloat] = [0.96, 0.78, 0.62]
+        return values[min(index, values.count - 1)]
+    }
+}
+
+private struct BenefitHeroCard: View {
+    let spec: BenefitSpec
+    let isVisible: Bool
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.10),
+                            spec.color.opacity(0.10),
+                            Color.white.opacity(0.04)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(spec.color.opacity(0.20), lineWidth: 1)
+                )
+
+            VStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.10), lineWidth: 12)
+                        .frame(width: 126, height: 126)
+                    Circle()
+                        .trim(from: 0, to: isVisible ? 0.78 : 0.08)
+                        .stroke(
+                            LinearGradient(
+                                colors: [spec.color.opacity(0.55), spec.color],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            style: StrokeStyle(lineWidth: 12, lineCap: .round)
+                        )
+                        .frame(width: 126, height: 126)
+                        .rotationEffect(.degrees(-90))
+                        .shadow(color: spec.color.opacity(0.35), radius: 12)
+
+                    Image(systemName: spec.icon)
+                        .font(.system(size: 42, weight: .bold))
+                        .foregroundStyle(LinearGradient(
+                            colors: [.white, spec.color],
+                            startPoint: .top,
+                            endPoint: .bottom))
+                        .scaleEffect(isVisible ? 1 : 0.78)
+                }
+
+                VStack(spacing: 2) {
+                    Text(spec.stat)
+                        .font(.system(size: 40, weight: .heavy, design: .rounded))
+                        .foregroundStyle(LinearGradient(
+                            colors: [spec.color.opacity(0.82), spec.color],
+                            startPoint: .leading,
+                            endPoint: .trailing))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    Text("key signal")
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.textMuted)
+                        .tracking(1.2)
+                        .textCase(.uppercase)
+                }
+            }
+        }
+        .opacity(isVisible ? 1 : 0)
+        .offset(y: isVisible ? 0 : 18)
+        .scaleEffect(isVisible ? 1 : 0.96)
+    }
+}
+
+private struct BenefitProofRow: View {
+    let text: String
+    let icon: String
+    let color: Color
+    let progress: CGFloat
+    let isVisible: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 32, height: 32)
+                .background(color.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(text)
+                    .font(MooniFont.title(14))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.08))
+                        Capsule()
+                            .fill(LinearGradient(colors: [color.opacity(0.65), color],
+                                                 startPoint: .leading,
+                                                 endPoint: .trailing))
+                            .frame(width: geo.size.width * progress * (isVisible ? 1 : 0.05))
+                    }
+                }
+                .frame(height: 6)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 11)
+        .padding(.horizontal, 13)
+        .background(Color.white.opacity(0.065))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(color.opacity(0.12), lineWidth: 1)
+        )
+        .opacity(isVisible ? 1 : 0)
+        .offset(y: isVisible ? 0 : 12)
     }
 }
 

@@ -8,59 +8,55 @@ struct MediumSleepWidgetView: View {
     let data: SleepWidgetData
 
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
-            // LEFT — single hero element
-            SleepScoreRing(
-                progress: data.ringProgress,
-                tint: data.scoreTint,
-                lineWidth: 7
-            ) {
-                MooniMascotView()
-            }
-            .frame(width: 110, height: 110)
-
-            // RIGHT — content
-            VStack(alignment: .leading, spacing: 6) {
-                // Brand strip
+        HStack(alignment: .center, spacing: 14) {
+            VStack(spacing: 8) {
                 HStack(spacing: 5) {
-                    Spacer(minLength: 0)
-                    Image("owl_base")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 12, height: 12)
+                    Image(systemName: "moon.stars.fill")
+                        .font(.system(size: 10, weight: .bold))
                     Text("SleepOwl")
-                        .font(.system(size: 10, weight: .heavy, design: .rounded))
-                        .tracking(0.5)
-                        .foregroundStyle(SleepWidgetPalette.textTertiary)
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .tracking(0.2)
                 }
+                .foregroundStyle(SleepWidgetPalette.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                // Score + quality
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                SleepScoreRing(
+                    progress: data.ringProgress,
+                    tint: data.scoreTint,
+                    lineWidth: 8
+                ) {
+                    MooniMascotView()
+                }
+                .frame(width: 104, height: 104)
+            }
+
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(alignment: .center, spacing: 8) {
                     Text("\(data.score)")
-                        .font(.system(size: 30, weight: .heavy, design: .rounded))
+                        .font(.system(size: 42, weight: .heavy, design: .rounded))
                         .foregroundStyle(SleepWidgetPalette.textPrimary)
-                    qualityChip
+                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 3) {
+                        qualityChip
+                        Text("sleep score")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(SleepWidgetPalette.textTertiary)
+                    }
                     Spacer(minLength: 0)
                 }
-                .padding(.bottom, 1)
 
-                detailRow(
-                    icon: "bed.double.fill",
-                    text: data.sleepDuration,
-                    accent: data.scoreTint
-                )
+                HStack(spacing: 8) {
+                    detailTile(icon: "bed.double.fill", title: "Asleep", text: data.sleepDuration, accent: data.scoreTint)
+                    detailTile(icon: "bolt.fill", title: "Energy", text: "\(data.energyScore)%", accent: energyTint(for: data.energyScore))
+                }
+
                 detailRow(
                     icon: "alarm.fill",
                     text: "\(data.sleepStart) → \(data.wakeTime)",
                     accent: SleepWidgetPalette.textSecondary
                 )
-                detailRow(
-                    icon: "bolt.fill",
-                    text: "Energy \(data.energyScore)%",
-                    accent: energyTint(for: data.energyScore)
-                )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
     }
 
@@ -70,6 +66,9 @@ struct MediumSleepWidgetView: View {
             .tracking(0.3)
             .textCase(.uppercase)
             .foregroundStyle(data.scoreTint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.65)
+            .allowsTightening(true)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(Capsule().fill(data.scoreTint.opacity(0.18)))
@@ -92,6 +91,28 @@ struct MediumSleepWidgetView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
         }
+    }
+
+    private func detailTile(icon: String, title: String, text: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(accent)
+            Text(text)
+                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                .foregroundStyle(SleepWidgetPalette.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(title)
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(SleepWidgetPalette.textTertiary)
+                .textCase(.uppercase)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(SleepWidgetPalette.chipBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func energyTint(for value: Int) -> Color {
