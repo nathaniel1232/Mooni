@@ -9,10 +9,11 @@ struct SmallSleepWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             // Brand + quality
-            HStack(spacing: 5) {
-                Image(systemName: "moon.stars.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(SleepWidgetPalette.textSecondary)
+            HStack(spacing: 6) {
+                Image("owl_base")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 14, height: 14)
                 Text("SleepOwl")
                     .font(.system(size: 11, weight: .heavy, design: .rounded))
                     .tracking(0.5)

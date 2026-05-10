@@ -1,56 +1,50 @@
 import SwiftUI
 
-/// SleepOwl owl mascot inside a soft circular bubble.
-///
-/// If you've added the existing `owl_base` asset to the widget target's
-/// asset catalog (or a shared catalog), it will render that. Otherwise
-/// it falls back to a cute SwiftUI-shape owl so the widget is never blank.
+/// SleepOwl mascot rendered the same way as the in-app `PetIllustration`:
+/// a soft accent halo behind the owl image. No hard bubble, no border —
+/// the widget should look like it was lifted out of the app's home screen.
 struct MooniMascotView: View {
-    /// Bundle that owns the asset catalog containing `owl_base`.
-    /// The widget needs its own copy of the image — either drag the asset
-    /// into the widget's asset catalog, or set up a shared asset catalog
-    /// that's a member of both targets.
     var assetName: String = "owl_base"
+    /// Glow color around the owl. Defaults to the in-app accent so the
+    /// mascot reads as SleepOwl regardless of which size widget renders it.
+    var glow: Color = Color(red: 0.78, green: 0.74, blue: 1.0)
 
     var body: some View {
-        ZStack {
-            // Soft adaptive bubble behind the mascot
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            SleepWidgetPalette.mascotBubbleInner,
-                            SleepWidgetPalette.mascotBubbleOuter
-                        ],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 60
+        GeometryReader { proxy in
+            let side = min(proxy.size.width, proxy.size.height)
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [glow.opacity(0.55), .clear],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: side * 0.7
+                        )
                     )
-                )
-                .overlay(
-                    Circle().stroke(Color.white.opacity(0.35), lineWidth: 1)
-                )
-                .shadow(color: Color.purple.opacity(0.25), radius: 6, x: 0, y: 2)
+                    .blur(radius: 6)
 
-            mascot
-                .padding(6)
+                mascot(side: side)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
     }
 
     @ViewBuilder
-    private var mascot: some View {
+    private func mascot(side: CGFloat) -> some View {
         if UIImage(named: assetName) != nil {
             Image(assetName)
                 .resizable()
                 .scaledToFit()
+                .frame(width: side * 0.85, height: side * 0.85)
+                .shadow(color: glow.opacity(0.45), radius: 6, y: 2)
         } else {
             ShapeOwl()
+                .frame(width: side * 0.85, height: side * 0.85)
         }
     }
 }
 
-/// Fallback owl drawn from SwiftUI shapes — used when the asset isn't
-/// available to the widget target yet.
 private struct ShapeOwl: View {
     var body: some View {
         GeometryReader { proxy in
@@ -59,31 +53,26 @@ private struct ShapeOwl: View {
             let bellyColor = Color(red: 0.95, green: 0.92, blue: 1.00)
 
             ZStack {
-                // Body
                 Ellipse()
                     .fill(bodyColor)
                     .frame(width: size * 0.86, height: size * 0.92)
 
-                // Belly
                 Ellipse()
                     .fill(bellyColor)
                     .frame(width: size * 0.55, height: size * 0.65)
                     .offset(y: size * 0.06)
 
-                // Eyes
                 HStack(spacing: size * 0.10) {
                     eye(size: size * 0.22)
                     eye(size: size * 0.22)
                 }
                 .offset(y: -size * 0.10)
 
-                // Beak
                 Triangle()
                     .fill(Color(red: 1.0, green: 0.82, blue: 0.55))
                     .frame(width: size * 0.10, height: size * 0.08)
                     .offset(y: size * 0.04)
 
-                // Ear tufts
                 HStack(spacing: size * 0.42) {
                     Triangle()
                         .fill(bodyColor)

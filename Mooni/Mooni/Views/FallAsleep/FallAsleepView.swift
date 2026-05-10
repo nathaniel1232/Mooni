@@ -22,6 +22,8 @@ struct FallAsleepView: View {
 
                 ScrollView {
                     VStack(spacing: 22) {
+                        SleepOwlBrandMark()
+                            .frame(maxWidth: .infinity, alignment: .center)
                         header
 
                         soundsGrid

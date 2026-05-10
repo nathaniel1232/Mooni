@@ -22,15 +22,17 @@ struct MediumSleepWidgetView: View {
             // RIGHT — content
             VStack(alignment: .leading, spacing: 6) {
                 // Brand strip
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Spacer(minLength: 0)
-                    Image(systemName: "moon.stars.fill")
-                        .font(.system(size: 10, weight: .semibold))
+                    Image("owl_base")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 12, height: 12)
                     Text("SleepOwl")
                         .font(.system(size: 10, weight: .heavy, design: .rounded))
                         .tracking(0.5)
+                        .foregroundStyle(SleepWidgetPalette.textTertiary)
                 }
-                .foregroundStyle(SleepWidgetPalette.textTertiary)
 
                 // Score + quality
                 HStack(alignment: .firstTextBaseline, spacing: 6) {

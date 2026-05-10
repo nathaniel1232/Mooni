@@ -56,10 +56,6 @@ struct PetIllustration: View {
                 .offset(y: bob ? -6 : 6)
                 .shadow(color: tint.opacity(0.55), radius: 22, y: 6)
 
-            if let hat = pet.equippedHat {
-                hatOverlay(hat)
-            }
-
             moodAddOns
         }
         .frame(width: size * 1.7, height: size * 1.7)
@@ -136,117 +132,6 @@ struct PetIllustration: View {
             .blur(radius: 1)
     }
 
-    @ViewBuilder
-    private func hatOverlay(_ hat: String) -> some View {
-        switch hat {
-        case "hat_nightcap": NightcapShape().offset(y: -size * 0.42)
-        case "hat_crown":    CrownShape().offset(y: -size * 0.42)
-        case "hat_beanie":   BeanieShape().offset(y: -size * 0.42)
-        case "hat_halo":     HaloShape().offset(y: -size * 0.42)
-        case "hat_bow":      BowShape().offset(x: size * 0.20, y: -size * 0.32)
-        default: EmptyView()
-        }
-    }
-}
-
-// MARK: - Hat overlays
-
-private struct NightcapShape: View {
-    var body: some View {
-        ZStack {
-            HatBody()
-                .fill(LinearGradient(
-                    colors: [Color(red: 0.55, green: 0.50, blue: 0.95),
-                             Color(red: 0.78, green: 0.74, blue: 1.0)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: 92, height: 60)
-            Circle()
-                .fill(Color.white.opacity(0.95))
-                .frame(width: 18, height: 18)
-                .offset(x: 28, y: -22)
-            Image(systemName: "star.fill")
-                .foregroundColor(.white.opacity(0.9))
-                .font(.system(size: 9))
-                .offset(x: -12, y: 6)
-            Image(systemName: "moon.fill")
-                .foregroundColor(.white.opacity(0.9))
-                .font(.system(size: 9))
-                .offset(x: 8, y: -2)
-        }
-    }
-}
-
-private struct CrownShape: View {
-    var body: some View {
-        Image(systemName: "crown.fill")
-            .font(.system(size: 56))
-            .foregroundStyle(LinearGradient(
-                colors: [Color.yellow, Color.orange],
-                startPoint: .top, endPoint: .bottom))
-            .shadow(color: Color.yellow.opacity(0.6), radius: 6)
-    }
-}
-
-private struct BeanieShape: View {
-    var body: some View {
-        ZStack {
-            HatBody()
-                .fill(LinearGradient(
-                    colors: [Color(red: 0.45, green: 0.65, blue: 0.95),
-                             Color(red: 0.65, green: 0.85, blue: 1.0)],
-                    startPoint: .top, endPoint: .bottom))
-                .frame(width: 84, height: 50)
-            Image(systemName: "snowflake")
-                .foregroundColor(.white.opacity(0.9))
-                .font(.system(size: 14))
-                .offset(y: 6)
-        }
-    }
-}
-
-private struct HaloShape: View {
-    var body: some View {
-        Ellipse()
-            .stroke(LinearGradient(
-                colors: [Color.yellow.opacity(0.9), Color.orange.opacity(0.85)],
-                startPoint: .leading, endPoint: .trailing), lineWidth: 5)
-            .frame(width: 90, height: 18)
-            .shadow(color: Color.yellow.opacity(0.6), radius: 8)
-    }
-}
-
-private struct BowShape: View {
-    var body: some View {
-        ZStack {
-            Capsule()
-                .fill(Color(red: 1.0, green: 0.55, blue: 0.75))
-                .frame(width: 22, height: 14)
-                .rotationEffect(.degrees(-15))
-                .offset(x: -8)
-            Capsule()
-                .fill(Color(red: 1.0, green: 0.55, blue: 0.75))
-                .frame(width: 22, height: 14)
-                .rotationEffect(.degrees(15))
-                .offset(x: 8)
-            Circle()
-                .fill(Color(red: 1.0, green: 0.45, blue: 0.65))
-                .frame(width: 8, height: 8)
-        }
-    }
-}
-
-private struct HatBody: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.move(to: CGPoint(x: rect.minX, y: rect.maxY - 6))
-        p.addLine(to: CGPoint(x: rect.midX + rect.width * 0.05, y: rect.minY))
-        p.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.maxY - 4),
-                       control: CGPoint(x: rect.maxX, y: rect.midY))
-        p.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY - 6),
-                       control: CGPoint(x: rect.midX, y: rect.maxY + 6))
-        p.closeSubpath()
-        return p
-    }
 }
 
 #Preview {

@@ -21,6 +21,8 @@ struct ProfileView: View {
 
                 ScrollView {
                     VStack(spacing: 16) {
+                        SleepOwlBrandMark()
+                            .frame(maxWidth: .infinity, alignment: .center)
                         lunaSummaryCard
                         sleepGoalCard
                         progressCard

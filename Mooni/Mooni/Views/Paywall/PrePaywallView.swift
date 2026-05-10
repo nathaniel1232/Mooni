@@ -303,8 +303,7 @@ private struct BadSleepStage: View {
     @State private var heartbeat = false
 
     private var sadPet: Pet {
-        var p = Pet(); p.species = species; p.mood = .low; p.equippedHat = nil
-        return p
+        var p = Pet(); p.species = species; p.mood = .low        return p
     }
 
     var body: some View {
@@ -423,8 +422,7 @@ private struct GoodSleepStage: View {
     @State private var glow = false
 
     private var brightPet: Pet {
-        var p = Pet(); p.species = species; p.mood = .energized; p.equippedHat = "hat_nightcap"
-        return p
+        var p = Pet(); p.species = species; p.mood = .energized        return p
     }
 
     var body: some View {
@@ -558,8 +556,7 @@ private struct CommitmentStage: View {
     @State private var heartGlow = false
 
     private var bondedPet: Pet {
-        var p = Pet(); p.species = species; p.mood = .cozy; p.equippedHat = "hat_nightcap"
-        return p
+        var p = Pet(); p.species = species; p.mood = .cozy        return p
     }
 
     var body: some View {
@@ -874,7 +871,6 @@ private struct TransformAnimStage: View {
     private var pet: Pet {
         var p = Pet(); p.species = species
         p.mood = phase >= 2 ? .energized : (phase == 1 ? .cozy : .groggy)
-        p.equippedHat = phase >= 2 ? "hat_nightcap" : nil
         return p
     }
 

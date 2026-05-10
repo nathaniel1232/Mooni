@@ -22,9 +22,14 @@ struct DiscountPaywallView: View {
         String(format: "%d:%02d", minutes, seconds)
     }
 
-    private var annualPackage: Package? {
-        manager.currentOffering?.availablePackages.first { $0.packageType == .annual }
-    }
+    /// The real, lower-priced annual package from the `discount` offering in
+    /// RevenueCat. If this is nil the dashboard hasn't been set up — we fall
+    /// back to a non-discount CTA so we never show "50% off" while charging
+    /// the full price.
+    private var discountPackage: Package? { manager.discountAnnualPackage }
+    private var regularPackage: Package? { manager.regularAnnualPackage }
+    private var purchasePackage: Package? { discountPackage ?? regularPackage }
+    private var hasRealDiscount: Bool { discountPackage != nil && regularPackage != nil }
 
     var body: some View {
         ZStack {
@@ -59,7 +64,7 @@ struct DiscountPaywallView: View {
                                 .foregroundColor(MooniColor.warning)
                                 .tracking(2)
                         }
-                        Text("Wait — 50% off")
+                        Text(hasRealDiscount ? "Wait — special offer" : "One last chance")
                             .font(MooniFont.display(38))
                             .foregroundColor(.white)
                             .multilineTextAlignment(.center)
@@ -96,9 +101,15 @@ struct DiscountPaywallView: View {
                     )
                     .padding(.horizontal, 24)
 
-                    // Price comparison
-                    priceComparison
-                        .padding(.horizontal, 24)
+                    // Price comparison — only show "Was → Now" if a real
+                    // discount package exists, otherwise just show the price.
+                    if hasRealDiscount {
+                        priceComparison
+                            .padding(.horizontal, 24)
+                    } else if let pkg = purchasePackage {
+                        singlePriceCard(pkg)
+                            .padding(.horizontal, 24)
+                    }
 
                     // Why this offer
                     VStack(spacing: 10) {
@@ -110,9 +121,9 @@ struct DiscountPaywallView: View {
                     .padding(.horizontal, 24)
 
                     // CTA
-                    PrimaryButton(title: "Claim 50% Off", icon: "sparkles") {
+                    PrimaryButton(title: ctaTitle, icon: "sparkles") {
                         Task {
-                            if let pkg = annualPackage {
+                            if let pkg = purchasePackage {
                                 let success = await manager.purchase(package: pkg)
                                 if success { onAccept() }
                             } else {
@@ -157,7 +168,7 @@ struct DiscountPaywallView: View {
                 Text("Was")
                     .font(MooniFont.caption(11))
                     .foregroundColor(.white.opacity(0.7))
-                Text(originalPrice)
+                Text(originalPriceLabel)
                     .font(MooniFont.title(20))
                     .foregroundColor(.white.opacity(0.55))
                     .strikethrough()
@@ -174,7 +185,7 @@ struct DiscountPaywallView: View {
                 Text("NOW")
                     .font(MooniFont.caption(11))
                     .foregroundColor(MooniColor.warning)
-                Text(discountPrice)
+                Text(discountPriceLabel)
                     .font(MooniFont.title(22))
                     .foregroundColor(.white)
             }
@@ -189,23 +200,48 @@ struct DiscountPaywallView: View {
         }
     }
 
-    private var originalPrice: String {
-        if let p = annualPackage {
-            return "\(p.storeProduct.localizedPriceString) / yr"
-        }
-        return "$59.99 / yr"
+    /// Localized price string of the regular annual package — comes straight
+    /// from StoreKit so it's always the user's local currency.
+    private var originalPriceLabel: String {
+        guard let p = regularPackage else { return "" }
+        return "\(p.storeProduct.localizedPriceString) / yr"
     }
 
-    private var discountPrice: String {
-        if let p = annualPackage {
-            let half = (p.storeProduct.price as Decimal) / 2
-            let formatter = NumberFormatter()
-            formatter.numberStyle = .currency
-            formatter.locale = p.storeProduct.priceFormatter?.locale ?? .current
-            let amount = NSDecimalNumber(decimal: half)
-            return "\(formatter.string(from: amount) ?? "$29.99") / yr"
+    /// Localized price of the actual discount package the user will be
+    /// charged. No client-side arithmetic, no formatter mismatch — whatever
+    /// App Store Connect reports is what we display and what we charge.
+    private var discountPriceLabel: String {
+        guard let p = discountPackage else { return "" }
+        return "\(p.storeProduct.localizedPriceString) / yr"
+    }
+
+    private var ctaTitle: String {
+        if hasRealDiscount, let p = discountPackage {
+            return "Claim — \(p.storeProduct.localizedPriceString) / yr"
         }
-        return "$29.99 / yr"
+        if let p = purchasePackage {
+            return "Continue — \(p.storeProduct.localizedPriceString) / yr"
+        }
+        return "Continue"
+    }
+
+    private func singlePriceCard(_ pkg: Package) -> some View {
+        VStack(spacing: 6) {
+            Text("Annual plan")
+                .font(MooniFont.caption(11))
+                .foregroundColor(.white.opacity(0.7))
+            Text("\(pkg.storeProduct.localizedPriceString) / yr")
+                .font(MooniFont.title(22))
+                .foregroundColor(.white)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(16)
+        .background(Color.white.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(MooniColor.accent.opacity(0.35), lineWidth: 1)
+        )
     }
 
     private func offerRow(icon: String, text: String) -> some View {

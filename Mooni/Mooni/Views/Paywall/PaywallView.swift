@@ -23,7 +23,6 @@ struct PaywallView: View {
     private var heroPet: Pet {
         var p = Pet()
         p.mood = .rested
-        p.equippedHat = "hat_nightcap"
         return p
     }
 
@@ -177,7 +176,7 @@ struct PaywallView: View {
                           detail: "Unlimited logs with trends")
             proFeatureRow(icon: "sparkles", color: MooniColor.warning,
                           title: "Exclusive Spirit Items",
-                          detail: "All hats, colors & backgrounds")
+                          detail: "All colors & backgrounds")
             proFeatureRow(icon: "waveform.path.ecg", color: MooniColor.success,
                           title: "Advanced Analytics",
                           detail: "Sleep score breakdowns")

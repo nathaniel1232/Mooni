@@ -15,7 +15,7 @@ struct OnboardingView: View {
     @StateObject private var notifications = NotificationManager.shared
 
     // MARK: - Wizard state
-    @State private var step: Step = .hero
+    @State private var step: Step = .welcome
     @State private var transitionDirection: TransitionDirection = .forward
 
     // Pet
@@ -48,15 +48,31 @@ struct OnboardingView: View {
     @State private var paywallSheet: PaywallStage? = nil
 
     // MARK: - Step Enum
+    /// Auth flow state. Set to `.signedIn` after Apple → Supabase succeeds, or
+    /// `.skipped` if the user taps "Continue without an account". Drives the
+    /// sign-in screen's CTA and gates Supabase reads/writes elsewhere.
+    enum AuthState { case unknown, signedIn, skipped, failed }
+    @State private var authState: AuthState = .unknown
+    @State private var authErrorMessage: String? = nil
+
     enum Step: Int, CaseIterable {
         // Emotional priming sequence — designed to make the user
         // self-identify with the problem and feel hope before any
         // questions or commitments.
+        case welcome                  // S0 Get Started / Log In gate
         case hero                     // S1 emotional hook
         case sleepImpactStat          // S2 relatable pain
         case identityDamage           // S3 connects sleep → daily identity
         case emotionalDiscomfort      // S4 "your body remembers every late night"
         case hopeTransformation       // S5 brighter hope visual
+        // Benefit reel — what better sleep gives you. Kept tight (6 screens)
+        // so the wins land without bloating completion.
+        case benefitEnergy
+        case benefitFocus
+        case benefitBody
+        case benefitMood
+        case benefitLooks
+        case benefitLongevity
         case petAttachment            // S6 healthy vs exhausted pet
         case namePet
         case bondMessage              // emotional copy after naming
@@ -98,8 +114,10 @@ struct OnboardingView: View {
         case topIssues
         case generatingPlan           // loading 2 (long, variable)
         case socialProof
+        case rateApp                  // ask for App Store rating after social proof
         case simulatedResult
         case firstQuest
+        case signIn                   // Sign in with Apple → Supabase, before paywall
         case prePaywall               // 3-stage emotional pre-paywall
 
         var index: Int {
@@ -214,7 +232,16 @@ struct OnboardingView: View {
 
     // MARK: - Top progress bar
 
+    @ViewBuilder
     private var topBar: some View {
+        if hidesProgressChrome {
+            EmptyView()
+        } else {
+            topBarContent
+        }
+    }
+
+    private var topBarContent: some View {
         HStack(spacing: 12) {
             if step.index > 0 && !isLoadingScreen {
                 Button {
@@ -256,16 +283,32 @@ struct OnboardingView: View {
         step == .analyzingAnswers || step == .generatingPlan
     }
 
+    /// Welcome and sign-in are presented as fullscreen-ish moments without the
+    /// onboarding chrome (no progress bar, no back button) so the user feels
+    /// like they're at a real entry/exit gate rather than mid-quiz.
+    private var hidesProgressChrome: Bool {
+        step == .welcome
+    }
+
     // MARK: - Content
 
     @ViewBuilder
     private var content: some View {
         switch step {
+        case .welcome:             WelcomeScreen()
         case .hero:                HeroScreen(species: species)
         case .sleepImpactStat:     SleepImpactStatScreen()
         case .identityDamage:      IdentityDamageScreen()
         case .emotionalDiscomfort: EmotionalDiscomfortScreen()
         case .hopeTransformation:  HopeTransformationScreen()
+        case .benefitEnergy:       BenefitScreen(spec: .energy)
+        case .benefitFocus:        BenefitScreen(spec: .focus)
+        case .benefitBody:         BenefitScreen(spec: .body)
+        case .benefitMood:         BenefitScreen(spec: .mood)
+        case .benefitLooks:        BenefitScreen(spec: .looks)
+        case .benefitLongevity:    BenefitScreen(spec: .longevity)
+        case .rateApp:             RateAppScreen()
+        case .signIn:              SignInScreen(state: authState, errorMessage: authErrorMessage)
         case .petAttachment:       PetAttachmentScreen(species: species)
         case .namePet:             NamePetScreen(species: species, name: $petName)
         case .bondMessage:         BondMessageScreen(petName: petName, species: species)
@@ -323,6 +366,77 @@ struct OnboardingView: View {
     private var footer: some View {
         Group {
             switch step {
+            case .welcome:
+                VStack(spacing: 10) {
+                    PrimaryButton(title: "Get Started", icon: "sparkles") {
+                        advance()
+                    }
+                    Button {
+                        // Jump straight into sign-in for returning users — they
+                        // skip the onboarding wizard entirely on success.
+                        Task {
+                            let ok = await performAppleSignIn()
+                            if ok {
+                                authState = .signedIn
+                                finishOnboarding()
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.crop.circle.fill")
+                            Text("I already have an account")
+                                .font(MooniFont.body(14))
+                        }
+                        .foregroundColor(MooniColor.textSecondary)
+                        .padding(.vertical, 6)
+                    }
+                    if let err = authErrorMessage {
+                        Text(err)
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(MooniColor.danger)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+            case .signIn:
+                VStack(spacing: 10) {
+                    PrimaryButton(
+                        title: authState == .signedIn ? "Continue" : "Sign in with Apple",
+                        icon: authState == .signedIn ? "checkmark.seal.fill" : "applelogo"
+                    ) {
+                        if authState == .signedIn {
+                            advance()
+                        } else {
+                            Task {
+                                let ok = await performAppleSignIn()
+                                if ok {
+                                    authState = .signedIn
+                                    advance()
+                                }
+                            }
+                        }
+                    }
+                    SecondaryButton(title: "Continue without an account") {
+                        authState = .skipped
+                        advance()
+                    }
+                    Text("Used to back up your sleep history and unlock shared widgets later.")
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.textMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                }
+            case .rateApp:
+                VStack(spacing: 10) {
+                    PrimaryButton(title: "Rate SleepOwl", icon: "star.fill") {
+                        OnboardingRatingPrompt.request()
+                        // Give the system sheet a beat to render before
+                        // advancing — feels less abrupt.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            advance()
+                        }
+                    }
+                    SecondaryButton(title: "Maybe later") { advance() }
+                }
             case .notificationPerm:
                 VStack(spacing: 10) {
                     PrimaryButton(title: "Yes, remind me", icon: "bell.fill") {
@@ -367,6 +481,15 @@ struct OnboardingView: View {
 
     private var primaryTitle: String {
         switch step {
+        case .welcome:            return "Get Started"
+        case .signIn:             return "Sign in with Apple"
+        case .rateApp:            return "Rate SleepOwl"
+        case .benefitEnergy,
+             .benefitFocus,
+             .benefitBody,
+             .benefitMood,
+             .benefitLooks:       return "Continue"
+        case .benefitLongevity:   return "I want all of this"
         case .hero:               return "Show me what's happening"
         case .sleepImpactStat:    return "Yeah, that's me"
         case .identityDamage:     return "I want to fix this"
@@ -546,6 +669,22 @@ struct OnboardingView: View {
     }
 
     // MARK: - Finish
+
+    /// Triggers the Apple sign-in sheet, exchanges the credential with
+    /// Supabase, and updates `authState`. Returns true on success. Errors
+    /// are surfaced to the user via `authErrorMessage` instead of being thrown.
+    @MainActor
+    private func performAppleSignIn() async -> Bool {
+        authErrorMessage = nil
+        do {
+            try await AppleSignInService.shared.signInAndSyncWithSupabase()
+            return true
+        } catch {
+            authErrorMessage = error.localizedDescription
+            authState = .failed
+            return false
+        }
+    }
 
     private func finishOnboarding() {
         appState.completeOnboarding(

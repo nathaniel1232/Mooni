@@ -127,8 +127,8 @@ struct Pet: Codable {
     var mood: Mood = .calm
     var lastSleepScore: Int? = nil
 
-    var unlockedItems: Set<String> = ["default_color", "hat_nightcap"]
-    var equippedHat: String? = nil
+    var unlockedItems: Set<String> = ["default_color"]
+    var equippedHat: String? = nil // deprecated; retained for backward-compatible decoding
     var equippedColor: String = "default_color"
     var equippedBackground: String? = nil
 
@@ -165,12 +165,6 @@ struct UnlockableItem: Identifiable, Codable, Hashable {
     var icon: String
 
     static let catalog: [UnlockableItem] = [
-        // Hats
-        .init(id: "hat_nightcap",    name: "Starry Nightcap", kind: .hat, requiredLevel: 1, icon: "moon.zzz.fill"),
-        .init(id: "hat_crown",       name: "Dream Crown",     kind: .hat, requiredLevel: 4, icon: "crown.fill"),
-        .init(id: "hat_beanie",      name: "Cozy Beanie",     kind: .hat, requiredLevel: 5, icon: "snowflake"),
-        .init(id: "hat_halo",        name: "Moon Halo",       kind: .hat, requiredLevel: 7, icon: "circle.dashed"),
-        .init(id: "hat_bow",         name: "Cloud Bow",       kind: .hat, requiredLevel: 9, icon: "cloud.fill"),
         // Colors
         .init(id: "default_color",   name: "Moonlight",       kind: .color, requiredLevel: 1, icon: "circle.fill"),
         .init(id: "color_lavender",  name: "Lavender",        kind: .color, requiredLevel: 3, icon: "circle.fill"),

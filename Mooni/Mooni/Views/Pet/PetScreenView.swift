@@ -5,11 +5,10 @@ struct PetScreenView: View {
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     @Binding var showPaywall: Bool
 
-    @State private var selectedTab: CustomizationTab = .hats
+    @State private var selectedTab: CustomizationTab = .colors
     @State private var showEvolutionPath = false
 
     private enum CustomizationTab: String, CaseIterable, Identifiable {
-        case hats
         case colors
         case rooms
         case backgrounds
@@ -18,7 +17,6 @@ struct PetScreenView: View {
 
         var title: String {
             switch self {
-            case .hats: return "Hats"
             case .colors: return "Colors"
             case .rooms: return "Rooms"
             case .backgrounds: return "Scenes"
@@ -27,7 +25,6 @@ struct PetScreenView: View {
 
         var icon: String {
             switch self {
-            case .hats: return "graduationcap.fill"
             case .colors: return "paintpalette.fill"
             case .rooms: return "house.fill"
             case .backgrounds: return "photo.fill"
@@ -281,11 +278,6 @@ struct PetScreenView: View {
 
         LazyVGrid(columns: columns, spacing: 12) {
             switch selectedTab {
-            case .hats:
-                noneHatTile
-                ForEach(items(for: .hat)) { item in
-                    itemTile(item)
-                }
             case .colors:
                 ForEach(items(for: .color)) { item in
                     itemTile(item)
@@ -300,24 +292,6 @@ struct PetScreenView: View {
                 }
             }
         }
-    }
-
-    private var noneHatTile: some View {
-        Button {
-            appState.unequipHat()
-        } label: {
-            tileShell(
-                title: "None",
-                subtitle: appState.pet.equippedHat == nil ? "Equipped" : "Starter",
-                isSelected: appState.pet.equippedHat == nil,
-                isLocked: false
-            ) {
-                Image(systemName: "circle.slash")
-                    .font(.system(size: 25, weight: .semibold))
-                    .foregroundColor(MooniColor.textPrimary)
-            }
-        }
-        .buttonStyle(.plain)
     }
 
     private func itemTile(_ item: UnlockableItem) -> some View {

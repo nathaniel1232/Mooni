@@ -31,8 +31,11 @@ struct HomeView: View {
 
             ScrollView {
                 LazyVStack(spacing: 22) {
-                    headerBar
+                    SleepOwlBrandMark()
                         .padding(.top, 6)
+                        .frame(maxWidth: .infinity, alignment: .center)
+
+                    headerBar
 
                     heroCard
 
