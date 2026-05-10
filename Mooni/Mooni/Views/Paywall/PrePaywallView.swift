@@ -303,7 +303,7 @@ private struct BadSleepStage: View {
     @State private var heartbeat = false
 
     private var sadPet: Pet {
-        var p = Pet(); p.species = species; p.mood = .low        return p
+        var p = Pet(); p.species = species; p.mood = .low;        return p
     }
 
     var body: some View {
@@ -422,7 +422,7 @@ private struct GoodSleepStage: View {
     @State private var glow = false
 
     private var brightPet: Pet {
-        var p = Pet(); p.species = species; p.mood = .energized        return p
+        var p = Pet(); p.species = species; p.mood = .energized;        return p
     }
 
     var body: some View {
@@ -556,7 +556,7 @@ private struct CommitmentStage: View {
     @State private var heartGlow = false
 
     private var bondedPet: Pet {
-        var p = Pet(); p.species = species; p.mood = .cozy        return p
+        var p = Pet(); p.species = species; p.mood = .cozy;        return p
     }
 
     var body: some View {
