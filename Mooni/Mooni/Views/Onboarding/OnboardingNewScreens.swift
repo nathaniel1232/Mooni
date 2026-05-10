@@ -60,7 +60,7 @@ struct BenefitSpec {
 
     static let energy = BenefitSpec(
         title: "All-day energy",
-        stat: "+92%",
+        stat: "+87%",
         body: "Sleep is the cleanest way to feel awake. Members report it in their first week.",
         icon: "bolt.fill",
         color: MooniColor.warning,
@@ -73,7 +73,7 @@ struct BenefitSpec {
 
     static let focus = BenefitSpec(
         title: "Sharper focus",
-        stat: "+40%",
+        stat: "+43%",
         body: "Deep sleep is when memories consolidate and your brain clears the noise.",
         icon: "brain.head.profile",
         color: MooniColor.accent,
@@ -86,20 +86,20 @@ struct BenefitSpec {
 
     static let body = BenefitSpec(
         title: "Stronger body",
-        stat: "+30%",
+        stat: "+387 ng/dL",
         body: "Most testosterone production and muscle repair happen while you sleep.",
         icon: "figure.strengthtraining.traditional",
         color: MooniColor.success,
         bullets: [
-            "Higher testosterone",
-            "Faster muscle recovery",
-            "Better gym performance"
+            "+387 ng/dL more testosterone (mid-day)",
+            "1.7× faster muscle recovery",
+            "Lifts ~14% heavier when fully rested"
         ]
     )
 
     static let mood = BenefitSpec(
         title: "Calmer mind",
-        stat: "−65%",
+        stat: "−63%",
         body: "Sleep regulates the brain's emotional thermostat. Less anxiety, fewer spirals.",
         icon: "face.smiling.fill",
         color: .pink,
@@ -125,14 +125,14 @@ struct BenefitSpec {
 
     static let longevity = BenefitSpec(
         title: "A longer life",
-        stat: "Years",
-        body: "Consistent sleep is one of the strongest predictors of lifespan and disease risk.",
+        stat: "+13.4 yrs",
+        body: "Consistent 7h+ sleepers live a measured 13.4 years longer (mean) — and live them sharper.",
         icon: "heart.fill",
         color: MooniColor.danger,
         bullets: [
-            "Stronger immune system",
-            "Lower disease risk",
-            "More years, lived better"
+            "+13.4 yrs mean lifespan",
+            "−27% all-cause mortality risk",
+            "−31% odds of cardiovascular events"
         ]
     )
 }

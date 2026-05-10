@@ -103,20 +103,49 @@ struct MorningCheckInView: View {
             StarsBackground(count: 40)
                 .opacity(0.45)
                 .allowsHitTesting(false)
-            VStack(spacing: 24) {
+            VStack(spacing: 18) {
                 topBar
+                progressIndicator
+                    .padding(.horizontal, 8)
 
-                Spacer()
-                content
-                    .transition(.opacity.combined(with: .move(edge: .trailing)))
-                    .id(step)
-                Spacer()
+                ScrollView(showsIndicators: false) {
+                    content
+                        .transition(.opacity.combined(with: .move(edge: .trailing)))
+                        .id(step)
+                        .padding(.top, 12)
+                }
+                .scrollDismissesKeyboard(.interactively)
 
                 footer
             }
-            .padding(24)
+            .padding(.horizontal, 22)
+            .padding(.top, 18)
+            .padding(.bottom, 24)
         }
         .interactiveDismissDisabled(step != .summary)
+    }
+
+    /// Compact step dots so the user feels how short the check-in is.
+    /// Greeting and summary book-end the question steps so we don't draw
+    /// dots for them — only the 7 questions matter for "how many left."
+    private var progressIndicator: some View {
+        let questionSteps: [Step] = [
+            .fallAsleep, .openDelay, .feeling, .wakeUps,
+            .dreams, .bedDifficulty, .caffeine
+        ]
+        let currentIdx = questionSteps.firstIndex(of: step) ?? -1
+
+        return HStack(spacing: 6) {
+            ForEach(Array(questionSteps.enumerated()), id: \.offset) { idx, _ in
+                Capsule()
+                    .fill(idx <= currentIdx ? MooniColor.warning : Color.white.opacity(0.18))
+                    .frame(height: 4)
+                    .frame(maxWidth: .infinity)
+                    .animation(.spring(response: 0.4), value: currentIdx)
+            }
+        }
+        .opacity(step == .greeting || step == .summary ? 0.0 : 1.0)
+        .animation(.easeInOut(duration: 0.2), value: step)
     }
 
     // MARK: - Steps content
@@ -186,20 +215,41 @@ struct MorningCheckInView: View {
     private var fallAsleepView: some View {
         questionView(title: "How long did it take you to fall asleep?") {
             ForEach(FallAsleepBucket.allCases) { option in
-                pickerRow(label: option.label, selected: fallAsleepBucket == option) {
+                pickerRow(label: option.label, icon: fallAsleepIcon(option), selected: fallAsleepBucket == option) {
                     fallAsleepBucket = option
                 }
             }
         }
     }
 
+    private func fallAsleepIcon(_ b: FallAsleepBucket) -> String {
+        switch b {
+        case .underFive:     return "bolt.fill"
+        case .fiveToTen:     return "moon.stars.fill"
+        case .tenToTwenty:   return "moon.fill"
+        case .twentyToForty: return "hourglass"
+        case .overForty:     return "clock.badge.exclamationmark"
+        case .dontKnow:      return "questionmark.circle"
+        }
+    }
+
     private var openDelayView: some View {
         questionView(title: "How long after waking did you open SleepOwl?") {
             ForEach(OpenDelayBucket.allCases) { option in
-                pickerRow(label: option.label, selected: openDelayBucket == option) {
+                pickerRow(label: option.label, icon: openDelayIcon(option), selected: openDelayBucket == option) {
                     openDelayBucket = option
                 }
             }
+        }
+    }
+
+    private func openDelayIcon(_ b: OpenDelayBucket) -> String {
+        switch b {
+        case .rightAway:       return "bolt.fill"
+        case .underFive:       return "sun.max.fill"
+        case .fiveToFifteen:   return "alarm.fill"
+        case .fifteenToThirty: return "hourglass"
+        case .overThirty:      return "clock.badge.exclamationmark"
         }
     }
 
@@ -397,10 +447,19 @@ struct MorningCheckInView: View {
         withAnimation { step = .summary }
     }
 
+    /// True when wake → first-app-open delay was auto-captured by the
+    /// notification probes. In that case we don't need to ask the user
+    /// to estimate it — saves a screen.
+    private var openDelayAutoCaptured: Bool {
+        guard let wake = appState.wakeTappedAt,
+              let opened = appState.appOpenedAfterWakeAt else { return false }
+        return opened > wake
+    }
+
     private func nextStep(of s: Step) -> Step {
         switch s {
-        case .greeting:      return .fallAsleep
-        case .fallAsleep:    return .openDelay
+        case .greeting:      return openDelayAutoCaptured ? .fallAsleep : .fallAsleep
+        case .fallAsleep:    return openDelayAutoCaptured ? .feeling : .openDelay
         case .openDelay:     return .feeling
         case .feeling:       return .wakeUps
         case .wakeUps:       return .dreams
@@ -416,7 +475,7 @@ struct MorningCheckInView: View {
         case .greeting:      return .greeting
         case .fallAsleep:    return .greeting
         case .openDelay:     return .fallAsleep
-        case .feeling:       return .openDelay
+        case .feeling:       return openDelayAutoCaptured ? .fallAsleep : .openDelay
         case .wakeUps:       return .feeling
         case .dreams:        return .wakeUps
         case .bedDifficulty: return .dreams
@@ -425,23 +484,34 @@ struct MorningCheckInView: View {
         }
     }
 
-    private func pickerRow(label: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
+    private func pickerRow(label: String, icon: String? = nil, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
+            HStack(spacing: 12) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(selected ? MooniColor.warning : MooniColor.textMuted)
+                        .frame(width: 32, height: 32)
+                        .background((selected ? MooniColor.warning : Color.white).opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
                 Text(label)
-                    .font(MooniFont.title(16))
+                    .font(MooniFont.title(15))
                     .foregroundColor(MooniColor.textPrimary)
                 Spacer()
-                if selected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(MooniColor.accent)
-                }
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(selected ? MooniColor.warning : MooniColor.textMuted)
+                    .font(.system(size: 18))
             }
-            .padding(16)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
             .background(selected ? Color.white.opacity(0.18) : Color.white.opacity(0.08))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(selected ? MooniColor.accent : Color.clear, lineWidth: 1.5)
+                    .stroke(selected ? MooniColor.warning : Color.white.opacity(0.08), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }

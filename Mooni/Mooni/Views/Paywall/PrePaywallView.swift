@@ -301,98 +301,128 @@ private struct BadSleepStage: View {
 
     @State private var dimmer = false
     @State private var heartbeat = false
+    /// Animation gates — each in its own state so we can sequence them on
+    /// onAppear instead of letting halo/pet/text race independently.
+    @State private var heroIn = false
+    @State private var statIn = false
+    @State private var bodyIn = false
 
     private var sadPet: Pet {
-        var p = Pet(); p.species = species; p.mood = .low;        return p
+        var p = Pet(); p.species = species; p.mood = .low; return p
     }
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Without change…")
-                .font(MooniFont.caption(13))
-                .foregroundColor(.white.opacity(0.6))
-                .textCase(.uppercase)
-                .tracking(1.4)
+        VStack(spacing: 18) {
+            // Eyebrow + small pet medallion at top — pet stays present
+            // but no longer dominates the screen. Problems are primary.
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(Color.red.opacity(dimmer ? 0.32 : 0.10))
+                        .frame(width: 86, height: 86)
+                        .blur(radius: 14)
+                    PetIllustration(pet: sadPet, size: 76)
+                        .grayscale(dimmer ? 0.55 : 0.15)
+                }
+                .frame(width: 92, height: 92)
+                .scaleEffect(heroIn ? 1.0 : 0.85)
+                .opacity(heroIn ? 1.0 : 0.0)
 
-            ZStack {
-                // Dim halo
-                Circle()
-                    .fill(Color.red.opacity(dimmer ? 0.25 : 0.05))
-                    .frame(width: 240, height: 240)
-                    .blur(radius: 30)
-                PetIllustration(pet: sadPet, size: 170)
-                    .grayscale(dimmer ? 0.6 : 0.0)
-                    .opacity(dimmer ? 0.85 : 1.0)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("WITHOUT CHANGE…")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(.white.opacity(0.55))
+                        .tracking(1.6)
+                    Text("\(petName) is at risk")
+                        .font(MooniFont.title(15))
+                        .foregroundColor(.white.opacity(0.85))
+                }
+                .opacity(heroIn ? 1.0 : 0.0)
+                .offset(x: heroIn ? 0 : -8)
+                Spacer()
             }
-            .onAppear {
-                withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { dimmer = true }
-                withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { heartbeat = true }
-            }
+            .padding(.horizontal, 4)
 
-            switch subStage {
-            case 0:
-                badStat1
-            case 1:
-                badStat2
-            default:
-                badStat3
+            // Big problem statement — the screen's actual point.
+            Group {
+                switch subStage {
+                case 0: badStat1
+                case 1: badStat2
+                default: badStat3
+                }
             }
+            .opacity(statIn ? 1 : 0)
+            .offset(y: statIn ? 0 : 12)
 
-            Spacer().frame(height: 12)
+            Spacer(minLength: 8)
         }
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 24)
+        .onAppear {
+            // Reset on every sub-stage swap and replay in lockstep so the
+            // halo, pet, headline and chips arrive in a single coherent wave.
+            heroIn = false; statIn = false; bodyIn = false
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.8)) { heroIn = true }
+            withAnimation(.easeOut(duration: 0.45).delay(0.18)) { statIn = true }
+            withAnimation(.easeOut(duration: 0.4).delay(0.36)) { bodyIn = true }
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { dimmer = true }
+            withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { heartbeat = true }
+        }
+        .onChange(of: subStage) { _, _ in
+            statIn = false; bodyIn = false
+            withAnimation(.easeOut(duration: 0.45)) { statIn = true }
+            withAnimation(.easeOut(duration: 0.4).delay(0.18)) { bodyIn = true }
+        }
     }
 
     private var badStat1: some View {
         VStack(spacing: 14) {
-            Text("Sleep less than you need…")
-                .font(MooniFont.display(26))
+            Text("You're aging \(profile.sleepAgeYearsAdded) yrs faster")
+                .font(MooniFont.display(38))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
-            Text("…and your body ages \(profile.sleepAgeYearsAdded) years faster.")
-                .font(MooniFont.body(16))
-                .foregroundColor(.white.opacity(0.85))
-                .multilineTextAlignment(.center)
-            statChip(icon: "brain.head.profile", text: "−27% memory")
-            statChip(icon: "heart.fill", text: "+48% heart strain")
-            statChip(icon: "face.smiling", text: "−65% mood resilience")
+                .lineSpacing(2)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, 4)
+
+            VStack(spacing: 8) {
+                statChip(icon: "brain.head.profile", text: "−27.4% memory recall")
+                statChip(icon: "heart.fill", text: "+48% cardiovascular strain")
+                statChip(icon: "face.smiling", text: "−63% mood resilience")
+            }
+            .opacity(bodyIn ? 1 : 0)
+            .offset(y: bodyIn ? 0 : 6)
         }
     }
 
     private var badStat2: some View {
-        VStack(spacing: 14) {
-            Text("Each tired night")
-                .font(MooniFont.display(26))
-                .foregroundColor(.white)
-            Text("steals from your future.")
-                .font(MooniFont.display(26))
+        VStack(spacing: 12) {
+            Text("\(max(profile.daysLostPerYear, 18)) days/year")
+                .font(.system(size: 72, weight: .bold, design: .rounded))
+                .foregroundStyle(LinearGradient(
+                    colors: [Color.red.opacity(0.9), Color.orange.opacity(0.85)],
+                    startPoint: .top, endPoint: .bottom))
+                .scaleEffect(heartbeat ? 1.04 : 0.97)
+            Text("are silently lost\nto grogginess + fatigue.")
+                .font(MooniFont.display(24))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
-            VStack(spacing: 6) {
-                Text("\(max(profile.daysLostPerYear, 18))")
-                    .font(.system(size: 64, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.red.opacity(0.9))
-                    .scaleEffect(heartbeat ? 1.05 : 0.96)
-                Text("days a year lost to grogginess")
-                    .font(MooniFont.body(15))
-                    .foregroundColor(.white.opacity(0.85))
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.top, 6)
+                .lineSpacing(2)
+                .padding(.horizontal, 6)
         }
     }
 
     private var badStat3: some View {
         VStack(spacing: 12) {
-            Text("And \(petName) feels it too.")
-                .font(MooniFont.display(24))
+            Text("\(petName) feels it too.")
+                .font(MooniFont.display(34))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
-            Text("Tired you = tired pet. Together you stay stuck — until you decide to change.")
-                .font(MooniFont.body(15))
+            Text("Tired you = tired \(petName). Stuck together until you decide to change tonight.")
+                .font(MooniFont.body(16))
                 .foregroundColor(.white.opacity(0.85))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 12)
+                .opacity(bodyIn ? 1 : 0)
         }
     }
 
@@ -401,14 +431,18 @@ private struct BadSleepStage: View {
             Image(systemName: icon)
                 .foregroundColor(Color.red.opacity(0.85))
             Text(text)
-                .font(MooniFont.title(14))
+                .font(MooniFont.title(15))
                 .foregroundColor(.white)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
         .background(Color.white.opacity(0.07))
-        .clipShape(Capsule())
-        .overlay(Capsule().stroke(Color.red.opacity(0.3), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.red.opacity(0.32), lineWidth: 1)
+        )
     }
 }
 
@@ -425,71 +459,94 @@ private struct GoodSleepStage: View {
         var p = Pet(); p.species = species; p.mood = .energized;        return p
     }
 
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("With SleepOwl…")
-                .font(MooniFont.caption(13))
-                .foregroundColor(.white.opacity(0.85))
-                .textCase(.uppercase)
-                .tracking(1.4)
+    @State private var heroIn = false
+    @State private var statIn = false
+    @State private var bodyIn = false
 
-            ZStack {
-                // Sun-like halo
-                Circle()
-                    .fill(Color.yellow.opacity(glow ? 0.35 : 0.18))
-                    .frame(width: 280, height: 280)
-                    .blur(radius: 36)
-                ForEach(0..<8, id: \.self) { i in
-                    Capsule()
-                        .fill(Color.white.opacity(0.6))
-                        .frame(width: 4, height: 36)
-                        .offset(y: -120)
-                        .rotationEffect(.degrees(Double(i) * 45))
-                        .opacity(glow ? 1 : 0.4)
+    var body: some View {
+        VStack(spacing: 18) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(Color.yellow.opacity(glow ? 0.40 : 0.18))
+                        .frame(width: 96, height: 96)
+                        .blur(radius: 18)
+                    PetIllustration(pet: brightPet, size: 80)
                 }
-                PetIllustration(pet: brightPet, size: 180)
+                .frame(width: 92, height: 92)
+                .scaleEffect(heroIn ? 1.0 : 0.85)
+                .opacity(heroIn ? 1.0 : 0.0)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("WITH SLEEPOWL…")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(.white.opacity(0.7))
+                        .tracking(1.6)
+                    Text("\(petName) gets brighter")
+                        .font(MooniFont.title(15))
+                        .foregroundColor(.white.opacity(0.92))
+                }
+                .opacity(heroIn ? 1.0 : 0.0)
+                .offset(x: heroIn ? 0 : -8)
+                Spacer()
             }
+            .padding(.horizontal, 4)
             .onAppear {
                 withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) { glow = true }
             }
 
-            switch subStage {
-            case 0: goodStat1
-            case 1: goodStat2
-            default: goodStat3
+            Group {
+                switch subStage {
+                case 0: goodStat1
+                case 1: goodStat2
+                default: goodStat3
+                }
             }
+            .opacity(statIn ? 1 : 0)
+            .offset(y: statIn ? 0 : 12)
 
-            Spacer().frame(height: 12)
+            Spacer(minLength: 8)
         }
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 24)
+        .onAppear {
+            heroIn = false; statIn = false; bodyIn = false
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.8)) { heroIn = true }
+            withAnimation(.easeOut(duration: 0.45).delay(0.18)) { statIn = true }
+            withAnimation(.easeOut(duration: 0.4).delay(0.36)) { bodyIn = true }
+        }
+        .onChange(of: subStage) { _, _ in
+            statIn = false; bodyIn = false
+            withAnimation(.easeOut(duration: 0.45)) { statIn = true }
+            withAnimation(.easeOut(duration: 0.4).delay(0.18)) { bodyIn = true }
+        }
     }
 
     private var goodStat1: some View {
         VStack(spacing: 14) {
-            Text("Imagine waking up rested.")
-                .font(MooniFont.display(26))
+            Text("Wake up rested\nin 7 nights")
+                .font(MooniFont.display(38))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
-            Text("SleepOwl Pro members report it in their first week.")
-                .font(MooniFont.body(15))
-                .foregroundColor(.white.opacity(0.9))
-                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+
             VStack(spacing: 8) {
-                goodChip(icon: "bolt.fill", text: "+92% morning energy")
-                goodChip(icon: "brain.head.profile", text: "+40% mental clarity")
-                goodChip(icon: "face.smiling", text: "+65% mood lift")
+                goodChip(icon: "bolt.fill", text: "+87% morning energy")
+                goodChip(icon: "brain.head.profile", text: "+43% mental clarity")
+                goodChip(icon: "face.smiling", text: "+62% mood lift")
             }
+            .opacity(bodyIn ? 1 : 0)
+            .offset(y: bodyIn ? 0 : 6)
         }
     }
 
     private var goodStat2: some View {
         VStack(spacing: 14) {
-            Text("\(petName) glows with you.")
-                .font(MooniFont.display(26))
+            Text("\(petName) glows with you")
+                .font(MooniFont.display(32))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
-            Text("Better sleep evolves your pet. Real changes, real reflections of you.")
-                .font(MooniFont.body(15))
+            Text("Real sleep → real evolution. Each rested night, \(petName) levels up beside you.")
+                .font(MooniFont.body(16))
                 .foregroundColor(.white.opacity(0.92))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 12)

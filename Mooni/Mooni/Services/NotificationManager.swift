@@ -21,9 +21,21 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
     /// Action ID for the "I'm awake" tap on a wake-probe notification.
     nonisolated static let wakeProbeAction = "mooni.wakeProbe.iAmAwake"
 
+    /// Sleep-onset probes — silent "still awake?" pings during the first
+    /// 45 minutes after sleep mode starts. Each tap proves the user was
+    /// still awake at that moment, letting us narrow the real onset
+    /// window without asking them to remember in the morning.
+    nonisolated static let onsetProbePrefix = "mooni.onsetProbe."
+    nonisolated static let onsetProbeAction = "mooni.onsetProbe.stillAwake"
+    nonisolated static let onsetProbeCategory = "mooni.onsetProbe"
+
     /// Posted when the user confirms they're awake — either via a probe
     /// notification or by tapping wake on the sleep-lock overlay.
     static let didConfirmWakeNotification = Notification.Name("mooni.didConfirmWake")
+    /// Posted when the user taps "still awake" on an onset probe. The
+    /// `userInfo` carries `tappedAt: Date` so the listener can refine
+    /// the lower bound on real sleep onset.
+    static let didConfirmStillAwakeNotification = Notification.Name("mooni.didConfirmStillAwake")
 
     private override init() {
         super.init()
@@ -79,14 +91,17 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
 
     // MARK: - Wake probes
 
-    /// Schedules five "are you awake?" probes at T-60, T-45, T-30, T-15
-    /// and T relative to `wakeTime`. Tapping any one (or its action)
-    /// records the user's actual wake moment.
+    /// Schedules "are you awake?" probes every 30 minutes starting 1h
+    /// before `wakeTime` and continuing 1h after, so we still catch users
+    /// who oversleep past their target. Tapping any one (or its action)
+    /// records the user's actual wake moment, which feeds back into the
+    /// sleep onset / duration estimate for that night.
     func scheduleWakeProbes(wakeTime: Date, petName: String) {
         let center = UNUserNotificationCenter.current()
         cancelWakeProbes()
 
-        let offsets: [Int] = [-60, -45, -30, -15, 0]
+        // -60, -30, 0, +30, +60 (30-minute cadence, 2-hour window).
+        let offsets: [Int] = [-60, -30, 0, 30, 60]
         let now = Date()
 
         for (idx, minutes) in offsets.enumerated() {
@@ -117,10 +132,57 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
         }
     }
 
+    /// Total number of probes scheduled per night. Drives the cancel
+    /// loop; keep in sync with `scheduleWakeProbes` offsets length.
+    static let wakeProbeCount = 5
+
+    // MARK: - Sleep onset probes
+    //
+    // We schedule three "still awake?" pings at +15, +30 and +45 minutes
+    // after the user enters sleep mode. Each tap proves they were still
+    // awake at that moment — pushing the lower bound on real sleep onset
+    // forward. If they don't tap any, the silence itself is signal:
+    // they probably fell asleep within the first window.
+
+    /// Schedules onset probes after the user enters sleep mode.
+    func scheduleOnsetProbes(sleepStart: Date, petName: String) {
+        let center = UNUserNotificationCenter.current()
+        cancelOnsetProbes()
+        let offsets: [Int] = [15, 30, 45]
+        let now = Date()
+
+        for (idx, minutes) in offsets.enumerated() {
+            let fireDate = sleepStart.addingTimeInterval(TimeInterval(minutes * 60))
+            guard fireDate > now.addingTimeInterval(5) else { continue }
+
+            let content = UNMutableNotificationContent()
+            content.title = "Still awake?"
+            content.body = "If \(petName) hasn't drifted off yet, tap so we know."
+            content.sound = nil
+            content.interruptionLevel = .passive
+            content.categoryIdentifier = Self.onsetProbeCategory
+            content.userInfo = ["fireDate": fireDate.timeIntervalSince1970]
+
+            let interval = max(5, fireDate.timeIntervalSince(now))
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
+            let id = "\(Self.onsetProbePrefix)\(idx)"
+            let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+            center.add(request)
+        }
+    }
+
+    func cancelOnsetProbes() {
+        let ids = (0..<3).map { "\(Self.onsetProbePrefix)\($0)" }
+        UNUserNotificationCenter.current()
+            .removePendingNotificationRequests(withIdentifiers: ids)
+        UNUserNotificationCenter.current()
+            .removeDeliveredNotifications(withIdentifiers: ids)
+    }
+
     /// Removes any pending wake probes — call when the user wakes early
     /// or sleep mode otherwise ends.
     func cancelWakeProbes() {
-        let ids = (0..<5).map { "\(Self.wakeProbePrefix)\($0)" }
+        let ids = (0..<Self.wakeProbeCount).map { "\(Self.wakeProbePrefix)\($0)" }
         UNUserNotificationCenter.current()
             .removePendingNotificationRequests(withIdentifiers: ids)
         UNUserNotificationCenter.current()
@@ -128,18 +190,33 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
     }
 
     private func registerCategories() {
-        let action = UNNotificationAction(
+        let wakeAction = UNNotificationAction(
             identifier: Self.wakeProbeAction,
             title: "I'm awake",
             options: [.foreground]
         )
-        let category = UNNotificationCategory(
+        let wakeCategory = UNNotificationCategory(
             identifier: "mooni.wakeProbe",
-            actions: [action],
+            actions: [wakeAction],
             intentIdentifiers: [],
             options: []
         )
-        UNUserNotificationCenter.current().setNotificationCategories([category])
+
+        // Onset probes can be answered without launching SleepOwl —
+        // background-only action keeps the user from accidentally
+        // breaking sleep mode by tapping it.
+        let onsetAction = UNNotificationAction(
+            identifier: Self.onsetProbeAction,
+            title: "Still awake",
+            options: []
+        )
+        let onsetCategory = UNNotificationCategory(
+            identifier: Self.onsetProbeCategory,
+            actions: [onsetAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([wakeCategory, onsetCategory])
     }
 
     // MARK: - UNUserNotificationCenterDelegate
@@ -160,12 +237,16 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let id = response.notification.request.identifier
+        let tapTime = Date()
         if id.hasPrefix(Self.wakeProbePrefix) {
-            // Use the user's confirmation time as the wake moment. A delivered
-            // notification may sit for a while before they actually tap it.
-            let tapTime = Date()
             Task { @MainActor in
                 NotificationManager.shared.recordWakeConfirmation(at: tapTime)
+            }
+        } else if id.hasPrefix(Self.onsetProbePrefix) {
+            // "Still awake" tap — record the lower bound on real onset.
+            // We deliberately do NOT cancel sleep mode here.
+            Task { @MainActor in
+                NotificationManager.shared.recordStillAwake(at: tapTime)
             }
         }
         completionHandler()
@@ -178,5 +259,21 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
         }
         cancelWakeProbes()
         NotificationCenter.default.post(name: Self.didConfirmWakeNotification, object: nil)
+    }
+
+    /// Persists the *latest* "still awake" tap so onset estimation can
+    /// push the lower bound forward each time the user confirms they're
+    /// still up.
+    func recordStillAwake(at date: Date) {
+        let key = "mooni.lastStillAwakeAt"
+        let prior = UserDefaults.standard.object(forKey: key) as? Date
+        if prior == nil || date > prior! {
+            UserDefaults.standard.set(date, forKey: key)
+        }
+        NotificationCenter.default.post(
+            name: Self.didConfirmStillAwakeNotification,
+            object: nil,
+            userInfo: ["tappedAt": date]
+        )
     }
 }

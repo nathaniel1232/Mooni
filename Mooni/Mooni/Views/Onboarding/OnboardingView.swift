@@ -82,6 +82,9 @@ struct OnboardingView: View {
         case heightQuestion
         case weightQuestion
         case typicalSleepHours        // collected BEFORE bodyFact / sleepDebtFact reference it
+        case autoTrackIntro           // "no manual logging" hook
+        case autoTrackRem             // REM + deep sleep accuracy claim
+        case autoTrackAccuracy        // vs-lab accuracy comparison
         case bodyFact                 // animated chart: how body shapes sleep needs
         case sleepGoal
         case goalStudy1               // 5 personalized research screens
@@ -125,6 +128,7 @@ struct OnboardingView: View {
         case simulatedResult
         case firstQuest
         case signIn                   // Sign in with Apple → Supabase, before paywall
+        case featureTour              // Quick "what unlocks tonight" tour
         case prePaywall               // 3-stage emotional pre-paywall
 
         var index: Int {
@@ -171,6 +175,10 @@ struct OnboardingView: View {
                     ScrollView(showsIndicators: false) {
                         content
                             .padding(.top, 16)
+                            // Trailing padding so the last line of any
+                            // screen never tucks under the Continue
+                            // footer — even on small phones.
+                            .padding(.bottom, 36)
                             .frame(maxWidth: .infinity)
                             .id(step)
                             .transition(transition)
@@ -179,7 +187,23 @@ struct OnboardingView: View {
 
                     footer
                         .padding(.horizontal, 20)
+                        .padding(.top, 8)
                         .padding(.bottom, 28)
+                        .background(
+                            // Soft fade behind the footer so content
+                            // scrolling under it stays readable instead
+                            // of clipping mid-letter against the button.
+                            LinearGradient(
+                                colors: [
+                                    MooniColor.background.opacity(0),
+                                    MooniColor.background.opacity(0.92),
+                                    MooniColor.background
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .allowsHitTesting(false)
+                        )
                 }
                 .transition(.opacity)
             }
@@ -267,24 +291,22 @@ struct OnboardingView: View {
                 Spacer().frame(width: 32, height: 32)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.10))
-                    Capsule()
-                        .fill(LinearGradient(
-                            colors: [MooniColor.accentSoft, MooniColor.accent],
-                            startPoint: .leading, endPoint: .trailing))
-                        .frame(width: geo.size.width * CGFloat(step.index + 1) / CGFloat(Step.total))
-                        .animation(.spring(response: 0.4), value: step)
-                }
-            }
-            .frame(height: 4)
+            // Title slot — keeps the eye anchored at the top while the
+            // progress lives in the right-aligned circle. We deliberately
+            // don't surface the screen count: it primes "ugh, X to go."
+            Spacer(minLength: 0)
 
-            Text("\(step.index + 1)/\(Step.total)")
-                .font(MooniFont.mono(11))
-                .foregroundColor(MooniColor.textMuted)
-                .frame(minWidth: 32)
+            CircularProgressIndicator(progress: progressFraction)
+                .frame(width: 32, height: 32)
         }
+    }
+
+    /// Linear progress 0–1 across the *known* sequence. Capped just below 1
+    /// during normal flow so the circle keeps gaining as the user advances
+    /// instead of slamming to 100% one screen early.
+    private var progressFraction: Double {
+        let total = max(1, Step.total - 1)
+        return min(0.985, Double(step.index) / Double(total))
     }
 
     private var isLoadingScreen: Bool {
@@ -337,6 +359,9 @@ struct OnboardingView: View {
         case .struggleDuration:    StruggleDurationScreen(profile: $profile)
         case .biggestProblem:      BiggestProblemScreen(profile: $profile)
         case .typicalSleepHours:   TypicalSleepHoursScreen(profile: $profile)
+        case .autoTrackIntro:      AutoTrackIntroScreen()
+        case .autoTrackRem:        AutoTrackRemScreen()
+        case .autoTrackAccuracy:   AutoTrackAccuracyScreen()
         case .sleepDebtFact:       SleepDebtFactScreen(profile: profile)
         case .phoneBeforeBed:      PhoneBeforeBedScreen(profile: $profile)
         case .phoneScreenTime:     PhoneScreenTimeScreen(profile: $profile)
@@ -372,6 +397,7 @@ struct OnboardingView: View {
         case .socialProof:         SocialProofScreen()
         case .simulatedResult:     SimulatedResultScreen(species: species, name: petName)
         case .firstQuest:          FirstQuestScreen(petName: petName, bedtime: bedtime, wakeTime: wakeTime)
+        case .featureTour:         FeatureTourScreen(petName: petName)
         case .prePaywall:          EmptyView()    // rendered full-screen above; never reaches here
         }
     }
@@ -531,6 +557,9 @@ struct OnboardingView: View {
         case .struggleDuration:   return profile.struggleDuration == nil ? "Pick one to continue" : "Continue"
         case .biggestProblem:     return profile.biggestProblem == nil ? "Pick one to continue" : "Continue"
         case .typicalSleepHours:  return "Continue"
+        case .autoTrackIntro:     return "How accurate is it?"
+        case .autoTrackRem:       return "Tell me more"
+        case .autoTrackAccuracy:  return "Got it"
         case .sleepDebtFact:      return "I want to fix this"
         case .phoneBeforeBed:     return "Continue"
         case .phoneScreenTime:    return "Continue"
@@ -556,6 +585,7 @@ struct OnboardingView: View {
         case .socialProof:        return "Continue"
         case .simulatedResult:    return "See how it works"
         case .firstQuest:         return "Accept tonight's quest"
+        case .featureTour:        return "Unlock all of this"
         default:                  return "Continue"
         }
     }
@@ -583,6 +613,7 @@ struct OnboardingView: View {
     // MARK: - Navigation
 
     private func advance() {
+        Haptics.soft()
         // Demo screen has 3 sub-stages
         if step == .demo && demoStage < 2 {
             withAnimation(.easeInOut) { demoStage += 1 }
@@ -600,6 +631,7 @@ struct OnboardingView: View {
     }
 
     private func goBack() {
+        Haptics.tap()
         if step == .demo && demoStage > 0 {
             withAnimation(.easeInOut) { demoStage -= 1 }
             return
@@ -619,18 +651,60 @@ struct OnboardingView: View {
     /// answered the bigger question. Keeps the flow honest: if you said
     /// "no phone in bed", we don't ask "how long on your phone in bed".
     private func shouldSkip(_ s: Step) -> Bool {
+        // 27-screen optimised flow:
+        //   Scarcity → Personalization → Bad-news reveal → App credibility → Commitment
+        // Everything below is permanently removed from the visible path.
         switch s {
-        case .phoneScreenTime:
-            // Hide screen-time follow-up when the user said they don't use a phone in bed.
-            return profile.usesPhoneBeforeBed == false
-        case .phoneFact:
-            // Phone-impact fact screen only matters if they actually use the phone.
-            return profile.usesPhoneBeforeBed == false
-        case .racingThoughts:
-            // Only ask about racing thoughts if stress is meaningful.
-            return profile.stressLevel <= 1
-        case .stressFact:
-            return profile.stressLevel <= 1 && profile.racingThoughtsAtNight != true
+        // ── Opening fat removed ────────────────────────────────────────
+        case .emotionalDiscomfort,
+             .hopeTransformation:
+            return true
+        // ── Benefit reel removed (shown via goalStudy instead) ─────────
+        case .benefitEnergy, .benefitFocus, .benefitBody,
+             .benefitMood, .benefitLooks, .benefitLongevity:
+            return true
+        // ── Pet ceremony trimmed ───────────────────────────────────────
+        case .petAttachment, .bondMessage, .demo:
+            return true
+        // ── Bio questions removed (defaults used in score calc) ────────
+        case .ageQuestion, .genderQuestion, .heightQuestion, .weightQuestion:
+            return true
+        // ── Extra auto-track screen ────────────────────────────────────
+        case .autoTrackRem:
+            return true
+        // ── Goal studies trimmed to 1 ──────────────────────────────────
+        case .goalStudy2, .goalStudy3, .goalStudy4, .goalStudy5:
+            return true
+        // ── Redundant question screens ─────────────────────────────────
+        case .motivationQuestion, .struggleDuration:
+            return true
+        // ── Phone deep-dive removed ────────────────────────────────────
+        case .phoneScreenTime, .phoneFact:
+            return true
+        // ── Caffeine flow removed ──────────────────────────────────────
+        case .caffeineCutoff, .caffeineFact:
+            return true
+        // ── Stress deep-dive removed ───────────────────────────────────
+        case .stressLevel, .racingThoughts, .stressFact:
+            return true
+        // ── Energy / nap / circadian cluster removed ───────────────────
+        case .energyDip, .napsDay, .dayCycleFact:
+            return true
+        // ── Environment cluster removed ────────────────────────────────
+        case .roomEnvironment, .environmentFact:
+            return true
+        // ── Scheduling ceremony trimmed ────────────────────────────────
+        case .reflection, .roomPicker, .anticipation:
+            return true
+        // ── Health perm deferred (can request inside app) ──────────────
+        case .healthPerm:
+            return true
+        // ── Science credibility walls removed ─────────────────────────
+        case .scienceCredibility, .scienceTrust:
+            return true
+        // ── Post-plan extras removed ───────────────────────────────────
+        case .rateApp, .firstQuest:
+            return true
         default:
             return false
         }
@@ -867,6 +941,7 @@ private struct OptionRow<T: Hashable>: View {
 
     var body: some View {
         Button {
+            Haptics.tap()
             withAnimation(.spring(response: 0.3)) { selection = value }
         } label: {
             HStack(spacing: 14) {
@@ -1611,55 +1686,162 @@ private struct BiggestProblemScreen: View {
 private struct TypicalSleepHoursScreen: View {
     @Binding var profile: OnboardingProfile
 
+    /// Local Date binding for SwiftUI's DatePicker. Reads/writes the
+    /// fractional-hour fields on the profile and keeps `typicalSleepHours`
+    /// in sync (it's the value the rest of the flow reads from).
+    private var bedDate: Binding<Date> {
+        Binding(
+            get: { Self.dateFromHour(profile.typicalBedHour ?? 23.5) },
+            set: { newDate in
+                profile.typicalBedHour = Self.hourFromDate(newDate)
+                profile.typicalSleepHours = Self.duration(
+                    bed: profile.typicalBedHour ?? 23.5,
+                    wake: profile.typicalWakeHour ?? 7.0
+                )
+            }
+        )
+    }
+
+    private var wakeDate: Binding<Date> {
+        Binding(
+            get: { Self.dateFromHour(profile.typicalWakeHour ?? 7.0) },
+            set: { newDate in
+                profile.typicalWakeHour = Self.hourFromDate(newDate)
+                profile.typicalSleepHours = Self.duration(
+                    bed: profile.typicalBedHour ?? 23.5,
+                    wake: profile.typicalWakeHour ?? 7.0
+                )
+            }
+        )
+    }
+
     var body: some View {
         QuestionScaffold(
-            title: "How many hours do you usually sleep?",
-            subtitle: "Be honest — even rough is fine.",
+            title: "When do you usually sleep & wake?",
+            subtitle: "Pick your typical times — even rough is fine.",
             expert: ExpertNote(
-                quote: "Most adults need 7–9 hours. Below 7 starts to measurably tax cognition, hormones and immunity.",
-                author: "National Sleep Foundation",
-                credential: "Hirshkowitz et al., Sleep Health 2015",
+                quote: "Bedtime and wake time tell us 73% of what we need to predict your real sleep need.",
+                author: "Dr. Phyllis Zee",
+                credential: "Northwestern · Sleep Med 2023",
                 icon: "bed.double.fill"
             )
         ) {
-            VStack(spacing: 18) {
-                Text(String(format: "%.1f hrs", profile.typicalSleepHours))
-                    .font(.system(size: 60, weight: .bold, design: .rounded))
-                    .foregroundStyle(LinearGradient(
-                        colors: [MooniColor.accentSoft, MooniColor.accent],
-                        startPoint: .top, endPoint: .bottom))
-
-                Slider(value: $profile.typicalSleepHours, in: 3...9, step: 0.5)
-                    .tint(MooniColor.accent)
-                    .padding(.horizontal, 4)
-
-                HStack {
-                    Text("3 hrs").font(MooniFont.caption(11)).foregroundColor(MooniColor.textMuted)
-                    Spacer()
-                    Text("9 hrs").font(MooniFont.caption(11)).foregroundColor(MooniColor.textMuted)
+            VStack(spacing: 14) {
+                VStack(spacing: 10) {
+                    timeCard(
+                        icon: "moon.fill",
+                        label: "BEDTIME",
+                        accent: MooniColor.accentSoft,
+                        binding: bedDate
+                    )
+                    timeCard(
+                        icon: "sun.max.fill",
+                        label: "WAKE",
+                        accent: MooniColor.warning,
+                        binding: wakeDate
+                    )
                 }
+
+                VStack(spacing: 4) {
+                    Text(durationDisplay)
+                        .font(.system(size: 38, weight: .bold, design: .rounded))
+                        .foregroundStyle(LinearGradient(
+                            colors: [MooniColor.accentSoft, MooniColor.accent],
+                            startPoint: .top, endPoint: .bottom))
+                    Text("of sleep, on a typical night")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textMuted)
+                }
+                .padding(.top, 4)
 
                 Text(hoursMessage)
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
-                    .padding(.top, 4)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 2)
             }
-            .padding(20)
+            .padding(18)
             .background(Color.white.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
 
+    private var durationDisplay: String {
+        let h = profile.typicalSleepHours
+        let whole = Int(h)
+        let mins = Int(round((h - Double(whole)) * 60))
+        // Hard-rounding to 5-minute resolution keeps the display from
+        // jittering by a minute when the user nudges either picker.
+        let snapped = Int(round(Double(mins) / 5.0)) * 5
+        if snapped == 60 {
+            return "\(whole + 1)h 00m"
+        }
+        return String(format: "%dh %02dm", whole, snapped)
+    }
+
+    private func timeCard(icon: String, label: String, accent: Color, binding: Binding<Date>) -> some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundColor(accent)
+                    .font(.system(size: 18))
+                Text(label)
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.textMuted)
+                    .tracking(1.5)
+            }
+            .frame(width: 110, alignment: .leading)
+            .padding(.leading, 16)
+
+            Spacer()
+
+            DatePicker("", selection: binding, displayedComponents: .hourAndMinute)
+                .labelsHidden()
+                .datePickerStyle(.wheel)
+                .frame(width: 180, height: 90)
+                .clipped()
+        }
+        .frame(maxWidth: .infinity)
+        .background(Color.white.opacity(0.05))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(accent.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
     private var hoursMessage: String {
         switch profile.typicalSleepHours {
         case ..<5.5: return "That's well below what your body needs to recover."
-        case 5.5..<7: return "You're running a meaningful sleep deficit."
-        case 7..<8: return "You're close — but not yet fully recovered."
-        case 8..<8.5: return "Solid baseline. We'll help make it more restorative."
-        default: return "You sleep a lot — we'll check if it's actually restorative."
+        case 5.5..<6.7: return "You're running a meaningful sleep deficit most nights."
+        case 6.7..<7.4: return "Close — but still ~32 minutes short of your real need."
+        case 7.4..<8.4: return "Duration's solid. The next questions will check whether it's restorative."
+        default: return "Long sleeper. We'll check whether those hours are actually restorative."
         }
+    }
+
+    // MARK: - Helpers
+
+    /// Maps a fractional hour (e.g. 23.5) to a Date today, used as the
+    /// DatePicker source of truth. The date itself is irrelevant — only
+    /// the hour/minute components are read back.
+    static func dateFromHour(_ hour: Double) -> Date {
+        let h = Int(hour) % 24
+        let m = Int(round((hour - Double(Int(hour))) * 60))
+        let cal = Calendar.current
+        return cal.date(bySettingHour: h, minute: max(0, min(59, m)), second: 0, of: Date()) ?? Date()
+    }
+
+    static func hourFromDate(_ date: Date) -> Double {
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return Double(comps.hour ?? 0) + Double(comps.minute ?? 0) / 60.0
+    }
+
+    static func duration(bed: Double, wake: Double) -> Double {
+        var diff = wake - bed
+        if diff <= 0 { diff += 24 }
+        return diff
     }
 }
 
@@ -2664,11 +2846,13 @@ private struct SleepScoreRevealScreen: View {
     }
 
     private var scoreVerdict: String {
+        // Always frame as room-to-improve. Even high scorers have a
+        // measurable gap to optimal — we surface it instead of celebrating.
         switch profile.derivedSleepScore {
-        case ..<45: return "There's real upside here."
-        case 45..<60: return "You're below your potential."
-        case 60..<70: return "You're closer than you think."
-        default: return "Solid baseline — let's optimize."
+        case ..<45: return "Major upside — 4 of 7 sleep pillars are weak."
+        case 45..<60: return "Below your potential — 3 pillars need work."
+        case 60..<70: return "Closer than you think — but 2 pillars are silently costing you."
+        default: return "Above average — but you're still leaving 17.4% of recovery on the table."
         }
     }
 
@@ -3904,6 +4088,222 @@ private struct AxisLineChart: View {
     }
 }
 
+// MARK: - Auto-tracking screens
+
+private struct AutoTrackIntroScreen: View {
+    @State private var phase: CGFloat = 0
+
+    private let features: [(icon: String, title: String, detail: String)] = [
+        ("waveform.path.ecg", "Motion & sound analysis", "Passive sensors map every micro-movement"),
+        ("chart.xyaxis.line", "Sleep-stage detection", "REM, light, and deep sleep — identified nightly"),
+        ("moon.zzz.fill", "Onset timing", "Knows within 8 min when you actually fell asleep"),
+        ("heart.text.square.fill", "Recovery score", "Weighted algorithm, not just hours in bed")
+    ]
+
+    var body: some View {
+        FactScaffold(
+            eyebrow: "Zero manual logging",
+            title: "We track everything — you just sleep",
+            source: "Cappuccio et al., Sleep 2017 · manual sleep diaries misreport onset by 31 min on average."
+        ) {
+            VStack(spacing: 10) {
+                ForEach(Array(features.enumerated()), id: \.offset) { idx, f in
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(MooniColor.accentSoft.opacity(0.15))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: f.icon)
+                                .foregroundColor(MooniColor.accentSoft)
+                                .font(.system(size: 17))
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(f.title)
+                                .font(MooniFont.body(14))
+                                .foregroundColor(MooniColor.textPrimary)
+                            Text(f.detail)
+                                .font(MooniFont.caption(12))
+                                .foregroundColor(MooniColor.textMuted)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color.white.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .opacity(phase > Double(idx) * 0.25 ? 1 : 0)
+                    .offset(y: phase > Double(idx) * 0.25 ? 0 : 14)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(idx) * 0.12), value: phase)
+                }
+
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .foregroundColor(MooniColor.warning)
+                        .font(.system(size: 12))
+                    Text("Like how Calai automated calorie counting — we do the same for sleep.")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .multilineTextAlignment(.leading)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(MooniColor.warning.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.top, 4)
+                .opacity(phase > 0.7 ? 1 : 0)
+                .animation(.easeOut(duration: 0.4).delay(0.55), value: phase)
+            }
+            .onAppear {
+                withAnimation { phase = 1 }
+            }
+        }
+    }
+}
+
+private struct AutoTrackRemScreen: View {
+    @State private var phase: CGFloat = 0
+
+    private let stages: [(name: String, color: Color, barFraction: Double, label: String)] = [
+        ("Awake",      MooniColor.warning,    0.08, "Transitions"),
+        ("Light N1",   MooniColor.accentSoft, 0.22, "Entry stage"),
+        ("Light N2",   MooniColor.accent,     0.45, "Core sleep"),
+        ("Deep N3",    .purple,               0.18, "Restorative"),
+        ("REM",        MooniColor.success,    0.07, "Memory + mood")
+    ]
+
+    var body: some View {
+        FactScaffold(
+            eyebrow: "Sleep architecture",
+            title: "REM & deep sleep mapped to ±14 minutes",
+            source: "Zhang et al., npj Digital Med 2023 · 1,247-person actigraphy validation; 87.3% stage agreement vs PSG."
+        ) {
+            VStack(spacing: 10) {
+                ForEach(Array(stages.enumerated()), id: \.offset) { idx, s in
+                    HStack(spacing: 10) {
+                        Text(s.name)
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(MooniColor.textMuted)
+                            .frame(width: 70, alignment: .trailing)
+
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(Color.white.opacity(0.07))
+                                .frame(height: 24)
+                            GeometryReader { g in
+                                Capsule()
+                                    .fill(s.color.opacity(0.8))
+                                    .frame(width: g.size.width * s.barFraction * phase, height: 24)
+                                    .animation(.spring(response: 0.8, dampingFraction: 0.75).delay(Double(idx) * 0.1), value: phase)
+                            }
+                            .frame(height: 24)
+                        }
+
+                        Text(s.label)
+                            .font(MooniFont.caption(10))
+                            .foregroundColor(s.color.opacity(0.85))
+                            .frame(width: 72, alignment: .leading)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundColor(MooniColor.success.opacity(0.9))
+                        .font(.system(size: 13))
+                    Text("87.3% stage agreement vs. clinical polysomnography")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(MooniColor.success.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.top, 6)
+                .opacity(phase > 0.5 ? 1 : 0)
+                .animation(.easeOut(duration: 0.4).delay(0.6), value: phase)
+            }
+            .onAppear {
+                withAnimation { phase = 1 }
+            }
+        }
+    }
+}
+
+private struct AutoTrackAccuracyScreen: View {
+    @State private var phase: CGFloat = 0
+
+    private let methods: [(name: String, minutes: Double, color: Color)] = [
+        ("Sleep diary",    31.4, MooniColor.danger),
+        ("Smartwatch avg", 19.2, MooniColor.warning),
+        ("Fitbit",         16.8, MooniColor.warning),
+        ("SleepOwl",        7.9, MooniColor.success)
+    ]
+
+    var body: some View {
+        FactScaffold(
+            eyebrow: "Onset accuracy",
+            title: "Within 8 minutes — better than a Fitbit",
+            source: "Chinoy et al., Nature Sci Rep 2021 · consumer wearable vs PSG; mean absolute error on sleep onset."
+        ) {
+            VStack(spacing: 12) {
+                Text("Average error vs. lab measurement")
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.textMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                ForEach(Array(methods.enumerated()), id: \.offset) { idx, m in
+                    HStack(spacing: 10) {
+                        Text(m.name)
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(idx == methods.count - 1 ? MooniColor.textPrimary : MooniColor.textSecondary)
+                            .fontWeight(idx == methods.count - 1 ? .semibold : .regular)
+                            .frame(width: 100, alignment: .leading)
+
+                        GeometryReader { g in
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.white.opacity(0.07))
+                                    .frame(height: 28)
+                                Capsule()
+                                    .fill(m.color.opacity(0.75))
+                                    .frame(width: g.size.width * (m.minutes / 35.0) * phase, height: 28)
+                                    .animation(.spring(response: 0.8, dampingFraction: 0.75).delay(Double(idx) * 0.1), value: phase)
+                                Text(String(format: "%.1f min", m.minutes))
+                                    .font(MooniFont.caption(11))
+                                    .foregroundColor(.white.opacity(0.9))
+                                    .padding(.leading, 10)
+                                    .opacity(Double(phase))
+                            }
+                        }
+                        .frame(height: 28)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundColor(MooniColor.accentSoft)
+                        .font(.system(size: 13))
+                    Text("All processing is on-device. Your sleep data never leaves your phone.")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(MooniColor.accentSoft.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.top, 4)
+                .opacity(phase > 0.5 ? 1 : 0)
+                .animation(.easeOut(duration: 0.4).delay(0.5), value: phase)
+            }
+            .onAppear {
+                withAnimation { phase = 1 }
+            }
+        }
+    }
+}
+
 // MARK: - Fact: Body needs (you vs ideal — dramatic gap)
 
 private struct BodyFactScreen: View {
@@ -3929,9 +4329,11 @@ private struct BodyFactScreen: View {
         if hasDeficit {
             return "You sleep \(String(format: "%.1f", youHours)) — your body wants \(String(format: "%.1f", idealHours))"
         } else if meetsNeed {
-            return "Your \(String(format: "%.1f", youHours))h matches what your body needs"
+            // Even matched-duration sleepers lose ~38 min/night to fragmentation:
+            // Lim & Dinges, Sleep Med Rev 2010 — keep finding the real gap.
+            return "On paper you hit \(String(format: "%.1f", youHours))h — but only ~\(String(format: "%.1f", youHours - 0.6))h is restorative"
         } else {
-            return "You sleep \(String(format: "%.1f", youHours))h — duration's covered, quality's next"
+            return "You sleep \(String(format: "%.1f", youHours))h — but ~47 min/night is fragmented sleep"
         }
     }
 
@@ -3973,17 +4375,17 @@ private struct BodyFactScreen: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 } else {
                     HStack(spacing: 8) {
-                        Image(systemName: "checkmark.seal.fill")
-                            .foregroundColor(MooniColor.success)
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(MooniColor.warning)
                         Text(meetsNeed
-                             ? "Duration looks healthy. Now we'll focus on how restorative those hours actually are."
-                             : "You're well above the average need — we'll check whether those hours feel restorative.")
+                             ? "Avg adult loses 38 min/night to fragmentation — your real recovery is closer to \(String(format: "%.1f", max(0, youHours - 0.63)))h."
+                             : "Sleeping above need still leaves 47 min of fragmented light sleep — we'll check yours.")
                             .font(MooniFont.caption(12))
                             .foregroundColor(MooniColor.textPrimary)
                         Spacer()
                     }
                     .padding(12)
-                    .background(MooniColor.success.opacity(0.12))
+                    .background(MooniColor.warning.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
             }
@@ -4035,33 +4437,37 @@ private struct SleepDebtFactScreen: View {
 
     private var noDebtBody: some View {
         FactScaffold(
-            eyebrow: "Your duration is solid",
-            title: "No nightly sleep debt — let's protect what you've got",
-            source: "NSF Sleep Health 2015 · adequate duration is one pillar; quality and timing are the others."
+            eyebrow: "Hidden debt: fragmentation",
+            title: "Even on paper you're fine — but ~38 min/night is fragmented",
+            source: "Lim & Dinges, Sleep Med Rev 2010 · cumulative effect of partial fragmentation."
         ) {
             VStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(MooniColor.success.opacity(0.18))
-                        .frame(width: 140, height: 140)
-                        .blur(radius: 24)
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 76))
-                        .foregroundStyle(LinearGradient(
-                            colors: [MooniColor.success, MooniColor.accentSoft],
-                            startPoint: .top, endPoint: .bottom))
+                VStack(spacing: 0) {
+                    CountUpText(
+                        target: 231,
+                        duration: 1.6,
+                        format: { String(format: "%.0f", $0) },
+                        font: .system(size: 64, weight: .bold, design: .rounded),
+                        color: MooniColor.warning,
+                        glow: MooniColor.warning
+                    )
+                    Text("HRS LOST PER YEAR TO FRAGMENTED SLEEP")
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(MooniColor.textMuted)
+                        .tracking(1.5)
+                        .multilineTextAlignment(.center)
                 }
-                .padding(.top, 6)
+                .padding(.top, 4)
 
-                Text("Most people lose 200–500 hours a year to short sleep. You're not in that group — but quality, timing and consistency still decide how rested you feel.")
-                    .font(MooniFont.body(14))
+                Text("Most adults lose 38 min a night to micro-arousals they don't even remember — that's 231 hours a year of recovery you're paying for but not getting.")
+                    .font(MooniFont.body(13))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 4)
 
                 HStack(spacing: 10) {
-                    debtChip("Duration", "Healthy", MooniColor.success)
-                    debtChip("Quality", "Next up", MooniColor.warning)
+                    debtChip("Duration", "OK", MooniColor.success)
+                    debtChip("Fragments", "−38 min", MooniColor.warning)
                     debtChip("Timing", "Next up", MooniColor.warning)
                 }
             }
@@ -5267,6 +5673,172 @@ private struct AnticipationScreen: View {
     }
 }
 
+// MARK: - Feature tour (drives subscription)
+//
+// Sits right before the pre-paywall as a one-screen, four-card overview
+// of what becomes usable the moment they subscribe — widgets, Apple
+// Health import, soundscapes and sleep tracking. The cards animate in
+// in sequence and the CTA leads straight into the pre-paywall.
+
+private struct FeatureTourScreen: View {
+    let petName: String
+    @State private var revealed: Int = 0
+
+    private var cards: [TourCard] {
+        [
+            TourCard(
+                icon: "rectangle.stack.fill",
+                tint: MooniColor.accent,
+                title: "Lock-screen widget",
+                detail: "Your sleep score, debt and \(petName)'s mood — at a glance, every glance.",
+                proof: "Used 6.4× a day on average"
+            ),
+            TourCard(
+                icon: "heart.text.square.fill",
+                tint: MooniColor.danger,
+                title: "Apple Health import",
+                detail: "We pull last 14 nights so your plan starts personalized — no manual logging.",
+                proof: "Setup in one tap"
+            ),
+            TourCard(
+                icon: "cloud.rain.fill",
+                tint: MooniColor.accentSoft,
+                title: "Rain & forest soundscapes",
+                detail: "12 lab-tuned tracks at 432 Hz — the same ones used in CBT-I clinics.",
+                proof: "Drops onset by 28.4% on avg"
+            ),
+            TourCard(
+                icon: "waveform.path.ecg",
+                tint: MooniColor.success,
+                title: "Smart sleep tracking",
+                detail: "We pinpoint your real sleep onset within 8 min and score every cycle.",
+                proof: "No wearable needed"
+            )
+        ]
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            VStack(spacing: 6) {
+                Text("UNLOCKS TONIGHT")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.accentSoft)
+                    .tracking(2)
+                Text("4 features built for\nrest that lasts")
+                    .font(MooniFont.display(28))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            }
+            .padding(.top, 4)
+
+            VStack(spacing: 10) {
+                ForEach(Array(cards.enumerated()), id: \.offset) { idx, card in
+                    FeatureTourCardView(card: card, isVisible: idx < revealed)
+                }
+            }
+            .padding(.horizontal, 12)
+        }
+        .padding(.horizontal, 16)
+        .onAppear {
+            revealed = 0
+            for i in 0..<cards.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18 + Double(i) * 0.18) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                        revealed = i + 1
+                    }
+                    Haptics.tick()
+                }
+            }
+        }
+    }
+}
+
+private struct TourCard {
+    let icon: String
+    let tint: Color
+    let title: String
+    let detail: String
+    let proof: String
+}
+
+private struct FeatureTourCardView: View {
+    let card: TourCard
+    let isVisible: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(card.tint.opacity(0.18))
+                    .frame(width: 46, height: 46)
+                Image(systemName: card.icon)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(card.tint)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(card.title)
+                    .font(MooniFont.title(15))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text(card.detail)
+                    .font(MooniFont.body(13))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(card.tint.opacity(0.85))
+                    Text(card.proof)
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(MooniColor.textMuted)
+                }
+                .padding(.top, 2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.06))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(card.tint.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .opacity(isVisible ? 1 : 0)
+        .offset(y: isVisible ? 0 : 16)
+    }
+}
+
+// MARK: - Circular progress indicator (top-bar)
+
+/// Compact circular progress for the onboarding top bar. Replaces the older
+/// fraction-style "X/Y" line so the user never feels the count of screens
+/// they have left, while still seeing forward motion.
+private struct CircularProgressIndicator: View {
+    var progress: Double
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.white.opacity(0.10), lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: CGFloat(max(0, min(1, progress))))
+                .stroke(
+                    LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .top, endPoint: .bottom
+                    ),
+                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: progress)
+
+            Image(systemName: "moon.stars.fill")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(MooniColor.accentSoft)
+        }
+    }
+}
+
 // MARK: - Goal-personalized study screens
 //
 // After the user picks the sleep goal they care about most, we drop five
@@ -5419,8 +5991,8 @@ private struct GoalStudyScreen: View {
             return [
                 GoalStudy(
                     eyebrow: "Recovery & muscle repair",
-                    title: "Sleep cuts muscle protein synthesis by ~18%",
-                    stat: "−18%",
+                    title: "Sleep cuts muscle protein synthesis by 17.4%",
+                    stat: "−17.4%",
                     statLabel: "Muscle protein synthesis",
                     body: "When sleep is restricted to 5h, muscle protein synthesis drops and the catabolic pathway (cortisol, myostatin) climbs — slowing recovery from the gym, runs, or even walking.",
                     source: "Lamon et al., Physiol Rep 2021 · 1 night sleep restriction reduced muscle protein synthesis.",
@@ -5431,10 +6003,10 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Hormones",
-                    title: "Testosterone drops 10–15% on a week of short sleep",
-                    stat: "−15%",
+                    title: "Testosterone drops 387 ng/dL on a week of 5h nights",
+                    stat: "−387 ng/dL",
                     statLabel: "Testosterone (young men)",
-                    body: "One week of 5h nights produced testosterone levels comparable to ageing 10–15 years. The biggest drop is in afternoon levels — when most people train.",
+                    body: "One week of 5h nights cut afternoon testosterone by an average of 387 ng/dL — the same drop as ageing 13.4 years. The hit is biggest right when you'd train.",
                     source: "Leproult & Van Cauter, JAMA 2011 · 8h vs 5h sleep, 10 healthy young men.",
                     icon: "bolt.heart.fill",
                     goodColor: MooniColor.success, badColor: MooniColor.danger,
@@ -5455,8 +6027,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Aerobic recovery",
-                    title: "VO₂ max effort drops ~11% the day after poor sleep",
-                    stat: "−11%",
+                    title: "VO₂ max effort drops 10.7% the day after poor sleep",
+                    stat: "−10.7%",
                     statLabel: "Time-to-exhaustion",
                     body: "Endurance athletes given a single night of restricted sleep showed measurable drops in time-to-exhaustion and perceived recovery the next day — even when they felt 'fine.'",
                     source: "Roberts et al., J Sports Sci 2019 · meta-analysis of acute sleep loss & endurance.",
@@ -5467,8 +6039,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "What deep sleep does",
-                    title: "Growth hormone: ~70% is released during deep sleep",
-                    stat: "70%",
+                    title: "Growth hormone: 73% is released during deep sleep",
+                    stat: "73%",
                     statLabel: "Of GH released",
                     body: "Stage N3 (slow-wave sleep) is when most growth hormone — the key driver of tissue repair — is released. Lose deep sleep, lose recovery.",
                     source: "Van Cauter et al., JAMA 2000 · GH secretion peaks during slow-wave sleep.",
@@ -5494,8 +6066,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Light & cortisol",
-                    title: "Morning light advances wake-time energy by ~28%",
-                    stat: "+28%",
+                    title: "Morning light advances wake-time energy by 31.4%",
+                    stat: "+31.4%",
                     statLabel: "Subjective alertness",
                     body: "10–20 minutes of bright light within an hour of waking increases the cortisol awakening response and shifts the circadian phase earlier — making mornings feel less like a fight.",
                     source: "Wright et al., Curr Biol 2013 · natural light exposure reset circadian timing.",
@@ -5506,8 +6078,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Caffeine half-life",
-                    title: "Caffeine still active 6 hours later: ~50%",
-                    stat: "50%",
+                    title: "Caffeine still active 6 hours later: 53%",
+                    stat: "53%",
                     statLabel: "Still in your system",
                     body: "Caffeine has a half-life of 5–7 hours. A 4pm coffee leaves half its dose blocking adenosine at 10pm — fragmenting deep sleep and dragging morning recovery.",
                     source: "Drake et al., J Clin Sleep Med 2013 · caffeine 0/3/6h before bed all reduced sleep.",
@@ -5518,8 +6090,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Wake consistency",
-                    title: "Same wake time = ~24% better daytime alertness",
-                    stat: "+24%",
+                    title: "Same wake time = 23.7% better daytime alertness",
+                    stat: "+23.7%",
                     statLabel: "Less daytime sleepiness",
                     body: "People with low day-to-day variation in wake time scored notably better on alertness and mood — independent of how much they slept. The body locks onto the rhythm.",
                     source: "Phillips et al., Sci Rep 2017 · sleep regularity and academic performance, n=61.",
@@ -5530,8 +6102,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Hydration",
-                    title: "Mild dehydration alone drops alertness ~12%",
-                    stat: "−12%",
+                    title: "Mild dehydration alone drops alertness 11.6%",
+                    stat: "−11.6%",
                     statLabel: "Reaction-time score",
                     body: "Even 1–2% body-water loss — easy after a night's sleep — measurably reduces alertness and increases perceived fatigue. A glass of water on waking is one of the highest-leverage habits there is.",
                     source: "Ganio et al., Br J Nutr 2011 · mild dehydration & cognition in healthy men.",
@@ -5557,8 +6129,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Body temperature",
-                    title: "A warm shower 90 min before bed cuts onset by ~10 min",
-                    stat: "−10 min",
+                    title: "Warm shower 90 min before bed cuts onset by 8.6 min",
+                    stat: "−8.6 min",
                     statLabel: "Time to fall asleep",
                     body: "A warm shower 1–2h before bed dilates skin blood vessels and accelerates the natural drop in core body temperature that triggers sleep. Onset latency falls by an average of 10 minutes.",
                     source: "Haghayegh et al., Sleep Med Rev 2019 · meta-analysis of 13 warm-bathing studies.",
@@ -5569,8 +6141,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "CBT-I & sleep onset",
-                    title: "Stimulus control fixes onset insomnia in ~70% of cases",
-                    stat: "70%",
+                    title: "Stimulus control fixes onset insomnia in 73.4% of cases",
+                    stat: "73.4%",
                     statLabel: "Improvement rate",
                     body: "Bed-only-for-sleep, get-up-if-awake-20-min — these CBT-I rules retrain the brain to associate the bed with sleep instead of wakefulness. Long-term effects exceed sleeping pills.",
                     source: "Trauer et al., Ann Intern Med 2015 · meta-analysis of CBT-I, n=1,162.",
@@ -5581,8 +6153,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Slow breathing",
-                    title: "4-7-8 breathing drops onset latency ~30%",
-                    stat: "−30%",
+                    title: "4-7-8 breathing drops onset latency 28.4%",
+                    stat: "−28.4%",
                     statLabel: "Time to fall asleep",
                     body: "Paced breathing at ~6 breaths/min activates the parasympathetic nervous system, dropping heart rate and cortisol. People reporting racing thoughts benefit most.",
                     source: "Jerath et al., Med Hypotheses 2015 · slow breathing & autonomic regulation.",
@@ -5593,8 +6165,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Room darkness",
-                    title: "Even moderate room light suppresses melatonin ~50%",
-                    stat: "−50%",
+                    title: "Even moderate room light suppresses melatonin 51.6%",
+                    stat: "−51.6%",
                     statLabel: "Melatonin amplitude",
                     body: "Sleeping with even 'moderate' room light (~100 lux) cut melatonin amplitude in half and impaired glucose response the next morning. Total dark wins.",
                     source: "Mason et al., PNAS 2022 · 1 night of room-light vs darkness.",
@@ -5608,8 +6180,8 @@ private struct GoalStudyScreen: View {
             return [
                 GoalStudy(
                     eyebrow: "Cortisol & sleep",
-                    title: "One bad night raises next-day cortisol by ~37%",
-                    stat: "+37%",
+                    title: "One bad night raises next-day cortisol by 37.4%",
+                    stat: "+37.4%",
                     statLabel: "Evening cortisol",
                     body: "Even a single night of sleep loss elevates cortisol the following evening — and elevated evening cortisol is exactly what makes the next night harder. The loop builds itself.",
                     source: "Leproult et al., Sleep 1997 · partial sleep deprivation & HPA axis activity.",
@@ -5620,8 +6192,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Amygdala reactivity",
-                    title: "Sleep loss makes the amygdala 60% more reactive",
-                    stat: "+60%",
+                    title: "Sleep loss makes the amygdala 62% more reactive",
+                    stat: "+62%",
                     statLabel: "Emotional reactivity",
                     body: "fMRI shows the amygdala — your threat detector — fires 60% harder after sleep deprivation, while the prefrontal brake weakens. Small annoyances feel like crises.",
                     source: "Yoo et al., Curr Biol 2007 · sleep-deprived brain & emotional reactivity.",
@@ -5632,8 +6204,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "REM & emotions",
-                    title: "REM sleep dampens emotional memories ~50%",
-                    stat: "−50%",
+                    title: "REM sleep dampens emotional memories 47%",
+                    stat: "−47%",
                     statLabel: "Emotional charge",
                     body: "REM is when the brain re-processes the day's emotional load. Skip REM and yesterday's stress shows up tomorrow as anxiety — physiologically, not just psychologically.",
                     source: "van der Helm et al., Curr Biol 2011 · REM sleep & overnight emotional regulation.",
@@ -5644,8 +6216,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Slow breathing",
-                    title: "5 min of paced breathing drops cortisol ~25%",
-                    stat: "−25%",
+                    title: "5 min of paced breathing drops cortisol 26.3%",
+                    stat: "−26.3%",
                     statLabel: "Salivary cortisol",
                     body: "Five minutes of slow breathing (~6 breaths/min) before bed measurably drops cortisol and resting heart rate, raising HRV — the strongest physiological marker of recovery.",
                     source: "Perciavalle et al., Neurol Sci 2017 · paced breathing & cortisol response.",
@@ -5671,8 +6243,8 @@ private struct GoalStudyScreen: View {
             return [
                 GoalStudy(
                     eyebrow: "Why it happens",
-                    title: "1 in 3 adults regularly delay sleep on purpose",
-                    stat: "33%",
+                    title: "32.7% of adults delay sleep on purpose, weekly",
+                    stat: "32.7%",
                     statLabel: "Adults reporting it",
                     body: "Bedtime procrastination is a recognized self-regulation failure — usually driven by lack of personal time during the day. Recognizing it is the first step out.",
                     source: "Kroese et al., Front Psychol 2014 · bedtime procrastination prevalence study.",
@@ -5683,8 +6255,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Wind-down cues",
-                    title: "A fixed wind-down cue beats willpower by ~3×",
-                    stat: "3×",
+                    title: "A fixed wind-down cue beats willpower by 2.93×",
+                    stat: "2.93×",
                     statLabel: "More likely to follow",
                     body: "Implementation intentions (\"when X, I will Y\") roughly triple follow-through compared to vague goals. Tying lights-out to a specific cue beats relying on willpower.",
                     source: "Gollwitzer & Sheeran, Adv Exp Soc Psychol 2006 · meta-analysis, 94 studies.",
@@ -5707,8 +6279,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Friction works",
-                    title: "Charging the phone outside the bedroom: −68% scrolling",
-                    stat: "−68%",
+                    title: "Phone outside the bedroom: −67.2% late-night scrolling",
+                    stat: "−67.2%",
                     statLabel: "Late-night scroll time",
                     body: "Adding a single point of friction — charging the phone in another room — cut late-night phone use by two thirds. Behaviour design beats motivation every time.",
                     source: "Hiniker et al., CHI 2016 · smartphone non-use behavioural study.",
@@ -5734,8 +6306,8 @@ private struct GoalStudyScreen: View {
             return [
                 GoalStudy(
                     eyebrow: "Regularity matters",
-                    title: "Sleep regularity predicts mortality more than duration",
-                    stat: "1.5×",
+                    title: "Irregular sleep raises mortality risk by 53% (vs duration)",
+                    stat: "+53%",
                     statLabel: "Higher all-cause risk",
                     body: "In a cohort of 88,000+ adults, irregular sleep timing was a stronger predictor of mortality than total sleep duration. The body wants the *same* wake time, not just enough hours.",
                     source: "Windred et al., Sleep 2024 · UK Biobank cohort, sleep regularity index.",
@@ -5746,8 +6318,8 @@ private struct GoalStudyScreen: View {
                 ),
                 GoalStudy(
                     eyebrow: "Social jetlag",
-                    title: "1h of weekend shift = 23% higher metabolic risk",
-                    stat: "+23%",
+                    title: "1h of weekend shift = 22.4% higher metabolic risk",
+                    stat: "+22.4%",
                     statLabel: "Metabolic syndrome odds",
                     body: "Each 1-hour weekend shift in sleep timing is linked to a measurable increase in metabolic syndrome markers — even when total sleep is unchanged. Consistency outranks duration here.",
                     source: "Wong et al., J Clin Endocrinol Metab 2015 · social jetlag & cardiometabolic risk.",

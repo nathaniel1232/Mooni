@@ -15,8 +15,6 @@ struct SleepReportView: View {
                 MooniGradient.night.ignoresSafeArea()
                 ScrollView {
                     VStack(spacing: 16) {
-                        SleepOwlBrandMark()
-                            .frame(maxWidth: .infinity, alignment: .center)
                         if let entry = appState.lastEntry {
                             lastNightCard(entry)
                             trendCard

@@ -222,6 +222,7 @@ final class AppState: ObservableObject {
         )
         WindDownDimController.shared.end()
         NotificationManager.shared.cancelWakeProbes()
+        NotificationManager.shared.cancelOnsetProbes()
         isSleeping = false
         showMorningCheckIn = true
     }
@@ -594,6 +595,13 @@ final class AppState: ObservableObject {
             wakeTime: nextWakeProbeAnchor,
             petName: pet.name
         )
+        // Schedule onset probes ("still awake?") at +15/30/45 min — taps
+        // narrow the lower bound on real sleep onset for tonight's entry.
+        UserDefaults.standard.removeObject(forKey: "mooni.lastStillAwakeAt")
+        NotificationManager.shared.scheduleOnsetProbes(
+            sleepStart: startedAt,
+            petName: pet.name
+        )
     }
 
     /// The next anchor date used to schedule "are you awake?" probes.
@@ -663,6 +671,7 @@ final class AppState: ObservableObject {
         )
         WindDownDimController.shared.end()
         NotificationManager.shared.cancelWakeProbes()
+        NotificationManager.shared.cancelOnsetProbes()
         isSleeping = false
         showMorningCheckIn = true
     }
@@ -676,8 +685,21 @@ final class AppState: ObservableObject {
             return
         }
 
+        // If the user tapped "still awake" on an onset probe, we have a
+        // hard lower bound on real sleep onset: they were demonstrably
+        // awake at that moment. Add a typical 8-min buffer (mean onset
+        // latency from awake state) and use it as the bedtime estimate.
+        // This narrows the window without needing the morning question.
+        let stillAwakeAt = UserDefaults.standard.object(forKey: "mooni.lastStillAwakeAt") as? Date
+        let estimatedBedtime: Date = {
+            guard let lastAwake = stillAwakeAt else { return started }
+            let candidate = lastAwake.addingTimeInterval(8 * 60)
+            // Don't push past the wake time or earlier than the original start.
+            return min(max(candidate, started), wakeTime.addingTimeInterval(-30 * 60))
+        }()
+
         var entry = SleepEntry(
-            bedtime: started,
+            bedtime: estimatedBedtime,
             wakeTime: wakeTime,
             quality: .good,
             mood: .okay,

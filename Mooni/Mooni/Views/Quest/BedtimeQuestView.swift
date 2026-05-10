@@ -26,8 +26,6 @@ struct BedtimeQuestView: View {
 
                 ScrollView {
                     VStack(spacing: 18) {
-                        SleepOwlBrandMark()
-                            .frame(maxWidth: .infinity, alignment: .center)
                         header
                         questCard
                         rewardCard

@@ -44,18 +44,40 @@ struct DiscountPaywallView: View {
     private var purchasePackage: Package? { discountPackage ?? regularPackage }
     private var hasRealDiscount: Bool { discountPackage != nil && regularPackage != nil }
 
-    /// 8-slice wheel labels. Index 0 is the winning slice ("80% OFF"); the
-    /// wheel always lands there. The other slices are framing only.
-    private let slices: [WheelSlice] = [
-        .init(label: "80% OFF", color: MooniColor.warning, isWinner: true),
-        .init(label: "Try again", color: Color(white: 0.18), isWinner: false),
-        .init(label: "10% off", color: MooniColor.accentSoft.opacity(0.6), isWinner: false),
-        .init(label: "Try again", color: Color(white: 0.22), isWinner: false),
-        .init(label: "30% off", color: MooniColor.accentSoft.opacity(0.7), isWinner: false),
-        .init(label: "Try again", color: Color(white: 0.18), isWinner: false),
-        .init(label: "20% off", color: MooniColor.accentSoft.opacity(0.6), isWinner: false),
-        .init(label: "Try again", color: Color(white: 0.22), isWinner: false)
-    ]
+    /// True savings %, computed from the actual prices RevenueCat returned.
+    /// Used to label the winning slice and the "won" headline so we never
+    /// promise 80% when the dashboard is configured for, say, 60%.
+    private var actualDiscountPercent: Int {
+        guard let r = regularPackage, let d = discountPackage else { return 0 }
+        let regular = NSDecimalNumber(decimal: r.storeProduct.price as Decimal).doubleValue
+        let disc = NSDecimalNumber(decimal: d.storeProduct.price as Decimal).doubleValue
+        guard regular > 0, disc < regular else { return 0 }
+        return max(1, Int(round((1 - disc / regular) * 100)))
+    }
+
+    /// 8-slice wheel. Index 0 is the winning slice; the wheel always lands
+    /// there. When no real discount exists we relabel slice 0 as a free
+    /// "claim your spot" win so we never show "80% OFF" while charging full
+    /// price.
+    private var slices: [WheelSlice] {
+        let winnerLabel: String
+        if hasRealDiscount {
+            let pct = actualDiscountPercent
+            winnerLabel = pct >= 5 ? "\(pct)% OFF" : "VIP slot"
+        } else {
+            winnerLabel = "VIP slot"
+        }
+        return [
+            .init(label: winnerLabel, color: MooniColor.warning, isWinner: true),
+            .init(label: "Try again", color: Color(white: 0.18), isWinner: false),
+            .init(label: "10% off", color: MooniColor.accentSoft.opacity(0.6), isWinner: false),
+            .init(label: "Try again", color: Color(white: 0.22), isWinner: false),
+            .init(label: "30% off", color: MooniColor.accentSoft.opacity(0.7), isWinner: false),
+            .init(label: "Try again", color: Color(white: 0.18), isWinner: false),
+            .init(label: "20% off", color: MooniColor.accentSoft.opacity(0.6), isWinner: false),
+            .init(label: "Try again", color: Color(white: 0.22), isWinner: false)
+        ]
+    }
 
     var body: some View {
         ZStack {
@@ -180,7 +202,9 @@ struct DiscountPaywallView: View {
                     Image(systemName: "sparkles")
                         .foregroundColor(MooniColor.warning)
                 }
-                Text("80% OFF\nyearly plan")
+                Text(hasRealDiscount && actualDiscountPercent >= 5
+                     ? "\(actualDiscountPercent)% OFF\nyearly plan"
+                     : "Your VIP\nyearly slot")
                     .font(MooniFont.display(34))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
@@ -337,8 +361,9 @@ struct DiscountPaywallView: View {
         guard canSpin else { return }
         canSpin = false
         stage = .spinning
+        Haptics.medium()
 
-        // Always lands on slice 0 (the winning 80%-off slice).
+        // Always lands on slice 0 (the winning slice).
         // 5 full rotations + offset to align slice 0 with the top pointer.
         let sliceAngle = 360.0 / Double(slices.count)
         let target = wheelRotation + 360.0 * 5 + (360.0 - sliceAngle * 0.5)
@@ -347,8 +372,23 @@ struct DiscountPaywallView: View {
             wheelRotation = target
         }
 
-        // Match the animation duration before flipping into the won state.
+        // Slice-tick haptics during the spin — decelerating to match the
+        // ease-out curve so it feels like a real wheel slowing down.
+        let totalSlices = slices.count
+        let totalTicks = 5 * totalSlices + Int(round(target.truncatingRemainder(dividingBy: 360) / sliceAngle))
+        let totalDuration = 3.4
+        for tick in 0..<totalTicks {
+            let progress = Double(tick) / Double(max(1, totalTicks - 1))
+            // Inverse of ease-out: 1 - (1 - p)^3
+            let eased = 1 - pow(1 - progress, 3)
+            let delay = eased * totalDuration
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                Haptics.tick()
+            }
+        }
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+            Haptics.success()
             withAnimation(.easeInOut(duration: 0.4)) {
                 stage = .won
             }
@@ -493,20 +533,28 @@ private struct WheelSliceLabel: View {
             let radius = min(geo.size.width, geo.size.height) / 2
             let sliceAngle = 360.0 / Double(total)
             let mid = -90.0 + Double(index) * sliceAngle
-            let r = radius * 0.62
+            let r = radius * 0.66
             let rad = mid * .pi / 180
             let x = center.x + CGFloat(cos(rad)) * r
             let y = center.y + CGFloat(sin(rad)) * r
 
+            // The wheel itself rotates as a whole; we want each label to
+            // read along its own slice, so we counter-rotate by the slice's
+            // mid angle (text feet pointing at center → readable from
+            // outside). 8 narrow slices = 45° each, so width must stay
+            // small enough that adjacent labels never collide.
             Text(label)
-                .font(.system(size: isWinner ? 12 : 10,
-                              weight: isWinner ? .heavy : .semibold,
+                .font(.system(size: isWinner ? 11 : 9,
+                              weight: isWinner ? .black : .semibold,
                               design: .rounded))
-                .foregroundColor(isWinner ? .black : .white.opacity(0.9))
+                .foregroundColor(isWinner ? .black : .white.opacity(0.92))
                 .multilineTextAlignment(.center)
-                .frame(width: 70)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .allowsTightening(true)
+                .frame(width: 54)
+                .rotationEffect(.degrees(mid + 90))
                 .position(x: x, y: y)
-                .rotationEffect(.degrees(mid + 90), anchor: .center)
         }
     }
 }

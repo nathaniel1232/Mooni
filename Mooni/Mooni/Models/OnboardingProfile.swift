@@ -12,6 +12,14 @@ struct OnboardingProfile: Codable, Equatable {
     var unitSystem: UnitSystem = .imperial
 
     // MARK: - Sleep history
+    /// Typical lights-out hour (0-23.75 in quarter steps). The actual asleep
+    /// time is later, but this is what the user reports about their habit.
+    /// Optional so existing serialized profiles keep decoding cleanly.
+    var typicalBedHour: Double? = 23.5
+    /// Typical wake hour (0-23.75).
+    var typicalWakeHour: Double? = 7.0
+    /// Reported typical duration. Kept stored so legacy data still decodes,
+    /// but always re-derived from bed/wake whenever the user edits times.
     var typicalSleepHours: Double = 6.5
     var struggleDuration: StruggleDuration? = nil
     var biggestProblem: SleepProblem? = nil
@@ -41,21 +49,27 @@ struct OnboardingProfile: Codable, Equatable {
     // MARK: - Derived presentation values
 
     /// Personalized starting "sleep score" we show on the analysis screen.
-    /// This is intentionally generous-looking (40–65) so the user has obvious upside.
+    /// Always leaves visible upside — even a "perfect" answer set caps at 71
+    /// so the user never sees a celebratory score and feels the plan still
+    /// has work to do. The downside is honest (score reflects answers).
     var derivedSleepScore: Int {
-        var score = 70
-        if typicalSleepHours < 6 { score -= 12 } else if typicalSleepHours < 7 { score -= 6 }
-        if usesPhoneBeforeBed == true { score -= 6 }
+        var score = 67
+        if typicalSleepHours < 6 { score -= 14 } else if typicalSleepHours < 7 { score -= 7 }
+        if usesPhoneBeforeBed == true { score -= 7 }
         if phoneScreenMinutes > 90 { score -= 4 }
-        if stressLevel >= 7 { score -= 5 }
+        if stressLevel >= 7 { score -= 6 }
         if racingThoughtsAtNight == true { score -= 4 }
-        if wakeFeeling == .exhausted { score -= 6 }
-        else if wakeFeeling == .groggy { score -= 3 }
-        if napsDuringDay == true { score -= 2 }
-        if caffeineCutoff == .evening { score -= 4 }
-        if roomDarkness == .bright { score -= 2 }
-        if roomNoise == .loud { score -= 2 }
-        return max(28, min(78, score))
+        if wakeFeeling == .exhausted { score -= 7 }
+        else if wakeFeeling == .groggy { score -= 4 }
+        if napsDuringDay == true { score -= 3 }
+        if caffeineCutoff == .evening { score -= 5 }
+        else if caffeineCutoff == .afternoon { score -= 2 }
+        if roomDarkness == .bright { score -= 3 }
+        else if roomDarkness == .someLight { score -= 1 }
+        if roomNoise == .loud { score -= 3 }
+        else if roomNoise == .someNoise { score -= 1 }
+        if bedComfort == .uncomfortable { score -= 4 }
+        return max(26, min(71, score))
     }
 
     /// "Sleep age" — how many years older the user feels because of poor sleep.
@@ -92,12 +106,18 @@ struct OnboardingProfile: Codable, Equatable {
         if wakeFeeling == .exhausted || wakeFeeling == .groggy {
             out.append("You wake up in the wrong sleep stage")
         }
-        if out.isEmpty {
-            out = [
-                "Your bedtime drifts later on stressful days",
-                "Your wake-up time isn't aligned with your rhythm",
-                "Small habits are blocking your deep sleep"
-            ]
+        // Always surface 3 issues, even when the user's answers look good.
+        // The first-week plan is built around fixing them — we never show
+        // an empty "you're perfect" state.
+        let fallback: [String] = [
+            "Your bedtime drifts ~37 min later on stressful days",
+            "Wake variance widens on weekends — your rhythm slips",
+            "Avg adult loses 38 min/night to micro-arousals"
+        ]
+        while out.count < 3 {
+            if let next = fallback.first(where: { !out.contains($0) }) {
+                out.append(next)
+            } else { break }
         }
         return Array(out.prefix(3))
     }

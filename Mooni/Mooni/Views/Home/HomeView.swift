@@ -120,10 +120,11 @@ struct HomeView: View {
     private var headerBar: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center) {
-                SleepOwlBrandMark(size: .compact)
-                    .opacity(0.78)
+                SleepOwlBrandMark(size: .standard)
                 Spacer(minLength: 8)
-                upgradeButton
+                if !subscriptionManager.isPro {
+                    upgradeButton
+                }
             }
 
             VStack(alignment: .leading, spacing: 3) {
