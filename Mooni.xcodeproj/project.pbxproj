@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		78B4BF902FB0BB470001ADA7 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 78B4BF8F2FB0BB470001ADA7 /* Supabase */; };
 		C550B5AD2FA9D54D0067E4A5 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = ABCD11012FA679F10001B773 /* RevenueCat */; };
 		C550B5AE2FA9D54D0067E4A5 /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = ABCD11022FA679F10001B773 /* RevenueCatUI */; };
 		C57889F72FAE3ED200D8DB9E /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C57889F62FAE3ED200D8DB9E /* WidgetKit.framework */; };
@@ -87,6 +88,7 @@
 			files = (
 				C57889F92FAE3ED200D8DB9E /* SwiftUI.framework in Frameworks */,
 				C57889F72FAE3ED200D8DB9E /* WidgetKit.framework in Frameworks */,
+				78B4BF902FB0BB470001ADA7 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -167,6 +169,7 @@
 			);
 			name = MooniSleepWidgetExtension;
 			packageProductDependencies = (
+				78B4BF8F2FB0BB470001ADA7 /* Supabase */,
 			);
 			productName = MooniSleepWidgetExtension;
 			productReference = C57889F42FAE3ED200D8DB9E /* MooniSleepWidgetExtension.appex */;
@@ -201,6 +204,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				ABCD11002FA679F10001B773 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
+				7849709C2FB09337008635C0 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 782C88922FA679F10001B773 /* Products */;
@@ -385,7 +389,7 @@
 				CODE_SIGN_ENTITLEMENTS = Mooni/Mooni.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = R94ZG8TL44;
+				DEVELOPMENT_TEAM = 5GH8R98RBG;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = SleepOwl;
@@ -401,7 +405,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.sabaiduka.mooni;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nathanielfiskaa.mooni;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -421,7 +425,7 @@
 				CODE_SIGN_ENTITLEMENTS = Mooni/Mooni.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = R94ZG8TL44;
+				DEVELOPMENT_TEAM = 5GH8R98RBG;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = SleepOwl;
@@ -437,7 +441,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.sabaiduka.mooni;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nathanielfiskaa.mooni;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -457,7 +461,7 @@
 				CODE_SIGN_ENTITLEMENTS = MooniSleepWidget/MooniSleepWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = R94ZG8TL44;
+				DEVELOPMENT_TEAM = 5GH8R98RBG;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MooniSleepWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SleepOwlWidget;
@@ -469,7 +473,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.sabaiduka.mooni.MooniSleepWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nathanielfiskaa.mooni.MooniSleepWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -489,7 +493,7 @@
 				CODE_SIGN_ENTITLEMENTS = MooniSleepWidget/MooniSleepWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = R94ZG8TL44;
+				DEVELOPMENT_TEAM = 5GH8R98RBG;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MooniSleepWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SleepOwlWidget;
@@ -501,7 +505,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.sabaiduka.mooni.MooniSleepWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nathanielfiskaa.mooni.MooniSleepWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -546,6 +550,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		7849709C2FB09337008635C0 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
 		ABCD11002FA679F10001B773 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
@@ -557,6 +569,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		78B4BF8F2FB0BB470001ADA7 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7849709C2FB09337008635C0 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
 		ABCD11012FA679F10001B773 /* RevenueCat */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = ABCD11002FA679F10001B773 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
