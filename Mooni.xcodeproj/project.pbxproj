@@ -79,6 +79,7 @@
 			files = (
 				C550B5AE2FA9D54D0067E4A5 /* RevenueCatUI in Frameworks */,
 				C550B5AD2FA9D54D0067E4A5 /* RevenueCat in Frameworks */,
+				78B4BF902FB0BB470001ADA7 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -147,6 +148,7 @@
 			packageProductDependencies = (
 				ABCD11012FA679F10001B773 /* RevenueCat */,
 				ABCD11022FA679F10001B773 /* RevenueCatUI */,
+				78B4BF8F2FB0BB470001ADA7 /* Supabase */,
 			);
 			productName = Mooni;
 			productReference = 782C88912FA679F10001B773 /* Mooni.app */;
