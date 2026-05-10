@@ -23,22 +23,10 @@ import Supabase
 /// realtime socket. There's no benefit to constructing more than one.
 enum Supa {
 
-    /// Single global client. Crashes early at launch if config is missing,
-    /// which is what you want — better than silently failing every query.
-    static let client: SupabaseClient = {
-        guard
-            let urlString = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String,
-            let url = URL(string: urlString),
-            let key = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String,
-            !key.isEmpty
-        else {
-            fatalError("""
-                Missing SUPABASE_URL / SUPABASE_ANON_KEY in Info.plist.
-                Add them via an xcconfig file. See SupabaseClient.swift for setup.
-                """)
-        }
-        return SupabaseClient(supabaseURL: url, supabaseKey: key)
-    }()
+    private static let supabaseURL = URL(string: "https://renvohmlflagosguffjn.supabase.co")!
+    private static let supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlbnZvaG1sZmxhZ29zZ3VmZmpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzOTAwMTAsImV4cCI6MjA5Mzk2NjAxMH0.yCff7HBTYXsiEH0lpf6yEDJUAVfaGxCytvoPWSlw-Rs"
+
+    static let client: SupabaseClient = SupabaseClient(supabaseURL: supabaseURL, supabaseKey: supabaseKey)
 
     /// Convenience: is there a logged-in user right now?
     static var isSignedIn: Bool {
