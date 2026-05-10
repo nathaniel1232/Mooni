@@ -9,7 +9,10 @@ import AVFoundation
 struct FallAsleepView: View {
     @StateObject private var player = AmbientSoundPlayer.shared
     @State private var volume: Double = 0.7
-    @State private var timerSelection: TimerOption = .off
+    // Default to 30 minutes so a user who falls asleep with the phone
+    // doesn't have ambient sound playing all night. They can still extend
+    // to 1h or disable from the timer card.
+    @State private var timerSelection: TimerOption = .thirty
 
     var body: some View {
         NavigationStack {
@@ -41,9 +44,19 @@ struct FallAsleepView: View {
             player.setVolume(Float(newValue))
         }
         .onChange(of: timerSelection) { _, option in
-            if let minutes = option.minutes {
+            if let minutes = option.minutes, player.current != nil {
                 player.scheduleStop(after: TimeInterval(minutes) * 60)
             } else {
+                player.cancelScheduledStop()
+            }
+        }
+        // Whenever a sound *starts*, kick off the auto-stop using the
+        // currently selected timer. This is what protects the user from
+        // ambient sound playing until morning if they fall asleep.
+        .onChange(of: player.current?.id) { _, newId in
+            if newId != nil, let minutes = timerSelection.minutes {
+                player.scheduleStop(after: TimeInterval(minutes) * 60)
+            } else if newId == nil {
                 player.cancelScheduledStop()
             }
         }
@@ -230,8 +243,8 @@ struct AmbientSound: Identifiable, Hashable {
     let resource: String
 
     static let catalog: [AmbientSound] = [
-        .init(id: "rain",      title: "Rain",      subtitle: "Gentle rainfall on a window.",
-              icon: "cloud.rain.fill",   tint: Color(red: 0.65, green: 0.78, blue: 1.00), resource: "rain"),
+        .init(id: "rain",      title: "Rain & Thunder", subtitle: "Steady rainfall with distant thunder.",
+              icon: "cloud.bolt.rain.fill", tint: Color(red: 0.65, green: 0.78, blue: 1.00), resource: "rain"),
         .init(id: "waterfall", title: "Waterfall", subtitle: "Steady mountain stream.",
               icon: "drop.fill",         tint: Color(red: 0.55, green: 0.85, blue: 0.78), resource: "waterfall"),
         .init(id: "amazon",    title: "Rainforest", subtitle: "Amazon at night — birds and rain.",
@@ -316,8 +329,16 @@ final class AmbientSoundPlayer: ObservableObject {
     }
 
     private static func findURL(for sound: AmbientSound) -> URL? {
-        for ext in ["m4a", "mp3", "caf", "wav", "aac"] {
+        // Try the bundle root and the "Sounds" subfolder. With Xcode's
+        // synchronized file groups, dropping a file into Mooni/Sounds/
+        // preserves that folder when it's copied into the .app, so we
+        // need to look in both places.
+        let extensions = ["mp3", "m4a", "caf", "wav", "aac"]
+        for ext in extensions {
             if let url = Bundle.main.url(forResource: sound.resource, withExtension: ext) {
+                return url
+            }
+            if let url = Bundle.main.url(forResource: sound.resource, withExtension: ext, subdirectory: "Sounds") {
                 return url
             }
         }

@@ -412,6 +412,7 @@ final class AppState: ObservableObject {
         SleepScoringManager.update(
             entry: &entry,
             goalHours: goalHours,
+            targetBedtime: targetBedtime,
             consistencyDays: bedtimeConsistencyDays,
             checkIn: MorningCheckInStore.checkIn(for: entry.dayKey)
         )
@@ -622,6 +623,34 @@ final class AppState: ObservableObject {
         UserDefaults.standard.object(forKey: Key.appOpenedAfterWakeAt) as? Date
     }
 
+    /// Recovers from the "forgot to tap I'm awake" failure mode. If the user
+    /// entered sleep mode but never confirmed waking, and we're now well past
+    /// their target wake time (or have slept beyond goal + 1h), end sleep
+    /// mode automatically so the home screen isn't stuck behind the overlay.
+    /// Called on app launch / foreground.
+    func autoEndStaleSleepIfNeeded() {
+        guard isSleeping else { return }
+        let now = Date()
+        // Past target wake by at least 30 min?
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.hour, .minute], from: targetWakeTime)
+        let todayWake = cal.date(bySettingHour: comps.hour ?? 7,
+                                 minute: comps.minute ?? 0,
+                                 second: 0,
+                                 of: now) ?? now
+        let pastWake = now.timeIntervalSince(todayWake) >= 30 * 60
+
+        // Or: slept longer than (goal + 1h) since we recorded sleep start?
+        var pastDuration = false
+        if let started = sleepStartedAt {
+            let cap = (goalHours + 1.0) * 3600
+            pastDuration = now.timeIntervalSince(started) >= cap
+        }
+
+        guard pastWake || pastDuration else { return }
+        wakeUpFromSleepMode()
+    }
+
     /// Wake-up tap from the sleep-lock screen. Surfaces the morning check-in.
     func wakeUpFromSleepMode() {
         let now = Date()
@@ -661,6 +690,7 @@ final class AppState: ObservableObject {
         SleepScoringManager.update(
             entry: &entry,
             goalHours: goalHours,
+            targetBedtime: targetBedtime,
             consistencyDays: bedtimeConsistencyDays,
             checkIn: nil
         )
@@ -703,6 +733,7 @@ final class AppState: ObservableObject {
         SleepScoringManager.update(
             entry: &entry,
             goalHours: goalHours,
+            targetBedtime: targetBedtime,
             consistencyDays: bedtimeConsistencyDays,
             checkIn: checkIn
         )
@@ -777,6 +808,7 @@ final class AppState: ObservableObject {
             SleepScoringManager.update(
                 entry: &entry,
                 goalHours: goalHours,
+                targetBedtime: targetBedtime,
                 consistencyDays: bedtimeConsistencyDays,
                 checkIn: MorningCheckInStore.checkIn(for: dayKey)
             )
@@ -804,6 +836,7 @@ final class AppState: ObservableObject {
             SleepScoringManager.update(
                 entry: &entry,
                 goalHours: goalHours,
+                targetBedtime: targetBedtime,
                 consistencyDays: bedtimeConsistencyDays,
                 checkIn: MorningCheckInStore.checkIn(for: entry.dayKey)
             )

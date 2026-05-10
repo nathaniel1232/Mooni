@@ -1,15 +1,37 @@
 import Foundation
 
+/// Sleep scoring engine.
+///
+/// The score is a 0–100 number meant to *feel* like the consumer sleep apps
+/// people already trust (Oura, Whoop, Apple Watch, Sleep Cycle). It is built
+/// from five clinical components used in adult sleep research:
+///
+///   1. Duration              — Total Sleep Time vs. the user's goal.
+///                              AASM/NSF guidance: 7–9h is optimal for adults.
+///   2. Efficiency            — TST / Time-in-bed. ≥85% is the standard
+///                              benchmark of healthy sleep efficiency.
+///   3. Restfulness           — WASO (wake-after-sleep-onset) and self-
+///                              reported awakenings. Clinical target: <30 min.
+///   4. Stage balance         — Deep 13–23% of TST, REM 20–25% of TST
+///                              (Walker, Carskadon).
+///   5. Timing & consistency  — Adherence to the user's target bedtime, plus
+///                              a consistency streak bonus.
+///
+/// A *hard floor* prevents nonsense scores when the user logs a sub-hour
+/// "nap" (e.g. testing the app for two minutes): under 1 hour the score is
+/// capped to 0–5, and tighter ceilings apply up to 6 hours.
 enum SleepScoringManager {
     static func update(
         entry: inout SleepEntry,
         goalHours: Double,
+        targetBedtime: Date? = nil,
         consistencyDays: Int,
         checkIn: MorningCheckIn?
     ) {
         let summary = summarize(
             entry: entry,
             goalHours: goalHours,
+            targetBedtime: targetBedtime,
             consistencyDays: consistencyDays,
             checkIn: checkIn
         )
@@ -28,6 +50,7 @@ enum SleepScoringManager {
     static func summarize(
         entry: SleepEntry,
         goalHours: Double,
+        targetBedtime: Date? = nil,
         consistencyDays: Int,
         checkIn: MorningCheckIn?
     ) -> DailySleepSummary {
@@ -51,7 +74,11 @@ enum SleepScoringManager {
 
         let sleepScore = scoreSleep(
             totalSleep: totalSleep,
+            timeInBed: timeInBed,
             stages: stages,
+            bedtime: entry.bedtime,
+            targetBedtime: targetBedtime,
+            goalHours: goalHours,
             consistencyDays: consistencyDays,
             checkIn: checkIn
         )
@@ -133,8 +160,18 @@ enum SleepScoringManager {
             deepPct -= 0.01
         }
 
-        deepPct = clamp(deepPct, min: 0.16, max: 0.27)
-        remPct = clamp(remPct, min: 0.18, max: 0.29)
+        // Very short "sleeps" don't have time to cycle through the full
+        // architecture — pull deep / REM toward zero so the stage chart
+        // doesn't claim a 2-minute nap had 30 seconds of REM.
+        let hours = totalSleep / 3600
+        if hours < 3 {
+            let scale = max(0, hours / 3.0)  // 0…1 across [0h, 3h]
+            deepPct *= scale
+            remPct *= scale
+        }
+
+        deepPct = clamp(deepPct, min: 0.0, max: 0.27)
+        remPct = clamp(remPct, min: 0.0, max: 0.29)
         awakePct = clamp(awakePct, min: 0.02, max: 0.08)
 
         let deep = totalSleep * deepPct
@@ -151,79 +188,203 @@ enum SleepScoringManager {
         )
     }
 
+    // MARK: - Sleep score (clinical components)
+
+    /// Compute a 0–100 sleep score from the components below.
+    /// Component weights (out of 100):
+    ///   • Duration:         40
+    ///   • Efficiency:       15
+    ///   • Restfulness:      15
+    ///   • Stage balance:    15
+    ///   • Timing/consistency: 15
     static func scoreSleep(
         totalSleep: TimeInterval,
+        timeInBed: TimeInterval?,
         stages: SleepStagesEstimate,
+        bedtime: Date,
+        targetBedtime: Date?,
+        goalHours: Double,
         consistencyDays: Int,
         checkIn: MorningCheckIn?
     ) -> Int {
         let hours = totalSleep / 3600
-        var score = 70
 
-        switch hours {
-        case 7.5...9.0:
-            score += 20
-        case 6.5..<7.5:
-            score += 10
-        case 5.5..<6.5:
-            break
-        case ..<5.5:
-            score -= 15
-        default:
-            if hours > 10 { score -= 5 }
+        // Hard floor: clinically a "sleep" under 1 hour is a nap, not a night.
+        // Don't ever score it like rested sleep — this is what the user hit
+        // when they tested with a 2-minute window and got 63.
+        if hours < 1.0 {
+            return clamp(Int((hours * 6).rounded()), min: 0, max: 6)
         }
 
+        let durationPts = durationPoints(actualHours: hours, goalHours: goalHours)
+        let efficiencyPts = efficiencyPoints(totalSleep: totalSleep, timeInBed: timeInBed)
+        let restfulnessPts = restfulnessPoints(
+            stages: stages,
+            totalSleep: totalSleep,
+            checkIn: checkIn
+        )
+        let stagePts = stageBalancePoints(stages: stages, totalSleep: totalSleep)
+        let timingPts = timingPoints(
+            bedtime: bedtime,
+            target: targetBedtime,
+            consistencyDays: consistencyDays
+        )
+
+        var score = Double(durationPts + efficiencyPts + restfulnessPts + stagePts + timingPts)
+
+        // Subjective check-in nudge (small — the objective signals already
+        // reflect most of this). Stays bounded so a happy mood can't rescue
+        // a 3-hour night.
         switch checkIn?.feeling {
-        case .great:
-            score += 10
-        case .okay:
-            score += 3
-        case .tired:
-            score -= 7
-        case .exhausted:
-            score -= 15
-        case nil:
-            break
+        case .great:     score += 3
+        case .okay:      score += 0
+        case .tired:     score -= 4
+        case .exhausted: score -= 8
+        case nil:        break
+        }
+        switch checkIn?.getOutOfBedDifficulty {
+        case .easy:      score += 2
+        case .normal:    break
+        case .hard:      score -= 3
+        case .veryHard:  score -= 6
+        case nil:        break
+        }
+
+        // Duration ceilings — short sleep should look short.
+        // CDC: <7h = insufficient; <6h = associated with notable risk.
+        if hours < 3 { score = min(score, 28) }
+        else if hours < 4 { score = min(score, 42) }
+        else if hours < 5 { score = min(score, 55) }
+        else if hours < 6 { score = min(score, 68) }
+
+        // Excessively long sleep also isn't "great" — mild cap.
+        if hours > 11 { score = min(score, 78) }
+
+        return clamp(Int(score.rounded()), min: 0, max: 100)
+    }
+
+    /// Duration vs. user's personal goal. 40 pts max.
+    /// Smooth-ish curve with full credit within ±30 min of goal, then drops.
+    private static func durationPoints(actualHours: Double, goalHours: Double) -> Int {
+        let safeGoal = max(4.0, min(10.0, goalHours))
+        let deviation = abs(actualHours - safeGoal)
+
+        switch deviation {
+        case ..<0.5:  return 40
+        case ..<1.0:  return 36
+        case ..<1.5:  return 30
+        case ..<2.0:  return 24
+        case ..<2.5:  return 18
+        case ..<3.0:  return 12
+        case ..<4.0:  return 6
+        default:      return 0
+        }
+    }
+
+    /// Sleep efficiency = TST / TIB. 15 pts max.
+    /// Clinical benchmark: ≥85% healthy, ≥90% excellent.
+    private static func efficiencyPoints(totalSleep: TimeInterval, timeInBed: TimeInterval?) -> Int {
+        guard let tib = timeInBed, tib > 0 else {
+            // No TIB known (HealthKit sometimes returns this). Stay neutral.
+            return 12
+        }
+        let efficiency = min(1.0, totalSleep / tib)
+        switch efficiency {
+        case 0.92...:    return 15
+        case 0.85..<0.92: return 13
+        case 0.78..<0.85: return 10
+        case 0.70..<0.78: return 7
+        case 0.60..<0.70: return 4
+        default:          return 1
+        }
+    }
+
+    /// Awakenings + WASO. 15 pts max.
+    /// Clinical target WASO <30 min; >60 min is fragmented sleep.
+    private static func restfulnessPoints(
+        stages: SleepStagesEstimate,
+        totalSleep: TimeInterval,
+        checkIn: MorningCheckIn?
+    ) -> Int {
+        var pts = 15
+        let wasoMinutes = stages.awakeTime / 60
+        switch wasoMinutes {
+        case ..<15:    break
+        case 15..<30:  pts -= 2
+        case 30..<60:  pts -= 5
+        case 60..<90:  pts -= 8
+        default:       pts -= 11
         }
 
         switch checkIn?.wakeUps {
-        case .some(.none):
-            score += 5
-        case .once:
-            break
-        case .fewTimes:
-            score -= 8
-        case .aLot:
-            score -= 15
-        case nil:
-            break
+        case .some(.none): break
+        case .once:        pts -= 1
+        case .fewTimes:    pts -= 4
+        case .aLot:        pts -= 7
+        case nil:          break
         }
 
-        switch checkIn?.getOutOfBedDifficulty {
-        case .easy:
-            score += 5
-        case .normal:
-            break
-        case .hard:
-            score -= 6
-        case .veryHard:
-            score -= 12
-        case nil:
-            break
+        return clamp(pts, min: 0, max: 15)
+    }
+
+    /// Deep + REM proportions. 15 pts max (8 deep + 7 REM).
+    /// Healthy adult ranges (Carskadon, Walker): Deep 13–23%, REM 20–25%.
+    private static func stageBalancePoints(stages: SleepStagesEstimate, totalSleep: TimeInterval) -> Int {
+        guard totalSleep > 0 else { return 0 }
+        let deepRatio = stages.deepSleep / totalSleep
+        let remRatio = stages.remSleep / totalSleep
+
+        let deepScore: Int
+        switch deepRatio {
+        case 0.13...0.23:                    deepScore = 8
+        case 0.10..<0.13, 0.23..<0.27:       deepScore = 5
+        case 0.07..<0.10, 0.27..<0.32:       deepScore = 3
+        default:                             deepScore = 1
         }
 
-        if consistencyDays >= 7 {
-            score += 4
-        } else if consistencyDays >= 3 {
-            score += 2
+        let remScore: Int
+        switch remRatio {
+        case 0.20...0.25:                    remScore = 7
+        case 0.16..<0.20, 0.25..<0.30:       remScore = 4
+        case 0.12..<0.16, 0.30..<0.35:       remScore = 2
+        default:                             remScore = 0
         }
 
-        let deepRatio = totalSleep > 0 ? stages.deepSleep / totalSleep : 0
-        let awakeRatio = totalSleep > 0 ? stages.awakeTime / totalSleep : 0
-        if deepRatio < 0.18 { score -= 3 }
-        if awakeRatio > 0.07 { score -= 3 }
+        return deepScore + remScore
+    }
 
-        return clamp(score, min: 0, max: 100)
+    /// Bedtime adherence + consistency streak bonus. 15 pts max.
+    private static func timingPoints(bedtime: Date, target: Date?, consistencyDays: Int) -> Int {
+        var pts: Int
+        if let target {
+            let diffMin = minutesBetweenTimeOfDay(bedtime, target)
+            switch diffMin {
+            case ..<15:    pts = 10
+            case 15..<30:  pts = 8
+            case 30..<60:  pts = 5
+            case 60..<90:  pts = 3
+            default:       pts = 1
+            }
+        } else {
+            // No target known — give middle credit so missing setting doesn't punish.
+            pts = 7
+        }
+
+        if consistencyDays >= 7 { pts += 5 }
+        else if consistencyDays >= 3 { pts += 3 }
+        else if consistencyDays >= 1 { pts += 1 }
+
+        return clamp(pts, min: 0, max: 15)
+    }
+
+    private static func minutesBetweenTimeOfDay(_ a: Date, _ b: Date) -> Int {
+        let cal = Calendar.current
+        let ca = cal.dateComponents([.hour, .minute], from: a)
+        let cb = cal.dateComponents([.hour, .minute], from: b)
+        let aMin = (ca.hour ?? 0) * 60 + (ca.minute ?? 0)
+        let bMin = (cb.hour ?? 0) * 60 + (cb.minute ?? 0)
+        let raw = abs(aMin - bMin)
+        return min(raw, 1440 - raw)
     }
 
     static func scoreReadiness(
@@ -232,32 +393,30 @@ enum SleepScoringManager {
         checkIn: MorningCheckIn?
     ) -> Int {
         let hours = totalSleep / 3600
-        var readiness = sleepScore
+        var readiness = Double(sleepScore)
 
         switch checkIn?.feeling {
-        case .great:
-            readiness += 8
-        case .okay:
-            readiness += 2
-        case .tired:
-            readiness -= 8
-        case .exhausted:
-            readiness -= 18
-        case nil:
-            break
+        case .great:     readiness += 8
+        case .okay:      readiness += 2
+        case .tired:     readiness -= 8
+        case .exhausted: readiness -= 18
+        case nil:        break
         }
 
         if checkIn?.wakeUps == .fewTimes || checkIn?.wakeUps == .aLot {
-            readiness -= 10
+            readiness -= 8
         }
-        if hours < 6 {
-            readiness -= 10
-        }
-        if hours >= 7.5 && hours <= 9 {
-            readiness += 5
-        }
+        if hours < 6 { readiness -= 8 }
+        if hours >= 7.5 && hours <= 9 { readiness += 4 }
 
-        return clamp(readiness, min: 0, max: 100)
+        // Same hard ceilings as sleep score — readiness can never be high
+        // when the body simply didn't sleep enough.
+        if hours < 3 { readiness = min(readiness, 25) }
+        else if hours < 4 { readiness = min(readiness, 38) }
+        else if hours < 5 { readiness = min(readiness, 52) }
+        else if hours < 6 { readiness = min(readiness, 65) }
+
+        return clamp(Int(readiness.rounded()), min: 0, max: 100)
     }
 
     static func energyLevel(for readinessScore: Int) -> String {
@@ -279,6 +438,12 @@ enum SleepScoringManager {
     ) -> String {
         let hours = totalSleep / 3600
 
+        if hours < 1 {
+            return "That's not really a full night yet — log again after a real sleep."
+        }
+        if hours < 4 {
+            return "Very short night. Today will feel heavy — keep things easy."
+        }
         if hours < 5.5 {
             return "Short sleep detected. Keep today lighter if you can."
         }

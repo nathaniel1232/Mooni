@@ -11,6 +11,9 @@ struct HomeView: View {
     @State private var showStartSleep = false
     @State private var showWhy = false
     @State private var showRecoveryPlan = false
+    /// Day key (yyyy-MM-dd) currently selected in the week strip. Nil = the
+    /// most-recent night's entry. Drives the day-detail card and insight.
+    @State private var selectedDayKey: String? = nil
 
     private enum HomeMode {
         case firstNight
@@ -19,34 +22,44 @@ struct HomeView: View {
         case recovery(SleepEntry)
     }
 
+    // MARK: - Body
+
     var body: some View {
         ZStack {
             MooniGradient.night.ignoresSafeArea()
-            StarsBackground(count: 38)
+            StarsBackground(count: 48)
 
             ScrollView {
-                VStack(spacing: 22) {
-                    header
-                        .padding(.top, 8)
+                LazyVStack(spacing: 22) {
+                    headerBar
+                        .padding(.top, 6)
 
-                    heroSection
+                    heroCard
 
-                    mainCard
+                    tonightPlanCard
 
-                    stateSupportCards
+                    if !appState.entries.isEmpty {
+                        weekStripSection
 
-                    if appState.entries.count >= 7 {
-                        weeklyRecapCard
+                        if let entry = displayEntry {
+                            dayDetailCard(entry)
+                            insightCard(entry)
+                        }
+
+                        if appState.entries.count > 1 {
+                            historySection
+                        }
                     }
 
-                    Spacer(minLength: 20)
+                    growthFooter
+
+                    Color.clear.frame(height: 24)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 96)
             }
         }
         .sheet(isPresented: $showWindDown, onDismiss: {
-            // Sheet dismissed without sleeping — release the tint/dim.
             if !appState.isSleeping {
                 WindDownDimController.shared.end()
             }
@@ -67,7 +80,7 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Main state
+    // MARK: - Mode
 
     private var mode: HomeMode {
         guard let entry = appState.lastEntry else { return .firstNight }
@@ -87,9 +100,6 @@ struct HomeView: View {
         return entry.score < 60 ? .recovery(entry) : .morning(entry)
     }
 
-    /// Generated daily briefing — only available in morning/recovery
-    /// modes. All hero copy, cards, achievements, and rare events
-    /// flow from this so the home screen feels different every morning.
     private var morningBriefing: HomeIntelligence.Briefing? {
         switch mode {
         case .morning(let entry), .recovery(let entry):
@@ -106,128 +116,284 @@ struct HomeView: View {
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(greeting)
-                    .font(MooniFont.caption(14))
-                    .foregroundColor(MooniColor.accentSoft)
-                Text(title)
-                    .font(MooniFont.display(30))
+    // MARK: - Header
+
+    private var headerBar: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(greeting.uppercased())
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.accentSoft.opacity(0.85))
+                    .tracking(1.4)
+                Text(appState.pet.name)
+                    .font(MooniFont.display(28))
                     .foregroundColor(MooniColor.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(subtitle)
-                    .font(MooniFont.body(15))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
+            Spacer(minLength: 8)
 
-            Spacer(minLength: 16)
-
-            Button {
-                showPaywall = true
-            } label: {
-                Image(systemName: subscriptionManager.isPro ? "sparkles" : "lock.open.fill")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(MooniColor.background)
-                    .frame(width: 38, height: 38)
-                    .background(MooniColor.accentSoft)
-                    .clipShape(Circle())
-            }
-            .accessibilityLabel(subscriptionManager.isPro ? "Premium active" : "Open premium")
-        }
-    }
-
-    private var heroSection: some View {
-        VStack(spacing: 12) {
-            InteractiveLunaHero(
-                pet: appState.pet,
-                mood: heroMood,
-                size: 218
-            )
-            LunaSpeechBubble(text: lunaSpeech)
+            Button { showPaywall = true } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: subscriptionManager.isPro ? "sparkles" : "crown.fill")
+                        .font(.system(size: 12, weight: .bold))
+                    Text(subscriptionManager.isPro ? "Pro" : "Upgrade")
+                        .font(MooniFont.caption(12))
+                }
+                .foregroundColor(MooniColor.background)
                 .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule().fill(
+                        LinearGradient(
+                            colors: [MooniColor.accentSoft, MooniColor.accent],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                )
+                .shadow(color: MooniColor.accent.opacity(0.35), radius: 10, y: 4)
+            }
+            .buttonStyle(.plain)
         }
     }
+
+    // MARK: - Hero card (varies by mode)
 
     @ViewBuilder
-    private var mainCard: some View {
+    private var heroCard: some View {
         switch mode {
         case .firstNight:
-            firstNightCard
+            firstNightHero
         case .evening:
-            eveningCard
+            eveningHero
         case .morning(let entry):
-            morningResultCard(entry)
+            morningHero(entry, isRecovery: false)
         case .recovery(let entry):
-            recoveryCard(entry)
+            morningHero(entry, isRecovery: true)
         }
     }
 
-    private var firstNightCard: some View {
-        MooniCard {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Tonight")
-                        .font(MooniFont.title(20))
+    private func morningHero(_ entry: SleepEntry, isRecovery: Bool) -> some View {
+        let scoreTint = scoreColor(entry.score)
+
+        return MooniCard(padding: 26, cornerRadius: 32) {
+            VStack(spacing: 20) {
+                // Pet glow + score ring
+                ZStack {
+                    // Aura halo
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [scoreTint.opacity(0.34), scoreTint.opacity(0.05), .clear],
+                                center: .center,
+                                startRadius: 4,
+                                endRadius: 160
+                            )
+                        )
+                        .frame(width: 320, height: 320)
+                        .blur(radius: 4)
+
+                    // Tiny pet badge floating above the ring
+                    DreamSpiritView(pet: petForMood(Pet.Mood.from(score: entry.score)), size: 64)
+                        .offset(y: -120)
+                        .shadow(color: MooniColor.petGlow.opacity(0.35), radius: 18, y: 8)
+
+                    SleepScoreRing(score: entry.score, size: 200, lineWidth: 14)
+                }
+                .frame(height: 230)
+
+                // Headline
+                VStack(spacing: 6) {
+                    Text(entry.formattedDuration)
+                        .font(MooniFont.display(36))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text("Sleep at \(appState.targetBedtime.hourMinuteString).")
+
+                    Text(heroHeadline(entry, isRecovery: isRecovery))
                         .font(MooniFont.body(14))
                         .foregroundColor(MooniColor.textSecondary)
+                        .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 8)
                 }
 
-                VStack(spacing: 10) {
-                    MooniInfoRow(icon: "moon.zzz.fill", title: "Wind down at", value: windDownTime.hourMinuteString, color: MooniColor.success)
-                    MooniInfoRow(icon: "bed.double.fill", title: "Sleep at", value: appState.targetBedtime.hourMinuteString)
-                    MooniInfoRow(icon: "sunrise.fill", title: "Wake at", value: appState.targetWakeTime.hourMinuteString, color: MooniColor.warning)
+                // Stat chips
+                HStack(spacing: 8) {
+                    heroChip(icon: "bed.double.fill",
+                             value: entry.bedtime.hourMinuteString,
+                             label: "Bed",
+                             color: MooniColor.accent)
+                    heroChip(icon: "sunrise.fill",
+                             value: entry.wakeTime.hourMinuteString,
+                             label: "Wake",
+                             color: MooniColor.warning)
+                    heroChip(icon: "bolt.heart.fill",
+                             value: "\(entry.readinessScore ?? entry.score)",
+                             label: "Ready",
+                             color: scoreTint)
                 }
 
-                VStack(spacing: 10) {
-                    PrimaryButton(title: "Wind down", icon: "moon.zzz.fill") {
-                        showWindDown = true
+                // See why pill
+                Button { showWhy = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "text.magnifyingglass")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("See why")
+                            .font(MooniFont.caption(13))
                     }
+                    .foregroundColor(MooniColor.accentSoft)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 9)
+                    .background(
+                        Capsule().fill(MooniColor.accent.opacity(0.18))
+                    )
+                    .overlay(
+                        Capsule().stroke(MooniColor.accentSoft.opacity(0.30), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
 
-                    if !isHealthConnected {
-                        SecondaryButton(title: "Use Apple Health", icon: "heart.text.square.fill") {
-                            connectAppleHealth()
-                        }
-                    }
+    private var firstNightHero: some View {
+        MooniCard(padding: 26, cornerRadius: 32) {
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [MooniColor.accent.opacity(0.30), .clear],
+                                center: .center, startRadius: 4, endRadius: 160
+                            )
+                        )
+                        .frame(width: 280, height: 280)
+                        .blur(radius: 6)
+
+                    DreamSpiritView(pet: petForMood(.cozy), size: 170)
+                        .shadow(color: MooniColor.petGlow.opacity(0.4), radius: 26, y: 12)
+                }
+                .frame(height: 200)
+
+                VStack(spacing: 6) {
+                    Text("Your first night")
+                        .font(MooniFont.display(28))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text("Help \(appState.pet.name) settle in. Tomorrow you'll see your sleep score.")
+                        .font(MooniFont.body(14))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 12)
+                }
+
+                HStack(spacing: 8) {
+                    heroChip(icon: "moon.zzz.fill", value: windDownTime.hourMinuteString, label: "Wind down", color: MooniColor.success)
+                    heroChip(icon: "bed.double.fill", value: appState.targetBedtime.hourMinuteString, label: "Bed", color: MooniColor.accent)
+                    heroChip(icon: "sunrise.fill", value: appState.targetWakeTime.hourMinuteString, label: "Wake", color: MooniColor.warning)
                 }
             }
         }
     }
 
-    private var eveningCard: some View {
-        MooniCard {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
+    private var eveningHero: some View {
+        MooniCard(padding: 26, cornerRadius: 32) {
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [MooniColor.accent.opacity(0.32), .clear],
+                                center: .center, startRadius: 4, endRadius: 150
+                            )
+                        )
+                        .frame(width: 260, height: 260)
+                        .blur(radius: 5)
+
+                    DreamSpiritView(pet: petForMood(.sleepy), size: 150)
+                        .shadow(color: MooniColor.petGlow.opacity(0.35), radius: 22, y: 10)
+                }
+                .frame(height: 180)
+
+                VStack(spacing: 6) {
+                    Text("Tonight")
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.accentSoft)
+                        .tracking(1.5)
+                        .textCase(.uppercase)
+                    Text("\(appState.pet.name) is getting sleepy")
+                        .font(MooniFont.display(24))
+                        .foregroundColor(MooniColor.textPrimary)
+                        .multilineTextAlignment(.center)
+                    Text(eveningSubline)
+                        .font(MooniFont.body(13))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 8)
+                }
+
+                // Quest progress
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("Tonight's quest")
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.textSecondary)
+                        Spacer()
+                        Text("\(questDone)/3 done")
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.accentSoft)
+                    }
+                    MooniProgressBar(value: Double(questDone) / 3.0, height: 9)
+                }
+            }
+        }
+    }
+
+    private func heroChip(icon: String, value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 28, height: 28)
+                .background(color.opacity(0.16))
+                .clipShape(Circle())
+            Text(value)
+                .font(MooniFont.title(15))
+                .foregroundColor(MooniColor.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(label)
+                .font(MooniFont.caption(10))
+                .foregroundColor(MooniColor.textMuted)
+                .textCase(.uppercase)
+                .tracking(0.6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: - Tonight plan
+
+    private var tonightPlanCard: some View {
+        MooniCard(padding: 18, cornerRadius: 26) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Tonight's mission")
-                            .font(MooniFont.title(20))
+                        Text("Tonight's plan")
+                            .font(MooniFont.title(18))
                             .foregroundColor(MooniColor.textPrimary)
-                        Text("Help \(appState.pet.name) get cozy before sleep.")
+                        Text("Wind down at \(windDownTime.hourMinuteString) · sleep at \(appState.targetBedtime.hourMinuteString)")
                             .font(MooniFont.caption(12))
                             .foregroundColor(MooniColor.textSecondary)
                     }
                     Spacer()
-                    Text("\(questDone)/3 done")
-                        .font(MooniFont.caption(12))
+                    Image(systemName: "moon.stars.fill")
                         .foregroundColor(MooniColor.accentSoft)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(MooniColor.accent.opacity(0.14))
-                        .clipShape(Capsule())
+                        .font(.system(size: 17, weight: .semibold))
                 }
-
-                VStack(spacing: 10) {
-                    MooniInfoRow(icon: "checkmark.circle.fill", title: "Quest progress", value: "\(questDone)/3", color: MooniColor.success)
-                    MooniInfoRow(icon: "moon.zzz.fill", title: "Wind-down time", value: windDownTime.hourMinuteString, color: MooniColor.success)
-                    MooniInfoRow(icon: "moon.fill", title: "Sleep target", value: appState.targetBedtime.hourMinuteString)
-                    MooniInfoRow(icon: "sparkles", title: "Reward", value: "+20 dream stars", color: MooniColor.warning)
-                }
-
-                MooniProgressBar(value: Double(questDone) / 3.0, height: 9)
 
                 VStack(spacing: 10) {
                     PrimaryButton(title: "Start wind-down", icon: "moon.zzz.fill") {
@@ -237,246 +403,20 @@ struct HomeView: View {
                         showStartSleep = true
                     }
                 }
-            }
-        }
-    }
 
-    private func morningResultCard(_ entry: SleepEntry) -> some View {
-        VStack(spacing: 16) {
-            if let briefing = morningBriefing {
-                MooniCard(padding: 18, cornerRadius: 24) {
-                    HStack(alignment: .center, spacing: 16) {
-                        SleepScoreRing(score: entry.score, size: 84, lineWidth: 9)
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 10) {
-                                miniStat(icon: "moon.zzz.fill",
-                                         value: entry.formattedDuration,
-                                         label: "Slept")
-                                miniStat(icon: "bed.double.fill",
-                                         value: entry.bedtime.hourMinuteString,
-                                         label: "Bed")
-                                miniStat(icon: "sunrise.fill",
-                                         value: entry.wakeTime.hourMinuteString,
-                                         label: "Up")
-                            }
+                if !isHealthConnected {
+                    Button { connectAppleHealth() } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "heart.text.square.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Connect Apple Health")
+                                .font(MooniFont.caption(12))
                         }
-                    }
-                }
-
-                MorningCardCarousel(cards: briefing.cards)
-
-                PrimaryButton(title: "See why", icon: "text.magnifyingglass") {
-                    showWhy = true
-                }
-            }
-        }
-    }
-
-    private func miniStat(icon: String, value: String, label: String) -> some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(MooniColor.accentSoft)
-            Text(value)
-                .font(MooniFont.title(14))
-                .foregroundColor(MooniColor.textPrimary)
-            Text(label)
-                .font(MooniFont.caption(10))
-                .foregroundColor(MooniColor.textMuted)
-                .textCase(.uppercase)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func recoveryCard(_ entry: SleepEntry) -> some View {
-        VStack(spacing: 16) {
-            // Same dopamine layout, but with a recovery footer button.
-            morningResultCard(entry)
-
-            MooniCard(padding: 16, cornerRadius: 22) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "heart.fill")
-                            .foregroundColor(MooniColor.danger)
-                        Text("Tonight: gentle recovery")
-                            .font(MooniFont.title(15))
-                            .foregroundColor(MooniColor.textPrimary)
-                    }
-                    Text("Earlier wind-down at \(recoveryWindDownTime.hourMinuteString) and a 2-minute breathing reset.")
-                        .font(MooniFont.body(13))
-                        .foregroundColor(MooniColor.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    SecondaryButton(title: "Open recovery plan", icon: "heart.fill") {
-                        showRecoveryPlan = true
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var stateSupportCards: some View {
-        switch mode {
-        case .firstNight:
-            tomorrowPreviewCard
-            growthFooter
-        case .evening:
-            tomorrowSmallCard
-            growthFooter
-        case .morning, .recovery:
-            insightPreview
-            growthFooter
-        }
-    }
-
-    private var tomorrowPreviewCard: some View {
-        MooniCard(padding: 18, cornerRadius: 24) {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Tomorrow morning")
-                        .font(MooniFont.title(18))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Text("\(appState.pet.name) will wake up based on your sleep.")
-                        .font(MooniFont.body(14))
-                        .foregroundColor(MooniColor.textSecondary)
-                }
-
-                HStack(spacing: 8) {
-                    outcomeChip(title: "Short sleep", mood: "Tired", color: MooniColor.danger)
-                    outcomeChip(title: "On target", mood: "Calm", color: MooniColor.success)
-                    outcomeChip(title: "Great rhythm", mood: "Glowing", color: MooniColor.accent)
-                }
-            }
-        }
-    }
-
-    private var tomorrowSmallCard: some View {
-        MooniCard(padding: 16, cornerRadius: 24) {
-            HStack(spacing: 12) {
-                Image(systemName: "sunrise.fill")
-                    .foregroundColor(MooniColor.warning)
-                    .frame(width: 34, height: 34)
-                    .background(MooniColor.warning.opacity(0.14))
-                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-
-                Text("Tomorrow \(appState.pet.name) wakes up with you based on tonight's sleep.")
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Spacer()
-            }
-        }
-    }
-
-    private func outcomeChip(title: String, mood: String, color: Color) -> some View {
-        VStack(spacing: 4) {
-            Text(title)
-                .font(MooniFont.caption(10))
-                .foregroundColor(MooniColor.textSecondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-            Text(mood)
-                .font(MooniFont.title(12))
-                .foregroundColor(color)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity)
-        .background(color.opacity(0.11))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    @ViewBuilder
-    private var insightPreview: some View {
-        if let briefing = morningBriefing {
-            MooniCard(padding: 16, cornerRadius: 24) {
-                HStack(spacing: 12) {
-                    Image(systemName: "lightbulb.fill")
-                        .foregroundColor(MooniColor.warning)
-                        .frame(width: 34, height: 34)
-                        .background(MooniColor.warning.opacity(0.14))
-                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Why you feel this way")
-                            .font(MooniFont.caption(11))
-                            .foregroundColor(MooniColor.warning)
-                            .textCase(.uppercase)
-                            .tracking(0.5)
-                        Text(briefing.whyLine)
-                            .font(MooniFont.body(14))
-                            .foregroundColor(MooniColor.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer()
-                }
-            }
-        } else {
-            EmptyView()
-        }
-    }
-
-    private var growthFooter: some View {
-        MooniCard(padding: 16, cornerRadius: 24) {
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Next: \(appState.pet.name) becomes \(nextStageName)")
-                        .font(MooniFont.title(18))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Text(growthCopy)
-                        .font(MooniFont.body(13))
-                        .foregroundColor(MooniColor.textSecondary)
-                }
-
-                MooniProgressBar(value: appState.growthProgress, height: 9)
-
-                HStack(spacing: 10) {
-                    Image(systemName: "sparkles")
-                        .foregroundColor(MooniColor.warning)
-                    Text("Next unlock: Starry Blanket")
-                        .font(MooniFont.caption(13))
-                        .foregroundColor(MooniColor.warning)
-                    Spacer()
-                    Text("\(appState.dreamStars) stars")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.textMuted)
-                }
-            }
-        }
-    }
-
-    private var weeklyRecapCard: some View {
-        MooniCard(padding: 18, cornerRadius: 24) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Label("Weekly recap", systemImage: "calendar.badge.clock")
-                        .font(MooniFont.title(16))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Spacer()
-                    Text("\(appState.recentEntries.count)/7 nights")
-                        .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.accentSoft)
-                }
-
-                Text("\(appState.pet.name) is learning your rhythm. Your next goal is one calmer bedtime window this week.")
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !subscriptionManager.isPro {
-                    Button {
-                        showPaywall = true
-                    } label: {
-                        Text("Unlock full weekly recap")
-                            .font(MooniFont.caption(13))
-                            .foregroundColor(MooniColor.accentSoft)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
                 }
@@ -484,86 +424,389 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Copy
+    // MARK: - Week strip
 
-    private var title: String {
-        if let briefing = morningBriefing {
-            return briefing.heroLine
-        }
-        switch mode {
-        case .firstNight:
-            return "Tonight is \(appState.pet.name)'s first night"
-        case .evening:
-            return "\(appState.pet.name) is getting sleepy"
-        case .morning, .recovery:
-            return "\(appState.pet.name) woke up"
+    private var weekStripSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("This week")
+                    .font(MooniFont.title(17))
+                    .foregroundColor(MooniColor.textPrimary)
+                Spacer()
+                if let entry = displayEntry {
+                    Text(formattedSelectedDate(entry))
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textMuted)
+                }
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(last7Days, id: \.self) { day in
+                        weekDayChip(day)
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
         }
     }
 
-    private var subtitle: String {
+    private func weekDayChip(_ day: Date) -> some View {
+        let key = day.dayKey
+        let entry = appState.entries.first(where: { $0.dayKey == key })
+        let isSelected = (selectedDayKey ?? appState.lastEntry?.dayKey) == key
+        let isToday = Calendar.current.isDateInToday(day)
+        let scoreTint: Color = entry.map { scoreColor($0.score) } ?? Color.white.opacity(0.18)
+
+        return Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                if entry != nil {
+                    selectedDayKey = key
+                }
+            }
+        } label: {
+            VStack(spacing: 6) {
+                Text(weekdayLetter(day))
+                    .font(MooniFont.caption(10))
+                    .foregroundColor(isSelected ? MooniColor.background : MooniColor.textMuted)
+                    .tracking(0.7)
+
+                Text("\(Calendar.current.component(.day, from: day))")
+                    .font(MooniFont.title(16))
+                    .foregroundColor(isSelected ? MooniColor.background : MooniColor.textPrimary)
+
+                if let entry {
+                    Text("\(entry.score)")
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(isSelected ? MooniColor.background.opacity(0.8) : scoreTint)
+                } else {
+                    Circle()
+                        .fill(Color.white.opacity(0.18))
+                        .frame(width: 4, height: 4)
+                }
+            }
+            .frame(width: 44, height: 70)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(isSelected ? scoreTint : Color.white.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(isToday && !isSelected ? MooniColor.accentSoft.opacity(0.5) : Color.clear, lineWidth: 1.2)
+            )
+            .opacity(entry == nil ? 0.6 : 1)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Day detail
+
+    private func dayDetailCard(_ entry: SleepEntry) -> some View {
+        MooniCard(padding: 18, cornerRadius: 26) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(entry.formattedDuration)
+                            .font(MooniFont.display(26))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Text("\(entry.bedtime.hourMinuteString) → \(entry.wakeTime.hourMinuteString)")
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.textSecondary)
+                    }
+                    Spacer()
+                    scoreBadge(entry.score)
+                }
+
+                Divider().background(Color.white.opacity(0.06))
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    detailMetric(icon: "bolt.heart.fill",
+                                 title: "Readiness",
+                                 value: "\(entry.readinessScore ?? entry.score)",
+                                 tint: scoreColor(entry.readinessScore ?? entry.score))
+                    detailMetric(icon: "battery.100.bolt",
+                                 title: "Energy",
+                                 value: entry.energyLevel ?? "Steady",
+                                 tint: MooniColor.warning)
+                    detailMetric(icon: "sparkles",
+                                 title: "Quality",
+                                 value: entry.quality.label,
+                                 tint: MooniColor.accent)
+                    detailMetric(icon: "checkmark.circle.fill",
+                                 title: "Routine",
+                                 value: entry.routineCompleted ? "Done" : "Skipped",
+                                 tint: entry.routineCompleted ? MooniColor.success : MooniColor.textMuted)
+                }
+            }
+        }
+    }
+
+    private func detailMetric(icon: String, title: String, value: String, tint: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(tint)
+                .frame(width: 28, height: 28)
+                .background(tint.opacity(0.16))
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value)
+                    .font(MooniFont.title(14))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(title)
+                    .font(MooniFont.caption(10))
+                    .foregroundColor(MooniColor.textMuted)
+                    .tracking(0.5)
+                    .textCase(.uppercase)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func scoreBadge(_ score: Int) -> some View {
+        let tint = scoreColor(score)
+        return Text("\(score)")
+            .font(MooniFont.title(18))
+            .foregroundColor(tint)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                Capsule().fill(tint.opacity(0.18))
+            )
+            .overlay(
+                Capsule().stroke(tint.opacity(0.4), lineWidth: 1)
+            )
+    }
+
+    // MARK: - Insight card
+
+    private func insightCard(_ entry: SleepEntry) -> some View {
+        let copy = entry.insight ?? insightText(for: entry)
+        return MooniCard(padding: 16, cornerRadius: 22) {
+            HStack(spacing: 12) {
+                Image(systemName: "lightbulb.fill")
+                    .foregroundColor(MooniColor.warning)
+                    .frame(width: 36, height: 36)
+                    .background(MooniColor.warning.opacity(0.16))
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Insight")
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(MooniColor.warning)
+                        .tracking(0.6)
+                        .textCase(.uppercase)
+                    Text(copy)
+                        .font(MooniFont.body(14))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    // MARK: - History
+
+    private var historySection: some View {
+        let recent = Array(appState.entries
+            .sorted(by: { $0.wakeTime > $1.wakeTime })
+            .prefix(8))
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Recent nights")
+                    .font(MooniFont.title(17))
+                    .foregroundColor(MooniColor.textPrimary)
+                Spacer()
+                Text("\(appState.entries.count) tracked")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textMuted)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(recent) { entry in
+                    historyRow(entry)
+                }
+            }
+        }
+    }
+
+    private func historyRow(_ entry: SleepEntry) -> some View {
+        let tint = scoreColor(entry.score)
+        let isSelected = displayEntry?.id == entry.id
+
+        return Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                selectedDayKey = entry.dayKey
+            }
+        } label: {
+            HStack(spacing: 14) {
+                // Mini score indicator
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.08), lineWidth: 3)
+                    Circle()
+                        .trim(from: 0, to: CGFloat(min(max(entry.score, 0), 100)) / 100)
+                        .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    Text("\(entry.score)")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textPrimary)
+                }
+                .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(historyDateLabel(entry.wakeTime))
+                        .font(MooniFont.title(14))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text("\(entry.formattedDuration) · \(entry.bedtime.hourMinuteString)–\(entry.wakeTime.hourMinuteString)")
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.textMuted)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Text(scoreLabel(entry.score))
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(tint)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(tint.opacity(0.16)))
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(MooniColor.textMuted)
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white.opacity(isSelected ? 0.10 : 0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(isSelected ? tint.opacity(0.4) : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Growth footer
+
+    private var growthFooter: some View {
+        MooniCard(padding: 16, cornerRadius: 22) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Growth")
+                            .font(MooniFont.caption(10))
+                            .foregroundColor(MooniColor.accentSoft)
+                            .tracking(0.6)
+                            .textCase(.uppercase)
+                        Text("Next: \(appState.pet.name) becomes \(nextStageName)")
+                            .font(MooniFont.title(16))
+                            .foregroundColor(MooniColor.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(growthCopy)
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(MooniColor.warning)
+                        .frame(width: 36, height: 36)
+                        .background(MooniColor.warning.opacity(0.16))
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+
+                MooniProgressBar(value: appState.growthProgress, height: 9)
+
+                HStack {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(MooniColor.warning)
+                    Text("\(appState.dreamStars) dream stars")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                    Spacer()
+                    if !subscriptionManager.isPro {
+                        Button { showPaywall = true } label: {
+                            Text("See full path")
+                                .font(MooniFont.caption(12))
+                                .foregroundColor(MooniColor.accentSoft)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Computed data
+
+    private var last7Days: [Date] {
+        let cal = Calendar.current
+        return (0..<7).reversed().compactMap {
+            cal.date(byAdding: .day, value: -$0, to: Date())
+        }
+    }
+
+    private var displayEntry: SleepEntry? {
+        if let key = selectedDayKey,
+           let match = appState.entries.first(where: { $0.dayKey == key }) {
+            return match
+        }
+        return appState.lastEntry
+    }
+
+    private func petForMood(_ mood: Pet.Mood) -> Pet {
+        var p = appState.pet
+        p.mood = mood
+        return p
+    }
+
+    // MARK: - Copy
+
+    private func heroHeadline(_ entry: SleepEntry, isRecovery: Bool) -> String {
+        if isRecovery {
+            return "Gentle recovery tonight will help \(appState.pet.name) bounce back."
+        }
         if let briefing = morningBriefing {
             return briefing.heroSubline
         }
-        switch mode {
-        case .firstNight:
-            return "Help \(appState.pet.name) settle in and wake up together tomorrow."
-        case .evening:
-            return HomeIntelligence.eveningAnticipation(
-                bedtimeConsistencyDays: appState.bedtimeConsistencyDays,
-                targetBedtime: appState.targetBedtime,
-                petName: appState.pet.name
-            )
-        case .morning, .recovery:
-            return ""
+        switch entry.score {
+        case 85...:    return "Great rhythm — \(appState.pet.name) feels fully charged."
+        case 70..<85:  return "Solid night. Today is a good day for focused work."
+        case 60..<70:  return "An okay night. A steadier bedtime tonight will help."
+        default:       return "Rough night. Keep things light and gentle today."
         }
     }
 
-    private var heroMood: Pet.Mood {
-        switch mode {
-        case .firstNight: return .cozy
-        case .evening: return .sleepy
-        case .morning(let entry): return Pet.Mood.from(score: entry.score)
-        case .recovery: return .recovering
-        }
-    }
-
-    private var heroCaption: String {
-        switch mode {
-        case .firstNight:
-            return "\(appState.pet.name) is settling into the room and waiting for your first calm night together."
-        case .evening:
-            return "A tiny wind-down now makes bedtime feel softer later."
-        case .morning(let entry):
-            return entry.score >= 70 ? "That helped me feel rested." : "Rough night. Small steps still count."
-        case .recovery:
-            return "I just need a gentle night."
-        }
-    }
-
-    private var lunaSpeech: String {
-        if let briefing = morningBriefing {
-            return briefing.speech
-        }
-        switch mode {
-        case .firstNight:
-            return "Is tonight our first calm night?"
-        case .evening:
-            return "Can we get cozy soon?"
-        case .morning, .recovery:
-            return "Let's reset tonight."
-        }
+    private var eveningSubline: String {
+        HomeIntelligence.eveningAnticipation(
+            bedtimeConsistencyDays: appState.bedtimeConsistencyDays,
+            targetBedtime: appState.targetBedtime,
+            petName: appState.pet.name
+        )
     }
 
     private var growthCopy: String {
         guard let next = appState.nextEvolutionStage else {
             return "\(appState.pet.name) is fully grown"
         }
-
         let nights = appState.nightsUntilNextEvolution
         if nights == 0 {
             return "\(appState.pet.name) is ready to grow into \(next.label)"
         }
-        return "\(nights) calm night\(nights == 1 ? "" : "s") until \(appState.pet.name) becomes \(next.label)"
+        return "\(nights) calm night\(nights == 1 ? "" : "s") to go"
     }
 
     private var nextStageName: String {
@@ -579,22 +822,47 @@ struct HomeView: View {
         }
     }
 
+    private func scoreLabel(_ score: Int) -> String {
+        switch score {
+        case 85...:    return "Great"
+        case 70..<85:  return "Good"
+        case 50..<70:  return "Okay"
+        default:       return "Low"
+        }
+    }
+
+    private func weekdayLetter(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "EEE"
+        return f.string(from: date).uppercased()
+    }
+
+    private func formattedSelectedDate(_ entry: SleepEntry) -> String {
+        let f = DateFormatter()
+        let cal = Calendar.current
+        if cal.isDateInToday(entry.wakeTime) { return "Last night" }
+        if cal.isDateInYesterday(entry.wakeTime) { return "Yesterday" }
+        f.dateFormat = "EEE, MMM d"
+        return f.string(from: entry.wakeTime)
+    }
+
+    private func historyDateLabel(_ date: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(date) { return "Last night" }
+        if cal.isDateInYesterday(date) { return "Yesterday" }
+        let f = DateFormatter()
+        f.dateFormat = "EEEE, MMM d"
+        return f.string(from: date)
+    }
+
     // MARK: - Helpers
 
     private var windDownTime: Date {
         Calendar.current.date(byAdding: .minute, value: -30, to: appState.targetBedtime) ?? appState.targetBedtime
     }
 
-    private var recoveryWindDownTime: Date {
-        Calendar.current.date(byAdding: .minute, value: -45, to: appState.targetBedtime) ?? windDownTime
-    }
-
     private var questDone: Int {
-        min(appState.routine.completedToday.intersection(Set(questHabitIDs)).count, 3)
-    }
-
-    private var questHabitIDs: [String] {
-        ["breathing", "journal", "no_phone"]
+        min(appState.routine.completedToday.intersection(Set(["breathing", "journal", "no_phone"])).count, 3)
     }
 
     private var isHealthConnected: Bool { healthKit.isConnected }
@@ -606,51 +874,18 @@ struct HomeView: View {
         }
     }
 
-    private func moodWord(for score: Int) -> String {
-        switch score {
-        case 85...: return "cozy"
-        case 70..<85: return "calm"
-        case 60..<70: return "sleepy"
-        default: return "tired"
-        }
-    }
-
     private func scoreColor(_ score: Int) -> Color {
         switch score {
-        case 80...: return MooniColor.success
-        case 60..<80: return MooniColor.warning
-        default: return MooniColor.danger
+        case 85...:    return MooniColor.success
+        case 70..<85:  return MooniColor.accent
+        case 50..<70:  return MooniColor.warning
+        default:       return MooniColor.danger
         }
-    }
-
-    private func bedtimeConsistencyLabel(for entry: SleepEntry) -> String {
-        consistencyLabel(actual: entry.bedtime, target: appState.targetBedtime)
-    }
-
-    private func wakeConsistencyLabel(for entry: SleepEntry) -> String {
-        consistencyLabel(actual: entry.wakeTime, target: appState.targetWakeTime)
-    }
-
-    private func consistencyLabel(actual: Date, target: Date) -> String {
-        let diff = minuteDifference(actual, target)
-        if diff <= 30 { return "On rhythm" }
-        if diff < 60 { return "\(diff)m off" }
-        return "\(diff / 60)h \(diff % 60)m off"
-    }
-
-    private func minuteDifference(_ a: Date, _ b: Date) -> Int {
-        let cal = Calendar.current
-        let aComps = cal.dateComponents([.hour, .minute], from: a)
-        let bComps = cal.dateComponents([.hour, .minute], from: b)
-        let aMinutes = (aComps.hour ?? 0) * 60 + (aComps.minute ?? 0)
-        let bMinutes = (bComps.hour ?? 0) * 60 + (bComps.minute ?? 0)
-        let diff = abs(aMinutes - bMinutes)
-        return min(diff, 1440 - diff)
     }
 
     private func insightText(for entry: SleepEntry) -> String {
         if appState.bedtimeConsistencyDays > 0 {
-            return "You slept better when bedtime stayed within 30 minutes."
+            return "You sleep better when bedtime stays within 30 minutes of \(appState.targetBedtime.hourMinuteString)."
         }
         if entry.score < 60 {
             return "A shorter recovery quest tonight can help \(appState.pet.name) bounce back without pressure."
@@ -658,6 +893,8 @@ struct HomeView: View {
         return "Keeping bedtime close to \(appState.targetBedtime.hourMinuteString) helps \(appState.pet.name) wake up cozier."
     }
 }
+
+// MARK: - Sheets
 
 private struct WindDownSheet: View {
     @EnvironmentObject var appState: AppState
@@ -866,6 +1103,7 @@ private struct StartSleepSheet: View {
 
 private struct MorningWhySheet: View {
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var subscriptionManager: SubscriptionManager
     @Environment(\.dismiss) private var dismiss
     let entry: SleepEntry
     @Binding var showPaywall: Bool
@@ -875,42 +1113,45 @@ private struct MorningWhySheet: View {
             ZStack {
                 MooniGradient.night.ignoresSafeArea()
 
-                VStack(spacing: 18) {
-                    LunaMoodHero(
-                        pet: appState.pet,
-                        mood: Pet.Mood.from(score: entry.score),
-                        size: 150,
-                        caption: "Here is the simple version."
-                    )
+                ScrollView {
+                    VStack(spacing: 20) {
+                        LunaMoodHero(
+                            pet: appState.pet,
+                            mood: Pet.Mood.from(score: entry.score),
+                            size: 140,
+                            caption: "Here is the simple version."
+                        )
+                        .padding(.top, 4)
 
-                    MooniCard {
-                        VStack(alignment: .leading, spacing: 14) {
-                            Text(explanation)
-                                .font(MooniFont.body(16))
-                                .foregroundColor(MooniColor.textPrimary)
-                                .fixedSize(horizontal: false, vertical: true)
+                        MooniCard(padding: 18, cornerRadius: 22) {
+                            VStack(alignment: .leading, spacing: 14) {
+                                Text(explanation)
+                                    .font(MooniFont.body(16))
+                                    .foregroundColor(MooniColor.textPrimary)
+                                    .fixedSize(horizontal: false, vertical: true)
 
-                            MooniInfoRow(icon: "bed.double.fill", title: "Bedtime", value: bedtimeDetail)
-                            MooniInfoRow(icon: "sunrise.fill", title: "Wake time", value: wakeDetail, color: MooniColor.warning)
-                            MooniInfoRow(icon: "moon.zzz.fill", title: "Wind-down", value: entry.routineCompleted ? "Completed" : "Try tonight", color: MooniColor.success)
+                                MooniInfoRow(icon: "bed.double.fill", title: "Bedtime", value: bedtimeDetail)
+                                MooniInfoRow(icon: "sunrise.fill", title: "Wake time", value: wakeDetail, color: MooniColor.warning)
+                                MooniInfoRow(icon: "moon.zzz.fill", title: "Wind-down", value: entry.routineCompleted ? "Completed" : "Try tonight", color: MooniColor.success)
+                            }
+                        }
+
+                        if !subscriptionManager.isPro && !appState.entries.isEmpty {
+                            MooniPremiumLockCard(
+                                icon: "sparkles",
+                                title: "Deeper sleep insight",
+                                subtitle: "Unlock sleep debt, best sleep window, and recovery prediction.",
+                                actionTitle: "See your full pattern"
+                            ) {
+                                showPaywall = true
+                                dismiss()
+                            }
+                            .padding(.top, 2)
                         }
                     }
-
-                    if !appState.entries.isEmpty {
-                        MooniPremiumLockCard(
-                            icon: "sparkles",
-                            title: "Deeper sleep insight",
-                            subtitle: "Unlock sleep debt, best sleep window, and recovery prediction.",
-                            actionTitle: "See your full pattern"
-                        ) {
-                            showPaywall = true
-                            dismiss()
-                        }
-                    }
-
-                    Spacer()
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 24)
                 }
-                .padding(20)
             }
             .navigationTitle("Why")
             .navigationBarTitleDisplayMode(.inline)

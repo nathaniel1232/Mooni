@@ -171,7 +171,7 @@ struct ProfileView: View {
 
                 Divider().background(Color.white.opacity(0.08))
 
-                settingsButton(icon: "hand.raised.fill", title: "Privacy", value: "Manage") {}
+                settingsButton(icon: "hand.raised.fill", title: "Privacy", value: "Coming soon") {}
             }
         }
     }

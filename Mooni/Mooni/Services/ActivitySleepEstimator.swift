@@ -115,7 +115,10 @@ final class ActivitySleepEstimator: ObservableObject {
 
     private func isInWakeWindow(_ date: Date) -> Bool {
         let h = Calendar.current.component(.hour, from: date)
-        return h >= 4 && h < 12
+        // 04:00–15:59. Widened from the original 4–12 so a user who
+        // doesn't open the app until early afternoon still gets their
+        // night logged automatically.
+        return h >= 4 && h < 16
     }
 
     // MARK: - Persistence

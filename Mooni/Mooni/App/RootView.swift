@@ -228,9 +228,13 @@ struct MainTabView: View {
             MorningCheckInView()
         }
         .mooniPaywall(isPresented: $showPaywall)
-        .task { await appState.importHealthKitSleep() }
+        .task {
+            appState.autoEndStaleSleepIfNeeded()
+            await appState.importHealthKitSleep()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
+                appState.autoEndStaleSleepIfNeeded()
                 Task { await appState.importHealthKitSleep() }
             }
         }
