@@ -8,10 +8,15 @@ struct SmallSleepWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Brand row gets the priority — discoverability is half the
+            // point of a widget on someone else's home screen. Quality
+            // chip drops to a dot if there isn't room.
             HStack(alignment: .center, spacing: 6) {
                 brandMark
+                    .layoutPriority(2)
                 Spacer(minLength: 0)
                 qualityChip
+                    .layoutPriority(1)
             }
 
             HStack(alignment: .center, spacing: 10) {
@@ -22,11 +27,11 @@ struct SmallSleepWidgetView: View {
                 ) {
                     MooniMascotView()
                 }
-                .frame(width: 68, height: 68)
+                .frame(width: 64, height: 64)
 
                 VStack(alignment: .leading, spacing: 0) {
                     Text("\(data.score)")
-                        .font(.system(size: 38, weight: .heavy, design: .rounded))
+                        .font(.system(size: 36, weight: .heavy, design: .rounded))
                         .foregroundStyle(SleepWidgetPalette.textPrimary)
                         .minimumScaleFactor(0.7)
                         .lineLimit(1)
@@ -57,20 +62,33 @@ struct SmallSleepWidgetView: View {
         }
     }
 
+    /// Made deliberately bold + slightly bigger than before so the app
+    /// name reads at a glance. Anyone glancing at a friend's lock screen
+    /// can identify the source app — that's the whole growth loop.
     private var brandMark: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             Image(systemName: "moon.stars.fill")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(SleepWidgetPalette.textPrimary)
+                .font(.system(size: 12, weight: .black))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [SleepWidgetPalette.textPrimary, data.scoreTint],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
             Text("SleepOwl")
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .tracking(0.2)
+                .font(.system(size: 13, weight: .black, design: .rounded))
+                .tracking(0.1)
                 .foregroundStyle(SleepWidgetPalette.textPrimary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .allowsTightening(true)
         }
     }
 
     private var qualityChip: some View {
+        // Tightened width (was 58) so the brand mark always wins room when
+        // the system pads the small widget tighter than expected.
         Text(data.quality)
             .font(.system(size: 8, weight: .heavy, design: .rounded))
             .tracking(0.15)
@@ -79,7 +97,7 @@ struct SmallSleepWidgetView: View {
             .lineLimit(1)
             .minimumScaleFactor(0.55)
             .allowsTightening(true)
-            .frame(maxWidth: 58)
+            .frame(maxWidth: 50)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(Capsule().fill(data.scoreTint.opacity(0.18)))

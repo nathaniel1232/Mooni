@@ -3,46 +3,70 @@ import Combine
 import RevenueCat
 
 /// Win-back paywall shown when the user dismisses the main paywall.
-/// 5-minute countdown, 50% off framing, single tap to accept or decline.
+/// Reframes the discount as a "gift" — the user spins a wheel and lands on
+/// the predetermined 80%-off slice. The mechanic is the marketing: it feels
+/// earned, not imposed.
+///
+/// The spin is theatrically random but always lands on the same discount
+/// slice — RevenueCat's `discount` offering is the source of truth, and
+/// nothing here ever changes the price the user is actually charged.
 struct DiscountPaywallView: View {
     let petName: String
     let onAccept: () -> Void
     let onDecline: () -> Void
 
     @StateObject private var manager = SubscriptionManager.shared
+
+    // 5-minute urgency window. Starts ticking only after the wheel is spun
+    // so the user has time to read the gift screen first.
     @State private var secondsRemaining: Int = 5 * 60
     @State private var animateIn = false
     @State private var pulse = false
+
+    // Spin state machine
+    private enum Stage { case gift, spinning, won }
+    @State private var stage: Stage = .gift
+    @State private var wheelRotation: Double = 0
+    @State private var canSpin: Bool = true
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private var minutes: Int { secondsRemaining / 60 }
     private var seconds: Int { secondsRemaining % 60 }
-    private var timeLabel: String {
-        String(format: "%d:%02d", minutes, seconds)
-    }
+    private var timeLabel: String { String(format: "%d:%02d", minutes, seconds) }
 
     /// The real, lower-priced annual package from the `discount` offering in
     /// RevenueCat. If this is nil the dashboard hasn't been set up — we fall
-    /// back to a non-discount CTA so we never show "50% off" while charging
+    /// back to a non-discount CTA so we never show "80% off" while charging
     /// the full price.
     private var discountPackage: Package? { manager.discountAnnualPackage }
     private var regularPackage: Package? { manager.regularAnnualPackage }
     private var purchasePackage: Package? { discountPackage ?? regularPackage }
     private var hasRealDiscount: Bool { discountPackage != nil && regularPackage != nil }
 
+    /// 8-slice wheel labels. Index 0 is the winning slice ("80% OFF"); the
+    /// wheel always lands there. The other slices are framing only.
+    private let slices: [WheelSlice] = [
+        .init(label: "80% OFF", color: MooniColor.warning, isWinner: true),
+        .init(label: "Try again", color: Color(white: 0.18), isWinner: false),
+        .init(label: "10% off", color: MooniColor.accentSoft.opacity(0.6), isWinner: false),
+        .init(label: "Try again", color: Color(white: 0.22), isWinner: false),
+        .init(label: "30% off", color: MooniColor.accentSoft.opacity(0.7), isWinner: false),
+        .init(label: "Try again", color: Color(white: 0.18), isWinner: false),
+        .init(label: "20% off", color: MooniColor.accentSoft.opacity(0.6), isWinner: false),
+        .init(label: "Try again", color: Color(white: 0.22), isWinner: false)
+    ]
+
     var body: some View {
         ZStack {
-            MooniColor.background
-                .ignoresSafeArea()
+            MooniColor.background.ignoresSafeArea()
             StarsBackground(count: 60)
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 18) {
-                    // Top urgency bar
+                    // Hidden close — small + faint, always available.
                     HStack {
                         Spacer()
-                        // Even more hidden close — small, faint, top-trailing
                         Button(action: onDecline) {
                             Image(systemName: "xmark")
                                 .font(.system(size: 9, weight: .regular))
@@ -54,93 +78,37 @@ struct DiscountPaywallView: View {
                     .padding(.top, 12)
                     .padding(.horizontal, 16)
 
-                    // Hero
-                    VStack(spacing: 10) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "gift.fill")
-                                .foregroundColor(MooniColor.warning)
-                            Text("JUST FOR YOU")
-                                .font(MooniFont.caption(13))
-                                .foregroundColor(MooniColor.warning)
-                                .tracking(2)
-                        }
-                        Text(hasRealDiscount ? "Wait — special offer" : "One last chance")
-                            .font(MooniFont.display(38))
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                        Text("\(petName) doesn't want you to leave.")
-                            .font(MooniFont.body(15))
-                            .foregroundColor(.white.opacity(0.85))
-                            .multilineTextAlignment(.center)
-                    }
-                    .opacity(animateIn ? 1 : 0)
-                    .offset(y: animateIn ? 0 : 8)
+                    headerForStage
+                        .opacity(animateIn ? 1 : 0)
+                        .offset(y: animateIn ? 0 : 8)
 
-                    // Countdown card
-                    VStack(spacing: 10) {
-                        Text("Offer expires in")
-                            .font(MooniFont.caption(13))
-                            .foregroundColor(.white.opacity(0.7))
-                        Text(timeLabel)
-                            .font(.system(size: 56, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                            .scaleEffect(pulse ? 1.05 : 1.0)
-                            .shadow(color: MooniColor.warning.opacity(0.5), radius: pulse ? 18 : 8)
-                        ProgressView(value: Double(secondsRemaining), total: 300.0)
-                            .tint(MooniColor.warning)
-                            .padding(.horizontal, 20)
-                    }
-                    .padding(20)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(Color.white.opacity(0.10))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(MooniColor.warning.opacity(0.45), lineWidth: 1.5)
-                    )
-                    .padding(.horizontal, 24)
+                    // The wheel. Stays on screen across all stages — only
+                    // the surrounding copy and CTA change as the user spins.
+                    wheelView
+                        .padding(.top, 4)
+                        .padding(.horizontal, 24)
 
-                    // Price comparison — only show "Was → Now" if a real
-                    // discount package exists, otherwise just show the price.
-                    if hasRealDiscount {
-                        priceComparison
-                            .padding(.horizontal, 24)
-                    } else if let pkg = purchasePackage {
-                        singlePriceCard(pkg)
-                            .padding(.horizontal, 24)
-                    }
-
-                    // Why this offer
-                    VStack(spacing: 10) {
-                        offerRow(icon: "checkmark.seal.fill", text: "Full SleepOwl Pro — every feature unlocked")
-                        offerRow(icon: "pawprint.fill", text: "All pet evolutions & rare forms")
-                        offerRow(icon: "wind", text: "Sleep stories, breathing & 7-day reset")
-                        offerRow(icon: "chart.bar.fill", text: "Advanced analytics & sleep coach")
-                    }
-                    .padding(.horizontal, 24)
-
-                    // CTA
-                    PrimaryButton(title: ctaTitle, icon: "sparkles") {
-                        Task {
-                            if let pkg = purchasePackage {
-                                let success = await manager.purchase(package: pkg)
-                                if success { onAccept() }
-                            } else {
-                                onAccept()
-                            }
+                    Group {
+                        switch stage {
+                        case .gift:
+                            spinCTA
+                        case .spinning:
+                            // Disabled CTA while spinning — just feedback.
+                            spinningCTA
+                        case .won:
+                            wonContent
                         }
                     }
                     .padding(.horizontal, 24)
-                    .padding(.top, 4)
 
                     // Tiny no-thanks
                     Button(action: onDecline) {
-                        Text("No thanks, I don't want to feel rested")
+                        Text("No thanks, I'll skip the gift")
                             .font(MooniFont.caption(11))
                             .foregroundColor(.white.opacity(0.30))
                             .underline()
                     }
+                    .padding(.top, 4)
                     .padding(.bottom, 8)
 
                     Text("Subscriptions auto-renew. Cancel anytime in Settings.")
@@ -157,10 +125,237 @@ struct DiscountPaywallView: View {
             withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) { pulse = true }
         }
         .onReceive(timer) { _ in
-            if secondsRemaining > 0 { secondsRemaining -= 1 }
+            // Only start the urgency clock once the wheel has been spun —
+            // before that, the gift framing should breathe.
+            if stage == .won && secondsRemaining > 0 {
+                secondsRemaining -= 1
+            }
         }
         .task { await manager.loadOfferings() }
     }
+
+    // MARK: - Header per stage
+
+    @ViewBuilder
+    private var headerForStage: some View {
+        switch stage {
+        case .gift:
+            VStack(spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "gift.fill")
+                        .foregroundColor(MooniColor.warning)
+                    Text("A GIFT FROM \(petName.uppercased())")
+                        .font(MooniFont.caption(13))
+                        .foregroundColor(MooniColor.warning)
+                        .tracking(2)
+                }
+                Text("Spin the wheel,\nclaim your discount")
+                    .font(MooniFont.display(34))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                Text("One spin — keep what you land on.")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(.white.opacity(0.85))
+                    .multilineTextAlignment(.center)
+            }
+        case .spinning:
+            VStack(spacing: 10) {
+                Text("Spinning…")
+                    .font(MooniFont.display(34))
+                    .foregroundColor(.white)
+                Text("Hold tight.")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(.white.opacity(0.7))
+            }
+        case .won:
+            VStack(spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .foregroundColor(MooniColor.warning)
+                    Text("YOU WON!")
+                        .font(MooniFont.caption(13))
+                        .foregroundColor(MooniColor.warning)
+                        .tracking(2)
+                    Image(systemName: "sparkles")
+                        .foregroundColor(MooniColor.warning)
+                }
+                Text("80% OFF\nyearly plan")
+                    .font(MooniFont.display(34))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+
+                // Countdown lives inside the won state — the offer only
+                // expires once the user has actually won it.
+                HStack(spacing: 6) {
+                    Image(systemName: "clock.fill")
+                        .foregroundColor(MooniColor.warning)
+                    Text("Locked for \(timeLabel)")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(.white.opacity(0.85))
+                        .scaleEffect(pulse ? 1.04 : 1.0)
+                }
+            }
+        }
+    }
+
+    // MARK: - Wheel
+
+    private var wheelView: some View {
+        ZStack {
+            // Outer dotted halo for celebration feel.
+            Circle()
+                .stroke(MooniColor.warning.opacity(0.45),
+                        style: StrokeStyle(lineWidth: 2, dash: [3, 5]))
+                .frame(width: 280, height: 280)
+                .scaleEffect(pulse ? 1.02 : 0.98)
+
+            // The slices.
+            ZStack {
+                ForEach(Array(slices.enumerated()), id: \.offset) { idx, slice in
+                    WheelSliceShape(index: idx, total: slices.count)
+                        .fill(slice.color)
+                        .overlay(
+                            WheelSliceShape(index: idx, total: slices.count)
+                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                        )
+                    WheelSliceLabel(index: idx, total: slices.count, label: slice.label, isWinner: slice.isWinner)
+                }
+            }
+            .frame(width: 240, height: 240)
+            .clipShape(Circle())
+            .overlay(
+                Circle().stroke(LinearGradient(
+                    colors: [MooniColor.warning, MooniColor.accentSoft],
+                    startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 3)
+            )
+            .rotationEffect(.degrees(wheelRotation))
+
+            // Center cap.
+            ZStack {
+                Circle().fill(Color.black)
+                    .frame(width: 46, height: 46)
+                Circle().stroke(MooniColor.warning, lineWidth: 2)
+                    .frame(width: 46, height: 46)
+                Image(systemName: "gift.fill")
+                    .foregroundColor(MooniColor.warning)
+            }
+
+            // Pointer at 12 o'clock.
+            VStack(spacing: 0) {
+                Triangle()
+                    .fill(MooniColor.warning)
+                    .frame(width: 22, height: 22)
+                    .shadow(color: MooniColor.warning.opacity(0.6), radius: 6)
+                Spacer()
+            }
+            .frame(height: 280)
+        }
+        .frame(width: 280, height: 280)
+    }
+
+    // MARK: - CTAs per stage
+
+    private var spinCTA: some View {
+        VStack(spacing: 10) {
+            Button {
+                spin()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "wand.and.stars")
+                    Text("Spin to win")
+                        .font(MooniFont.title(17))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(
+                    LinearGradient(
+                        colors: [MooniColor.warning, MooniColor.danger],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: MooniColor.warning.opacity(0.5), radius: 14, y: 5)
+                .scaleEffect(pulse ? 1.02 : 1.0)
+            }
+            .disabled(!canSpin)
+
+            Text("Just one spin — limited to first-time users.")
+                .font(MooniFont.caption(11))
+                .foregroundColor(.white.opacity(0.55))
+        }
+    }
+
+    private var spinningCTA: some View {
+        HStack(spacing: 10) {
+            ProgressView().tint(.white)
+            Text("Good luck…")
+                .font(MooniFont.title(15))
+                .foregroundColor(.white.opacity(0.85))
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 54)
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var wonContent: some View {
+        VStack(spacing: 14) {
+            // Price comparison (real prices via StoreKit).
+            if hasRealDiscount {
+                priceComparison
+            } else if let pkg = purchasePackage {
+                singlePriceCard(pkg)
+            }
+
+            // What they get
+            VStack(spacing: 8) {
+                offerRow(icon: "checkmark.seal.fill", text: "Full SleepOwl Pro — every feature unlocked")
+                offerRow(icon: "pawprint.fill", text: "All pet evolutions & rare forms")
+                offerRow(icon: "wind", text: "Sleep stories, breathing & 7-day reset")
+                offerRow(icon: "chart.bar.fill", text: "Advanced analytics & sleep coach")
+            }
+
+            PrimaryButton(title: ctaTitle, icon: "sparkles") {
+                Task {
+                    if let pkg = purchasePackage {
+                        let success = await manager.purchase(package: pkg)
+                        if success { onAccept() }
+                    } else {
+                        onAccept()
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Spin animation
+
+    private func spin() {
+        guard canSpin else { return }
+        canSpin = false
+        stage = .spinning
+
+        // Always lands on slice 0 (the winning 80%-off slice).
+        // 5 full rotations + offset to align slice 0 with the top pointer.
+        let sliceAngle = 360.0 / Double(slices.count)
+        let target = wheelRotation + 360.0 * 5 + (360.0 - sliceAngle * 0.5)
+
+        withAnimation(.easeOut(duration: 3.4)) {
+            wheelRotation = target
+        }
+
+        // Match the animation duration before flipping into the won state.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+            withAnimation(.easeInOut(duration: 0.4)) {
+                stage = .won
+            }
+        }
+    }
+
+    // MARK: - Price views
 
     private var priceComparison: some View {
         HStack(spacing: 12) {
@@ -182,7 +377,7 @@ struct DiscountPaywallView: View {
                 .foregroundColor(MooniColor.warning)
 
             VStack(spacing: 6) {
-                Text("NOW")
+                Text("YOUR PRICE")
                     .font(MooniFont.caption(11))
                     .foregroundColor(MooniColor.warning)
                 Text(discountPriceLabel)
@@ -200,16 +395,11 @@ struct DiscountPaywallView: View {
         }
     }
 
-    /// Localized price string of the regular annual package — comes straight
-    /// from StoreKit so it's always the user's local currency.
     private var originalPriceLabel: String {
         guard let p = regularPackage else { return "" }
         return "\(p.storeProduct.localizedPriceString) / yr"
     }
 
-    /// Localized price of the actual discount package the user will be
-    /// charged. No client-side arithmetic, no formatter mismatch — whatever
-    /// App Store Connect reports is what we display and what we charge.
     private var discountPriceLabel: String {
         guard let p = discountPackage else { return "" }
         return "\(p.storeProduct.localizedPriceString) / yr"
@@ -257,6 +447,78 @@ struct DiscountPaywallView: View {
         .padding(.horizontal, 14)
         .background(Color.white.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+// MARK: - Wheel primitives
+
+private struct WheelSlice {
+    let label: String
+    let color: Color
+    let isWinner: Bool
+}
+
+/// Pie slice for the discount wheel. `index` 0 is centred at the top so
+/// the winning slice aligns perfectly with the 12-o'clock pointer when the
+/// rotation lands on a multiple of 360°.
+private struct WheelSliceShape: Shape {
+    let index: Int
+    let total: Int
+
+    func path(in rect: CGRect) -> Path {
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        let sliceAngle = 360.0 / Double(total)
+        // -90° puts slice 0 centred at the top (pointer).
+        let start = Angle.degrees(-90 - sliceAngle / 2 + Double(index) * sliceAngle)
+        let end = Angle.degrees(start.degrees + sliceAngle)
+
+        var p = Path()
+        p.move(to: center)
+        p.addArc(center: center, radius: radius, startAngle: start, endAngle: end, clockwise: false)
+        p.closeSubpath()
+        return p
+    }
+}
+
+private struct WheelSliceLabel: View {
+    let index: Int
+    let total: Int
+    let label: String
+    let isWinner: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+            let radius = min(geo.size.width, geo.size.height) / 2
+            let sliceAngle = 360.0 / Double(total)
+            let mid = -90.0 + Double(index) * sliceAngle
+            let r = radius * 0.62
+            let rad = mid * .pi / 180
+            let x = center.x + CGFloat(cos(rad)) * r
+            let y = center.y + CGFloat(sin(rad)) * r
+
+            Text(label)
+                .font(.system(size: isWinner ? 12 : 10,
+                              weight: isWinner ? .heavy : .semibold,
+                              design: .rounded))
+                .foregroundColor(isWinner ? .black : .white.opacity(0.9))
+                .multilineTextAlignment(.center)
+                .frame(width: 70)
+                .position(x: x, y: y)
+                .rotationEffect(.degrees(mid + 90), anchor: .center)
+        }
+    }
+}
+
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.closeSubpath()
+        return p
     }
 }
 

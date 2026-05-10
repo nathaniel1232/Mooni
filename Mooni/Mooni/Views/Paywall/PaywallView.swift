@@ -133,6 +133,16 @@ struct PaywallView: View {
                     .opacity(animateIn ? 1 : 0)
                     .animation(.easeOut(duration: 0.5).delay(0.35), value: animateIn)
 
+                // "Here's how the trial works" timeline. People convert
+                // dramatically better when they understand what's coming
+                // (and what's free) on each day.
+                howItWorks
+                    .padding(.top, 18)
+                    .padding(.horizontal, 20)
+                    .offset(y: animateIn ? 0 : 16)
+                    .opacity(animateIn ? 1 : 0)
+                    .animation(.easeOut(duration: 0.5).delay(0.45), value: animateIn)
+
                 // Error
                 if let error = manager.errorMessage {
                     Text(error)
@@ -211,6 +221,96 @@ struct PaywallView: View {
         .padding(.horizontal, 12)
         .background(Color.white.opacity(0.07))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: - How it works (trial timeline)
+
+    private var howItWorks: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar.badge.clock")
+                    .foregroundColor(MooniColor.accent)
+                Text("How your plan works")
+                    .font(MooniFont.title(15))
+                    .foregroundColor(MooniColor.textPrimary)
+            }
+
+            VStack(spacing: 0) {
+                timelineRow(
+                    icon: "lock.open.fill",
+                    color: MooniColor.success,
+                    title: "Today",
+                    detail: "Full access unlocks. Build your first wind-down quest with \(selectedAnnual ? "the yearly" : "weekly") plan.",
+                    isFirst: true,
+                    isLast: false
+                )
+                timelineRow(
+                    icon: "bell.badge.fill",
+                    color: MooniColor.accent,
+                    title: "Day 5",
+                    detail: "We'll remind you before your billing date so there are no surprises.",
+                    isFirst: false,
+                    isLast: false
+                )
+                timelineRow(
+                    icon: "sparkles",
+                    color: MooniColor.warning,
+                    title: selectedAnnual ? "Day 7" : "Every week",
+                    detail: selectedAnnual
+                        ? "Your yearly plan starts — locked in at the best price."
+                        : "Renews weekly. Cancel anytime in 2 taps.",
+                    isFirst: false,
+                    isLast: true
+                )
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+            )
+        }
+    }
+
+    private var selectedAnnual: Bool {
+        selectedPackage?.packageType == .annual
+    }
+
+    private func timelineRow(icon: String, color: Color, title: String, detail: String,
+                             isFirst: Bool, isLast: Bool) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(isFirst ? Color.clear : Color.white.opacity(0.15))
+                    .frame(width: 1.5, height: 8)
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.18))
+                        .frame(width: 30, height: 30)
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(color)
+                }
+                Rectangle()
+                    .fill(isLast ? Color.clear : Color.white.opacity(0.15))
+                    .frame(width: 1.5)
+                    .frame(maxHeight: .infinity)
+            }
+            .frame(width: 30)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(MooniFont.title(13))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text(detail)
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 4)
+            Spacer(minLength: 0)
+        }
     }
 
     // MARK: - Plan Picker
