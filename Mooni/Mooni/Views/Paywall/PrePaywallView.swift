@@ -48,10 +48,12 @@ struct PrePaywallView: View {
                 .ignoresSafeArea()
             StarsBackground(count: 80)
 
-            VStack {
+            VStack(spacing: 0) {
                 phaseProgressBar
                     .padding(.horizontal, 24)
                     .padding(.top, 16)
+                    .padding(.bottom, 28)   // breathing room so the pet halo
+                                            // can never crowd the bar above it.
 
                 Spacer(minLength: 0)
 
@@ -412,14 +414,29 @@ private struct BadSleepStage: View {
     }
 
     private var badStat3: some View {
-        VStack(spacing: 12) {
-            Text("\(petName) feels it too.")
-                .font(MooniFont.display(34))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-            Text("Tired you = tired \(petName). Stuck together until you decide to change tonight.")
-                .font(MooniFont.body(16))
-                .foregroundColor(.white.opacity(0.85))
+        VStack(spacing: 16) {
+            VStack(spacing: 6) {
+                Text("\(petName) feels it too.")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                Text("Tired you = tired \(petName).")
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundColor(.white.opacity(0.75))
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(spacing: 8) {
+                statChip(icon: "battery.25", text: "−41% daily focus")
+                statChip(icon: "exclamationmark.triangle.fill", text: "2.3× sick-day risk")
+                statChip(icon: "calendar.badge.exclamationmark", text: "\(max(profile.daysLostPerYear, 18)) wasted days/year")
+            }
+            .opacity(bodyIn ? 1 : 0)
+            .offset(y: bodyIn ? 0 : 8)
+
+            Text("Every night together is a choice. \(petName) is rooting for the next one.")
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundColor(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 12)
                 .opacity(bodyIn ? 1 : 0)
@@ -427,20 +444,27 @@ private struct BadSleepStage: View {
     }
 
     private func statChip(icon: String, text: String) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             Image(systemName: icon)
-                .foregroundColor(Color.red.opacity(0.85))
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Color.red.opacity(0.95))
+                .frame(width: 36, height: 36)
+                .background(Color.red.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             Text(text)
-                .font(MooniFont.title(15))
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
                 .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
         .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color.red.opacity(0.32), lineWidth: 1)
         )
     }
@@ -562,30 +586,83 @@ private struct GoodSleepStage: View {
     }
 
     private var goodStat3: some View {
-        VStack(spacing: 14) {
-            Text("This is your future")
-                .font(MooniFont.display(28))
-                .foregroundColor(.white)
-            Text("if you commit to better sleep tonight.")
-                .font(MooniFont.body(16))
-                .foregroundColor(.white.opacity(0.92))
-                .multilineTextAlignment(.center)
+        VStack(spacing: 18) {
+            VStack(spacing: 6) {
+                Text("This is your future")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                Text("if you commit tonight.")
+                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(spacing: 8) {
+                futureRow(day: "Tonight",   text: "Wind-down + your soundscape", icon: "moon.stars.fill")
+                futureRow(day: "Day 3",     text: "First night of unbroken sleep", icon: "sparkles")
+                futureRow(day: "Day 7",     text: "Wake before the alarm — rested", icon: "sun.max.fill")
+                futureRow(day: "Day 30",    text: "Energy, mood & focus rebuilt",  icon: "bolt.fill")
+            }
+            .padding(.top, 4)
+            .opacity(bodyIn ? 1 : 0)
+            .offset(y: bodyIn ? 0 : 10)
         }
     }
 
-    private func goodChip(icon: String, text: String) -> some View {
-        HStack(spacing: 8) {
+    private func futureRow(day: String, text: String, icon: String) -> some View {
+        HStack(spacing: 12) {
             Image(systemName: icon)
-                .foregroundColor(MooniColor.success)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(MooniColor.accentSoft)
+                .frame(width: 32, height: 32)
+                .background(MooniColor.accentSoft.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+            Text(day)
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(.white.opacity(0.55))
+                .tracking(1.4)
+                .frame(width: 64, alignment: .leading)
+
             Text(text)
-                .font(MooniFont.title(14))
+                .font(.system(size: 14, weight: .medium, design: .rounded))
                 .foregroundColor(.white)
+            Spacer()
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(Color.white.opacity(0.10))
-        .clipShape(Capsule())
-        .overlay(Capsule().stroke(Color.white.opacity(0.20), lineWidth: 1))
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.06))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func goodChip(icon: String, text: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(MooniColor.success)
+                .frame(width: 36, height: 36)
+                .background(MooniColor.success.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            Text(text)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(Color.white.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(MooniColor.success.opacity(0.32), lineWidth: 1)
+        )
     }
 
     private func evolutionChip(label: String, mood: Pet.Mood) -> some View {
