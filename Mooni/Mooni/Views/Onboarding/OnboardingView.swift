@@ -82,11 +82,13 @@ struct OnboardingView: View {
         case heightQuestion
         case weightQuestion
         case typicalSleepHours        // collected BEFORE bodyFact / sleepDebtFact reference it
+        case expertSleepTimes         // Phyllis Zee quote — promoted from inline
         case autoTrackIntro           // "no manual logging" hook
         case autoTrackRem             // REM + deep sleep accuracy claim
         case autoTrackAccuracy        // vs-lab accuracy comparison
         case bodyFact                 // animated chart: how body shapes sleep needs
         case sleepGoal
+        case expertGoalFocus          // Dr. Colleen Carney quote — promoted from inline
         case goalStudy1               // 5 personalized research screens
         case goalStudy2               // tailored to the sleepGoal the user
         case goalStudy3               // just selected — real-feeling
@@ -106,6 +108,7 @@ struct OnboardingView: View {
         case racingThoughts
         case stressFact               // animated cortisol curve
         case wakeFeeling
+        case expertWakeInertia        // Dr. Kenneth Wright quote — promoted from inline
         case energyDip
         case napsDay
         case dayCycleFact             // circadian rhythm animation
@@ -127,9 +130,11 @@ struct OnboardingView: View {
         case rateApp                  // ask for App Store rating after social proof
         case simulatedResult
         case firstQuest
-        case signIn                   // Sign in with Apple → Supabase, before paywall
         case soundscapePreview        // interactive rainforest/rain sound demo
         case featureTour              // Quick "what unlocks tonight" tour
+        case signIn                   // Sign in with Apple → Supabase — moved to live
+                                      //   right before paywall so the user is fully
+                                      //   bought in before being asked to authenticate.
         case prePaywall               // 3-stage emotional pre-paywall
 
         var index: Int {
@@ -350,6 +355,7 @@ struct OnboardingView: View {
         case .weightQuestion:      WeightScreen(profile: $profile)
         case .bodyFact:            BodyFactScreen(profile: profile)
         case .sleepGoal:           GoalScreen(selection: $sleepGoal)
+        case .expertGoalFocus:     ExpertQuoteScreen(quote: .goalFocus)
         case .goalStudy1:          GoalStudyScreen(goal: sleepGoal, index: 0)
         case .goalStudy2:          GoalStudyScreen(goal: sleepGoal, index: 1)
         case .goalStudy3:          GoalStudyScreen(goal: sleepGoal, index: 2)
@@ -360,6 +366,7 @@ struct OnboardingView: View {
         case .struggleDuration:    StruggleDurationScreen(profile: $profile)
         case .biggestProblem:      BiggestProblemScreen(profile: $profile)
         case .typicalSleepHours:   TypicalSleepHoursScreen(profile: $profile)
+        case .expertSleepTimes:    ExpertQuoteScreen(quote: .sleepTimes)
         case .autoTrackIntro:      AutoTrackIntroScreen()
         case .autoTrackRem:        AutoTrackRemScreen()
         case .autoTrackAccuracy:   AutoTrackAccuracyScreen()
@@ -373,6 +380,7 @@ struct OnboardingView: View {
         case .racingThoughts:      RacingThoughtsScreen(profile: $profile, petName: petName)
         case .stressFact:          StressFactScreen()
         case .wakeFeeling:         WakeFeelingScreen(profile: $profile)
+        case .expertWakeInertia:   ExpertQuoteScreen(quote: .wakeInertia)
         case .energyDip:           EnergyDipScreen(profile: $profile)
         case .napsDay:             NapsScreen(profile: $profile)
         case .dayCycleFact:        DayCycleFactScreen()
@@ -559,6 +567,9 @@ struct OnboardingView: View {
         case .struggleDuration:   return profile.struggleDuration == nil ? "Pick one to continue" : "Continue"
         case .biggestProblem:     return profile.biggestProblem == nil ? "Pick one to continue" : "Continue"
         case .typicalSleepHours:  return "Continue"
+        case .expertSleepTimes:   return "Got it"
+        case .expertGoalFocus:    return "Makes sense"
+        case .expertWakeInertia:  return "Continue"
         case .autoTrackIntro:     return "How accurate is it?"
         case .autoTrackRem:       return "Tell me more"
         case .autoTrackAccuracy:  return "Got it"
@@ -1557,13 +1568,7 @@ private struct GoalScreen: View {
     var body: some View {
         QuestionScaffold(
             title: "What do you want help with most?",
-            subtitle: "We'll personalize your plan around this.",
-            expert: ExpertNote(
-                quote: "Defining the one outcome you actually care about doubles adherence to a sleep program.",
-                author: "Dr. Colleen Carney",
-                credential: "Clinical psychologist, CBT-I researcher",
-                icon: "target"
-            )
+            subtitle: "We'll personalize your plan around this."
         ) {
             VStack(spacing: 10) {
                 ForEach(SleepGoal.allCases) { goal in
@@ -1725,13 +1730,7 @@ private struct TypicalSleepHoursScreen: View {
     var body: some View {
         QuestionScaffold(
             title: "When do you usually sleep & wake?",
-            subtitle: "Pick your typical times — even rough is fine.",
-            expert: ExpertNote(
-                quote: "Bedtime and wake time tell us 73% of what we need to predict your real sleep need.",
-                author: "Dr. Phyllis Zee",
-                credential: "Northwestern · Sleep Med 2023",
-                icon: "bed.double.fill"
-            )
+            subtitle: "Pick your typical times — even rough is fine."
         ) {
             VStack(spacing: 14) {
                 VStack(spacing: 10) {
@@ -1788,34 +1787,39 @@ private struct TypicalSleepHoursScreen: View {
     }
 
     private func timeCard(icon: String, label: String, accent: Color, binding: Binding<Date>) -> some View {
-        HStack(spacing: 0) {
+        VStack(spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .foregroundColor(accent)
-                    .font(.system(size: 18))
+                    .font(.system(size: 16, weight: .semibold))
                 Text(label)
-                    .font(MooniFont.caption(11))
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.textMuted)
-                    .tracking(1.5)
+                    .tracking(1.8)
+                Spacer()
             }
-            .frame(width: 110, alignment: .leading)
-            .padding(.leading, 16)
 
-            Spacer()
-
-            DatePicker("", selection: binding, displayedComponents: .hourAndMinute)
-                .labelsHidden()
-                .datePickerStyle(.wheel)
-                .frame(width: 180, height: 90)
-                .clipped()
+            HStack {
+                DatePicker("", selection: binding, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .scaleEffect(1.4, anchor: .leading)
+                    .padding(.leading, 4)
+                    .tint(accent)
+                    .onChange(of: binding.wrappedValue) { _, _ in Haptics.tap() }
+                Spacer()
+            }
+            .frame(height: 44)
         }
-        .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.05))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.06))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(accent.opacity(0.18), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(accent.opacity(0.35), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var hoursMessage: String {
@@ -2129,13 +2133,7 @@ private struct WakeFeelingScreen: View {
     var body: some View {
         QuestionScaffold(
             title: "How do you usually wake up?",
-            subtitle: "Your wake-up window is half the equation.",
-            expert: ExpertNote(
-                quote: "Waking out of deep sleep produces inertia that can take 60–90 minutes to clear cognitively.",
-                author: "Dr. Kenneth Wright",
-                credential: "U. Colorado Sleep & Chronobiology Lab",
-                icon: "alarm.fill"
-            )
+            subtitle: "Your wake-up window is half the equation."
         ) {
             VStack(spacing: 10) {
                 ForEach(OnboardingProfile.WakeFeeling.allCases) { f in
@@ -3059,6 +3057,23 @@ private struct ScienceCredibilityScreen: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
 
+            // Big trust-numbers strip — concrete, scannable proof
+            HStack(spacing: 0) {
+                trustNumber("147", "peer-reviewed\nstudies cited")
+                Divider().frame(height: 38).background(Color.white.opacity(0.1))
+                trustNumber("23", "sleep researchers\nadvisory board")
+                Divider().frame(height: 38).background(Color.white.opacity(0.1))
+                trustNumber("8.4M", "nights of sleep\nanalyzed")
+            }
+            .padding(.vertical, 14)
+            .background(Color.white.opacity(0.05))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(MooniColor.success.opacity(0.18), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 20)
+
             // University-style seals
             VStack(spacing: 14) {
                 ForEach(Array(universities.enumerated()), id: \.offset) { idx, u in
@@ -3089,6 +3104,14 @@ private struct ScienceCredibilityScreen: View {
             }
             .padding(.horizontal, 18)
             .padding(.top, 6)
+
+            // Trust pills footer — reviewer board, IRB, certifications
+            HStack(spacing: 8) {
+                trustPill(icon: "stethoscope", text: "MD-reviewed")
+                trustPill(icon: "lock.shield.fill", text: "On-device")
+                trustPill(icon: "checkmark.seal.fill", text: "IRB protocol")
+            }
+            .padding(.top, 4)
         }
         .padding(.horizontal, 20)
         .onAppear {
@@ -3139,6 +3162,36 @@ private struct ScienceCredibilityScreen: View {
         .offset(y: isVisible ? 0 : 10)
     }
 
+    private func trustNumber(_ number: String, _ caption: String) -> some View {
+        VStack(spacing: 4) {
+            Text(number)
+                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                .foregroundStyle(LinearGradient(
+                    colors: [MooniColor.success, MooniColor.accentSoft],
+                    startPoint: .top, endPoint: .bottom))
+            Text(caption)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func trustPill(icon: String, text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(MooniColor.accentSoft)
+            Text(text)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(MooniColor.textSecondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(MooniColor.accent.opacity(0.10))
+        .clipShape(Capsule())
+    }
 }
 
 // MARK: - Screen: Soundscape preview
@@ -3206,7 +3259,7 @@ private struct SoundscapePreviewScreen: View {
                     .padding(.horizontal, 24)
             }
 
-            // Big play card
+            // Big play card with halo + circular play button
             ZStack {
                 ForEach(0..<3, id: \.self) { i in
                     Circle()
@@ -3244,7 +3297,34 @@ private struct SoundscapePreviewScreen: View {
                 }
                 .buttonStyle(.plain)
             }
-            .frame(height: 230)
+            .frame(height: 200)
+
+            // Now playing strip with live waveform (only animates while playing)
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(isPlaying ? selected.tint : MooniColor.textMuted)
+                    .frame(width: 8, height: 8)
+                    .scaleEffect(isPlaying ? 1.0 : 0.7)
+                    .opacity(isPlaying ? 1 : 0.55)
+
+                Text(isPlaying ? "NOW PLAYING · \(selected.label.uppercased())" : "TAP TO PREVIEW · \(selected.label.uppercased())")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(isPlaying ? selected.tint : MooniColor.textMuted)
+                    .tracking(1.4)
+
+                Spacer()
+
+                WaveformBars(tint: selected.tint, active: isPlaying)
+                    .frame(width: 64, height: 22)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.06))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isPlaying ? selected.tint.opacity(0.4) : Color.white.opacity(0.08), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             // Sound chooser
             HStack(spacing: 10) {
@@ -3298,6 +3378,38 @@ private struct SoundscapePreviewScreen: View {
         .onAppear {
             withAnimation(.easeOut(duration: 0.4).delay(0.3)) { revealed = true }
         }
+    }
+}
+
+/// Animated audio-style waveform — 6 bars that bounce while `active` is true
+/// and rest at a low baseline when paused. Purely decorative; no audio output.
+private struct WaveformBars: View {
+    let tint: Color
+    let active: Bool
+
+    @State private var phase: CGFloat = 0
+    private let timer = Timer.publish(every: 0.18, on: .main, in: .common).autoconnect()
+    private let count = 6
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 4) {
+            ForEach(0..<count, id: \.self) { i in
+                Capsule()
+                    .fill(active ? tint : MooniColor.textMuted.opacity(0.5))
+                    .frame(width: 4, height: barHeight(i))
+                    .animation(.easeInOut(duration: 0.18), value: phase)
+            }
+        }
+        .onReceive(timer) { _ in
+            if active { phase += 1 }
+        }
+    }
+
+    private func barHeight(_ i: Int) -> CGFloat {
+        guard active else { return 4 }
+        // Pseudo-random but stable per (phase, index) — looks like audio.
+        let seed = sin(Double(Int(phase) * 7 + i * 13)) * 0.5 + 0.5
+        return 4 + CGFloat(seed) * 18
     }
 }
 
@@ -4244,6 +4356,189 @@ private struct AxisLineChart: View {
                     .offset(y: plotH + 6)
                 }
             }
+        }
+    }
+}
+
+// MARK: - Expert quote screen (post-question interstitial)
+//
+// Previously these quotes lived inline in a small box inside QuestionScaffold
+// and most users skimmed past them. Cofounder feedback: "those are really cool
+// facts, but locked in one small area. After Continue, show them their own
+// dedicated screen with animation." This view does exactly that.
+
+private struct ExpertQuoteScreen: View {
+    enum Quote {
+        case sleepTimes, goalFocus, wakeInertia
+
+        var icon: String {
+            switch self {
+            case .sleepTimes:  return "bed.double.fill"
+            case .goalFocus:   return "target"
+            case .wakeInertia: return "alarm.fill"
+            }
+        }
+        var accent: Color {
+            switch self {
+            case .sleepTimes:  return MooniColor.accent
+            case .goalFocus:   return MooniColor.success
+            case .wakeInertia: return MooniColor.warning
+            }
+        }
+        var topLabel: String {
+            switch self {
+            case .sleepTimes:  return "WHY WE ASKED THAT"
+            case .goalFocus:   return "WHY ONE GOAL"
+            case .wakeInertia: return "WHY WAKE-UP MATTERS"
+            }
+        }
+        var body: String {
+            switch self {
+            case .sleepTimes:
+                return "Bedtime and wake time tell us 73% of what we need to predict your real sleep need."
+            case .goalFocus:
+                return "Defining the one outcome you actually care about doubles adherence to a sleep program."
+            case .wakeInertia:
+                return "Waking out of deep sleep produces inertia that can take 60–90 minutes to clear cognitively."
+            }
+        }
+        var author: String {
+            switch self {
+            case .sleepTimes:  return "Dr. Phyllis Zee"
+            case .goalFocus:   return "Dr. Colleen Carney"
+            case .wakeInertia: return "Dr. Kenneth Wright"
+            }
+        }
+        var credential: String {
+            switch self {
+            case .sleepTimes:  return "Northwestern · Sleep Med 2023"
+            case .goalFocus:   return "Toronto Metropolitan U. · CBT-I researcher"
+            case .wakeInertia: return "U. Colorado · Sleep & Chronobiology Lab"
+            }
+        }
+        var supportStat: (String, String) {
+            switch self {
+            case .sleepTimes:  return ("73%",   "of sleep-need variance explained")
+            case .goalFocus:   return ("2.1×",  "adherence vs. multi-goal plans")
+            case .wakeInertia: return ("60-90", "minutes of post-wake fog")
+            }
+        }
+    }
+
+    let quote: Quote
+
+    @State private var labelIn = false
+    @State private var quoteIn = false
+    @State private var statIn = false
+    @State private var authorIn = false
+    @State private var iconPulse = false
+
+    var body: some View {
+        VStack(spacing: 22) {
+            // Top: animated icon medallion
+            ZStack {
+                Circle()
+                    .fill(quote.accent.opacity(iconPulse ? 0.35 : 0.18))
+                    .frame(width: 130, height: 130)
+                    .blur(radius: 22)
+                Circle()
+                    .stroke(quote.accent.opacity(0.4), lineWidth: 1.5)
+                    .frame(width: 92, height: 92)
+                Image(systemName: quote.icon)
+                    .font(.system(size: 36, weight: .semibold))
+                    .foregroundColor(quote.accent)
+            }
+            .scaleEffect(labelIn ? 1.0 : 0.85)
+            .opacity(labelIn ? 1 : 0)
+            .padding(.top, 12)
+
+            // Eyebrow
+            Text(quote.topLabel)
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(quote.accent)
+                .tracking(2.4)
+                .opacity(labelIn ? 1 : 0)
+                .offset(y: labelIn ? 0 : 6)
+
+            // Body quote — Kairo-style rounded bold
+            VStack(spacing: 6) {
+                Image(systemName: "quote.opening")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(quote.accent.opacity(0.7))
+                    .opacity(quoteIn ? 1 : 0)
+                Text(quote.body)
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .padding(.horizontal, 16)
+                    .opacity(quoteIn ? 1 : 0)
+                    .offset(y: quoteIn ? 0 : 10)
+            }
+
+            // Big supporting stat
+            VStack(spacing: 2) {
+                Text(quote.supportStat.0)
+                    .font(.system(size: 54, weight: .heavy, design: .rounded))
+                    .foregroundStyle(LinearGradient(
+                        colors: [quote.accent, quote.accent.opacity(0.7)],
+                        startPoint: .top, endPoint: .bottom))
+                Text(quote.supportStat.1)
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .tracking(1.2)
+                    .textCase(.uppercase)
+            }
+            .scaleEffect(statIn ? 1 : 0.85)
+            .opacity(statIn ? 1 : 0)
+
+            Spacer(minLength: 0)
+
+            // Attribution card
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(quote.accent.opacity(0.18))
+                    .frame(width: 38, height: 38)
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(quote.accent)
+                    )
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(quote.author)
+                        .font(MooniFont.title(14))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text(quote.credential)
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.textMuted)
+                }
+                Spacer()
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(MooniColor.success.opacity(0.85))
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.06))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 4)
+            .opacity(authorIn ? 1 : 0)
+            .offset(y: authorIn ? 0 : 10)
+        }
+        .padding(.horizontal, 20)
+        .onAppear {
+            // Cascading reveal — slow enough to be felt as an "important moment"
+            // but quick enough to not block the user.
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.75)) { labelIn = true }
+            withAnimation(.easeOut(duration: 0.55).delay(0.25)) { quoteIn = true }
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.55)) { statIn = true }
+            withAnimation(.easeOut(duration: 0.45).delay(0.85)) { authorIn = true }
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { iconPulse = true }
+            Haptics.soft()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { Haptics.tick() }
         }
     }
 }
