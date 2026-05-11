@@ -231,11 +231,16 @@ struct MainTabView: View {
         .task {
             appState.autoEndStaleSleepIfNeeded()
             await appState.importHealthKitSleep()
+            appState.autoSeedLastNightIfMissing()
+            // Start HealthKit sleep observer so new Watch / Health data
+            // triggers an automatic re-import without user action.
+            HealthKitManager.shared.startSleepObserverIfNeeded()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 appState.autoEndStaleSleepIfNeeded()
                 Task { await appState.importHealthKitSleep() }
+                appState.autoSeedLastNightIfMissing()
             }
         }
     }

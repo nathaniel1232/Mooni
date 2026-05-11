@@ -207,6 +207,18 @@ final class AppState: ObservableObject {
                 self?.handleConfirmedWake()
             }
         }
+
+        // Re-import sleep data whenever HealthKit notifies us of new samples
+        // (fires when the Watch syncs, or any other sleep source writes to Health).
+        NotificationCenter.default.addObserver(
+            forName: HealthKitManager.sleepDataUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.importHealthKitSleep()
+            }
+        }
     }
 
     private func handleConfirmedWake() {
@@ -765,6 +777,49 @@ final class AppState: ObservableObject {
         showMorningCheckIn = false
         WidgetSnapshotPublisher.publish(entry)
         return entry
+    }
+
+    // MARK: - Passive sleep detection
+
+    /// Last-resort fallback: if no sleep entry exists for last night AND the
+    /// app is opening during morning hours, seed an estimated entry from the
+    /// user's target schedule. Marks it as an activity-estimate so HealthKit
+    /// data can still replace it later. Never overwrites existing entries.
+    func autoSeedLastNightIfMissing() {
+        let now = Date()
+        let cal = Calendar.current
+        let hour = cal.component(.hour, from: now)
+        // Only attempt during morning open (4 AM – 2 PM local time).
+        guard hour >= 4 && hour < 14 else { return }
+
+        let todayKey = now.dayKey
+        guard !entries.contains(where: { $0.dayKey == todayKey }) else { return }
+
+        // Build an estimated bed/wake from the user's target times.
+        let bedComps  = cal.dateComponents([.hour, .minute], from: targetBedtime)
+        let wakeComps = cal.dateComponents([.hour, .minute], from: targetWakeTime)
+        guard let bH = bedComps.hour, let bM = bedComps.minute,
+              let wH = wakeComps.hour, let wM = wakeComps.minute else { return }
+
+        var estimatedBed = cal.date(bySettingHour: bH, minute: bM, second: 0, of: now) ?? now
+        if estimatedBed > now {
+            estimatedBed = cal.date(byAdding: .day, value: -1, to: estimatedBed) ?? estimatedBed
+        }
+        var estimatedWake = cal.date(bySettingHour: wH, minute: wM, second: 0, of: now) ?? now
+        if estimatedWake <= estimatedBed {
+            estimatedWake = cal.date(byAdding: .day, value: 1, to: estimatedWake) ?? estimatedWake
+        }
+
+        let duration = estimatedWake.timeIntervalSince(estimatedBed)
+        // Sanity: 2 h – 14 h and wake must already be in the past.
+        guard duration >= 2 * 3600, duration <= 14 * 3600,
+              estimatedWake <= now.addingTimeInterval(2 * 3600) else { return }
+
+        insertImportedIntervals(
+            [SleepInterval(start: estimatedBed, end: estimatedWake)],
+            source: .appActivityEstimate,
+            sourceLabel: "Auto-estimated from your schedule"
+        )
     }
 
     // MARK: - HealthKit import

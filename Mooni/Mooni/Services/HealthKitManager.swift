@@ -59,6 +59,11 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
+    /// Posted when new sleep data is written to HealthKit (observer fires).
+    /// AppState listens to this and re-imports. Works in foreground; with the
+    /// healthkit.background-delivery entitlement, iOS may also deliver it in background.
+    nonisolated static let sleepDataUpdated = Notification.Name("mooni.healthKit.sleepDataUpdated")
+
     /// Prompts the system permission sheet. Returns true if the user has granted (or already granted) read access.
     @discardableResult
     func requestAuthorization() async -> Bool {
@@ -71,12 +76,30 @@ final class HealthKitManager: ObservableObject {
             didCompleteConnection = true
             refreshAuthState()
             objectWillChange.send()
+            startSleepObserverIfNeeded()
             return true
         } catch {
             lastImportError = error.localizedDescription
             refreshAuthState()
             return false
         }
+    }
+
+    /// Sets up an HKObserverQuery so we hear about new sleep samples the moment
+    /// they're written — e.g. when the Watch syncs overnight data in the morning.
+    /// Calling multiple times is safe; the store deduplicates observer queries.
+    func startSleepObserverIfNeeded() {
+        guard isAvailable, let type = sleepType else { return }
+
+        // Enable background delivery (hourly cadence; sleep data arrives once per night).
+        store.enableBackgroundDelivery(for: type, frequency: .hourly) { _, _ in }
+
+        let query = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completionHandler, error in
+            guard error == nil, self != nil else { completionHandler(); return }
+            NotificationCenter.default.post(name: HealthKitManager.sleepDataUpdated, object: nil)
+            completionHandler()
+        }
+        store.execute(query)
     }
 
     /// Pulls sleep samples from the last `days` days and groups them into per-night bedtime/wakeTime ranges.
