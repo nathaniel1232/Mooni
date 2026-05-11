@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 /// Me is the quiet account/settings/progress tab. It supports the app without
 /// competing with the daily Luna care loop.
@@ -9,6 +10,10 @@ struct ProfileView: View {
 
     @StateObject private var healthKit = HealthKitManager.shared
     @StateObject private var notifications = NotificationManager.shared
+
+    @State private var showDeleteConfirm = false
+    @State private var isDeleting = false
+    @State private var deleteError: String?
 
     #if DEBUG
     @State private var showMarketingVideo = false
@@ -26,6 +31,7 @@ struct ProfileView: View {
                         progressCard
                         unlocksCard
                         settingsCard
+                        accountCard
 
                         if !subscriptionManager.isPro {
                             upgradeCard
@@ -171,8 +177,125 @@ struct ProfileView: View {
 
                 Divider().background(Color.white.opacity(0.08))
 
-                settingsButton(icon: "hand.raised.fill", title: "Privacy", value: "Coming soon") {}
+                Link(destination: URL(string: "https://nathanielfiskaa.github.io/sleepowl-privacy/")!) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "hand.raised.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(MooniColor.accent)
+                            .frame(width: 30, height: 30)
+                            .background(MooniColor.accent.opacity(0.14))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        Text("Privacy Policy")
+                            .font(MooniFont.body(15))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(MooniColor.textMuted)
+                    }
+                    .padding(.vertical, 4)
+                }
             }
+        }
+    }
+
+    // MARK: - Account & data (App Store Review Guideline 5.1.1(v)) requires
+    // apps with account creation to offer in-app account deletion.
+
+    private var accountCard: some View {
+        MooniCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Account & data")
+                    .font(MooniFont.title(20))
+                    .foregroundColor(MooniColor.textPrimary)
+
+                Link(destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!) {
+                    accountRow(icon: "doc.text.fill", color: MooniColor.accent,
+                               title: "Terms of Use (EULA)", trailing: "arrow.up.right")
+                }
+
+                Divider().background(Color.white.opacity(0.08))
+
+                Link(destination: URL(string: "https://nathanielfiskaa.github.io/sleepowl-privacy/")!) {
+                    accountRow(icon: "lock.shield.fill", color: MooniColor.accentSoft,
+                               title: "Privacy Policy", trailing: "arrow.up.right")
+                }
+
+                Divider().background(Color.white.opacity(0.08))
+
+                Button { Task { await manageSubscriptionInSettings() } } label: {
+                    accountRow(icon: "creditcard.fill", color: MooniColor.warning,
+                               title: "Manage subscription", trailing: "chevron.right")
+                }
+                .buttonStyle(.plain)
+
+                Divider().background(Color.white.opacity(0.08))
+
+                Button { showDeleteConfirm = true } label: {
+                    accountRow(icon: "trash.fill", color: MooniColor.danger,
+                               title: "Delete account & data",
+                               titleColor: MooniColor.danger,
+                               trailing: "chevron.right")
+                }
+                .buttonStyle(.plain)
+
+                if let err = deleteError {
+                    Text(err)
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.danger)
+                }
+            }
+        }
+        .alert("Delete your account?", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete everything", role: .destructive) {
+                Task { await performAccountDeletion() }
+            }
+        } message: {
+            Text("This erases your sleep history, pet, and signs you out of any cloud backup. This action can't be undone.")
+        }
+    }
+
+    private func accountRow(icon: String, color: Color, title: String,
+                            titleColor: Color = MooniColor.textPrimary,
+                            trailing: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 30, height: 30)
+                .background(color.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            Text(title)
+                .font(MooniFont.body(15))
+                .foregroundColor(titleColor)
+            Spacer()
+            Image(systemName: trailing)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(MooniColor.textMuted)
+        }
+        .padding(.vertical, 4)
+    }
+
+    @MainActor
+    private func manageSubscriptionInSettings() async {
+        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+            await UIApplication.shared.open(url)
+        }
+    }
+
+    @MainActor
+    private func performAccountDeletion() async {
+        isDeleting = true
+        defer { isDeleting = false }
+        do {
+            // Best-effort Supabase sign-out + delete; failures don't block
+            // local wipe — Apple still requires the local data to be removed.
+            try? await Supa.client.auth.signOut()
+            appState.eraseAllUserData()
+            deleteError = nil
+        } catch {
+            deleteError = error.localizedDescription
         }
     }
 

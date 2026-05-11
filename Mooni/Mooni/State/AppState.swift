@@ -942,6 +942,39 @@ final class AppState: ObservableObject {
             UserDefaults.standard.set(data, forKey: Key.profileData)
         }
     }
+
+    /// Wipes every key this app writes to UserDefaults plus in-memory state.
+    /// Backs the in-app "Delete account & data" action required by App Store
+    /// Review Guideline 5.1.1(v) for apps that support account creation.
+    func eraseAllUserData() {
+        let defaults = UserDefaults.standard
+        let knownKeys: [String] = [
+            Key.onboarded, Key.petData, Key.routineData, Key.entriesData,
+            Key.goalHours, Key.targetBedHour, Key.targetBedMinute,
+            Key.targetWakeHour, Key.targetWakeMinute, Key.lastMorningPrompt,
+            Key.sleepGoal, Key.weekendWakeHour, Key.weekendWakeMinute,
+            Key.dreamStars, Key.profileData, Key.questRewardDay,
+            Key.questRewardedSteps, Key.isSleeping, Key.sleepStartedAt,
+            Key.wakeTappedAt, Key.appOpenedAfterWakeAt,
+            Key.lastSystemTaskShown, Key.lastSystemTaskIndex,
+            // Auxiliary state owned by other services
+            "mooni.health.didConnect", "mooni.lastStillAwakeAt",
+            "mooni.estimator.lastBackground", "mooni.estimator.lastWakeDay",
+            "mooni.estimator.intervals"
+        ]
+        for key in knownKeys { defaults.removeObject(forKey: key) }
+        defaults.synchronize()
+
+        // Reset in-memory state so the UI immediately reflects the wipe.
+        entries = []
+        pet = Pet()
+        routine = Routine(habits: Array(RoutineHabit.library.prefix(3)))
+        profile = OnboardingProfile()
+        dreamStars = 0
+        isSleeping = false
+        sleepGoal = nil
+        hasCompletedOnboarding = false
+    }
 }
 
 // MARK: - Preview helper
