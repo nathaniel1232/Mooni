@@ -427,7 +427,8 @@ final class AppState: ObservableObject {
             goalHours: goalHours,
             targetBedtime: targetBedtime,
             consistencyDays: bedtimeConsistencyDays,
-            checkIn: MorningCheckInStore.checkIn(for: entry.dayKey)
+            checkIn: MorningCheckInStore.checkIn(for: entry.dayKey),
+            age: profile.age
         )
 
         // Replace any entry from same day, otherwise append
@@ -726,7 +727,8 @@ final class AppState: ObservableObject {
             goalHours: goalHours,
             targetBedtime: targetBedtime,
             consistencyDays: bedtimeConsistencyDays,
-            checkIn: nil
+            checkIn: nil,
+            age: profile.age
         )
         entries.append(entry)
     }
@@ -769,7 +771,8 @@ final class AppState: ObservableObject {
             goalHours: goalHours,
             targetBedtime: targetBedtime,
             consistencyDays: bedtimeConsistencyDays,
-            checkIn: checkIn
+            checkIn: checkIn,
+            age: profile.age
         )
         entries[idx] = entry
         applyReward(energy: max(0, entry.energyEarned - previousEnergy), score: entry.score)
@@ -887,7 +890,8 @@ final class AppState: ObservableObject {
                 goalHours: goalHours,
                 targetBedtime: targetBedtime,
                 consistencyDays: bedtimeConsistencyDays,
-                checkIn: MorningCheckInStore.checkIn(for: dayKey)
+                checkIn: MorningCheckInStore.checkIn(for: dayKey),
+                age: profile.age
             )
             entries.append(entry)
 
@@ -915,7 +919,8 @@ final class AppState: ObservableObject {
                 goalHours: goalHours,
                 targetBedtime: targetBedtime,
                 consistencyDays: bedtimeConsistencyDays,
-                checkIn: MorningCheckInStore.checkIn(for: entry.dayKey)
+                checkIn: MorningCheckInStore.checkIn(for: entry.dayKey),
+                age: profile.age
             )
             entries[idx] = entry
         }

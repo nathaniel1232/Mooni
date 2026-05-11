@@ -123,9 +123,11 @@ struct SleepReportView: View {
         return SleepScoringManager.estimateStages(
             totalSleep: total,
             timeInBed: entry.timeInBed ?? entry.duration,
-            date: entry.wakeTime,
+            bedtime: entry.bedtime,
+            wakeTime: entry.wakeTime,
             quality: entry.quality,
-            checkIn: appState.checkIn(for: entry)
+            checkIn: appState.checkIn(for: entry),
+            age: appState.profile.age
         )
     }
 

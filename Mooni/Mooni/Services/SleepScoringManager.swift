@@ -26,14 +26,16 @@ enum SleepScoringManager {
         goalHours: Double,
         targetBedtime: Date? = nil,
         consistencyDays: Int,
-        checkIn: MorningCheckIn?
+        checkIn: MorningCheckIn?,
+        age: Int? = nil
     ) {
         let summary = summarize(
             entry: entry,
             goalHours: goalHours,
             targetBedtime: targetBedtime,
             consistencyDays: consistencyDays,
-            checkIn: checkIn
+            checkIn: checkIn,
+            age: age
         )
         entry.totalSleep = summary.totalSleep
         entry.stages = summary.stages
@@ -52,7 +54,8 @@ enum SleepScoringManager {
         goalHours: Double,
         targetBedtime: Date? = nil,
         consistencyDays: Int,
-        checkIn: MorningCheckIn?
+        checkIn: MorningCheckIn?,
+        age: Int? = nil
     ) -> DailySleepSummary {
         let source = entry.resolvedSource
         let existingStages = entry.stages
@@ -66,9 +69,11 @@ enum SleepScoringManager {
             stages = estimateStages(
                 totalSleep: totalSleep,
                 timeInBed: timeInBed,
-                date: entry.wakeTime,
+                bedtime: entry.bedtime,
+                wakeTime: entry.wakeTime,
                 quality: entry.quality,
-                checkIn: checkIn
+                checkIn: checkIn,
+                age: age
             )
         }
 
@@ -125,57 +130,90 @@ enum SleepScoringManager {
         }
     }
 
+    /// Estimates sleep stages from the data we *do* have when no HealthKit
+    /// stage breakdown is available. Built from published adult averages:
+    ///   • Deep (N3):   ~18% of TST, declining ~2% per decade after 30
+    ///                  (Ohayon et al., Sleep 2004; Carskadon & Dement 2005).
+    ///   • REM:         ~22% of TST in adults; weighted toward late sleep
+    ///                  cycles, so short early-cut sleeps lose REM faster
+    ///                  than they lose deep (Walker, Why We Sleep).
+    ///   • Wake/WASO:   ~3–8% of TIB in healthy adults, rising with age and
+    ///                  with self-reported awakenings.
+    /// Subjective check-in answers (feeling, dreams, wake-ups) shift the
+    /// estimate within research-supported bounds rather than fabricating
+    /// stage data.
     static func estimateStages(
         totalSleep: TimeInterval,
         timeInBed: TimeInterval?,
-        date: Date,
+        bedtime: Date,
+        wakeTime: Date,
         quality: SleepEntry.Quality,
-        checkIn: MorningCheckIn?
+        checkIn: MorningCheckIn?,
+        age: Int? = nil
     ) -> SleepStagesEstimate {
         guard totalSleep > 0 else {
             return SleepStagesEstimate(deepSleep: 0, remSleep: 0, lightSleep: 0, awakeTime: 0, isEstimated: true)
         }
 
-        var deepPct = 0.18 + seededFraction(date: date, salt: 13) * 0.06
-        var remPct = 0.20 + seededFraction(date: date, salt: 29) * 0.05
-        var awakePct = 0.02 + seededFraction(date: date, salt: 41) * 0.06
+        // Age-adjusted baseline: deep N3 sleep declines roughly 2 percentage
+        // points per decade after 30 (Ohayon meta-analysis). REM is more
+        // stable; WASO rises slightly with age.
+        let ageYears = Double(age ?? 30)
+        let ageOver30 = max(0, ageYears - 30)
+        let deepBaseline = max(0.10, 0.20 - (ageOver30 / 10) * 0.02)
+        let remBaseline  = 0.22
+        let awakeBaseline = min(0.10, 0.03 + (ageOver30 / 10) * 0.006)
 
-        if checkIn?.feeling == .great { deepPct += 0.02 }
-        if checkIn?.dreams == .yes { remPct += 0.025 }
-        if checkIn?.dreams == .notSure { remPct += 0.005 }
+        // Tiny per-day jitter (±1pp) — keeps a hint of natural variation
+        // without inventing precision we don't have.
+        var deepPct  = deepBaseline + (seededFraction(date: wakeTime, salt: 13) - 0.5) * 0.02
+        var remPct   = remBaseline  + (seededFraction(date: wakeTime, salt: 29) - 0.5) * 0.02
+        var awakePct = awakeBaseline + seededFraction(date: wakeTime, salt: 41) * 0.03
+
+        // REM is concentrated in the final third of the night. If the user
+        // cut sleep short relative to typical 7–9h adult sleep, knock down
+        // REM proportionally; deep is concentrated early and barely moves.
+        let hours = totalSleep / 3600
+        if hours < 6 {
+            let remPenalty = (6 - hours) / 6 * 0.06  // up to 6pp at very short sleep
+            remPct = max(0.08, remPct - remPenalty)
+        }
+        // Late bedtime (after 1 AM) is associated with REM compression on the
+        // first cycles — REM appears, but slightly reduced.
+        let bedHour = Calendar.current.component(.hour, from: bedtime)
+        if bedHour >= 1 && bedHour < 5 {
+            remPct = max(0.10, remPct - 0.015)
+        }
+
+        // Subjective signal — bounded so the estimate stays plausible.
+        if checkIn?.feeling == .great    { deepPct += 0.015 }
+        if checkIn?.feeling == .tired    { deepPct -= 0.01 }
+        if checkIn?.feeling == .exhausted { deepPct -= 0.02 }
+        if quality == .poor              { deepPct -= 0.015 }
+        if checkIn?.dreams == .yes       { remPct += 0.02 }
+        if checkIn?.dreams == .notSure   { remPct += 0.005 }
 
         switch checkIn?.wakeUps {
-        case .fewTimes:
-            awakePct += 0.02
-        case .aLot:
-            awakePct += 0.04
-        default:
-            break
+        case .fewTimes: awakePct += 0.02
+        case .aLot:     awakePct += 0.04
+        default:        break
         }
 
-        if quality == .poor || checkIn?.feeling == .exhausted {
-            deepPct -= 0.025
-        }
-        if checkIn?.feeling == .tired {
-            deepPct -= 0.01
-        }
-
-        // Very short "sleeps" don't have time to cycle through the full
-        // architecture — pull deep / REM toward zero so the stage chart
-        // doesn't claim a 2-minute nap had 30 seconds of REM.
-        let hours = totalSleep / 3600
+        // Very short "sleeps" don't have time to cycle — pull deep/REM toward
+        // zero so a 2-minute nap doesn't claim 30 seconds of REM.
         if hours < 3 {
-            let scale = max(0, hours / 3.0)  // 0…1 across [0h, 3h]
+            let scale = max(0, hours / 3.0)
             deepPct *= scale
-            remPct *= scale
+            remPct  *= scale
         }
 
-        deepPct = clamp(deepPct, min: 0.0, max: 0.27)
-        remPct = clamp(remPct, min: 0.0, max: 0.29)
-        awakePct = clamp(awakePct, min: 0.02, max: 0.08)
+        // Clinical bounds (Ohayon norms): adults rarely sit outside these.
+        deepPct  = clamp(deepPct,  min: 0.0,  max: 0.27)
+        remPct   = clamp(remPct,   min: 0.0,  max: 0.29)
+        awakePct = clamp(awakePct, min: 0.02, max: 0.12)
 
-        let deep = totalSleep * deepPct
-        let rem = totalSleep * remPct
+        let deep  = totalSleep * deepPct
+        let rem   = totalSleep * remPct
         let light = max(0, totalSleep - deep - rem)
         let awake = timeInBed.map { max(0, $0 * awakePct) } ?? 0
 
@@ -429,6 +467,9 @@ enum SleepScoringManager {
         }
     }
 
+    /// Insight is the single line we show on the home card. Order matters:
+    /// catastrophic / actionable findings beat generic copy. When stages are
+    /// estimated rather than measured, the closing sentence flags that.
     static func makeInsight(
         totalSleep: TimeInterval,
         sleepScore: Int,
@@ -437,35 +478,49 @@ enum SleepScoringManager {
         checkIn: MorningCheckIn?
     ) -> String {
         let hours = totalSleep / 3600
+        let deepPct = totalSleep > 0 ? stages.deepSleep / totalSleep : 0
+        let remPct  = totalSleep > 0 ? stages.remSleep  / totalSleep : 0
+        let estimatedNote = stages.isEstimated
+            ? " Stage breakdown estimated from your schedule and check-in."
+            : ""
 
         if hours < 1 {
             return "That's not really a full night yet — log again after a real sleep."
         }
         if hours < 4 {
-            return "Very short night. Today will feel heavy — keep things easy."
+            let shortBy = String(format: "%.1f", 7.5 - hours)
+            return "Very short night — \(shortBy) h below the adult 7–9 h range. Today will feel heavy; keep things easy.\(estimatedNote)"
         }
         if hours < 5.5 {
-            return "Short sleep detected. Keep today lighter if you can."
+            return "Short night (under 6 h). The CDC links chronic <6 h sleep with higher cardiovascular risk — try a 30-min earlier bedtime tonight.\(estimatedNote)"
         }
-        if checkIn?.wakeUps == .fewTimes || checkIn?.wakeUps == .aLot {
-            return "You slept enough, but your wake-ups may have lowered recovery."
+        // High signal: low deep N3
+        if deepPct > 0 && deepPct < 0.10 {
+            return "Deep sleep ran short (~\(Int(deepPct * 100))% of total). Aim for an earlier, cooler room tonight — deep N3 is biggest in the first 2 cycles.\(estimatedNote)"
         }
-        if checkIn?.dreams == .yes {
-            return "You reported dreams, so your REM line may run higher than usual."
+        // High signal: low REM (early wake or alcohol/late bedtime)
+        if remPct > 0 && remPct < 0.15 {
+            return "REM looked light (~\(Int(remPct * 100))%). REM concentrates in the last third — pushing wake 20–30 min later usually adds a full REM cycle.\(estimatedNote)"
+        }
+        if checkIn?.wakeUps == .aLot {
+            return "You reported many wake-ups — fragmented sleep blunts deep N3 even when total hours look fine.\(estimatedNote)"
+        }
+        if checkIn?.wakeUps == .fewTimes {
+            return "A couple of wake-ups nicked recovery, but the foundation is solid.\(estimatedNote)"
         }
         if readinessScore >= 90 || sleepScore >= 90 {
-            return "Good recovery night - your SleepOwl pet is fully charged."
+            return "Strong recovery — duration, efficiency and stage balance all hit healthy ranges."
         }
         if checkIn?.feeling == .tired || checkIn?.feeling == .exhausted {
-            return "Your body might need a slower start today."
+            return "Hours look OK but your check-in flagged fatigue — your body might need a slower start today."
         }
         if hours >= 7.5 && hours <= 9 {
-            return "Your sleep duration looks solid. Today is good for focused work."
+            return "Duration sits in the optimal 7–9 h band. Deep \(Int(deepPct*100))% · REM \(Int(remPct*100))% — solid mix.\(estimatedNote)"
         }
-        if stages.isEstimated {
-            return "Based on your check-in, SleepOwl filled in tonight's sleep chart."
+        if hours > 9.5 {
+            return "Longer than usual — occasionally fine, but chronic >9 h can leave you groggy. See how today feels."
         }
-        return "Looks like a steady night. Keep the rhythm gentle today."
+        return "Steady night. Keep the rhythm gentle today.\(estimatedNote)"
     }
 
     static func makeRecoveryMessage(
