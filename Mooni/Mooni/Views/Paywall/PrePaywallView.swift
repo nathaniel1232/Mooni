@@ -328,16 +328,15 @@ private struct BadSleepStage: View {
             // Reset on every sub-stage swap and replay in lockstep so the
             // halo, pet, headline and chips arrive in a single coherent wave.
             heroIn = false; statIn = false; bodyIn = false
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.8)) { heroIn = true }
-            withAnimation(.easeOut(duration: 0.45).delay(0.18)) { statIn = true }
-            withAnimation(.easeOut(duration: 0.4).delay(0.36)) { bodyIn = true }
-            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { dimmer = true }
-            withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { heartbeat = true }
+            withAnimation(.easeOut(duration: 0.45)) { heroIn = true }
+            withAnimation(.easeOut(duration: 0.4).delay(0.15)) { statIn = true }
+            withAnimation(.easeOut(duration: 0.35).delay(0.30)) { bodyIn = true }
+            withAnimation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true)) { dimmer = true }
         }
         .onChange(of: subStage) { _, _ in
             statIn = false; bodyIn = false
-            withAnimation(.easeOut(duration: 0.45)) { statIn = true }
-            withAnimation(.easeOut(duration: 0.4).delay(0.18)) { bodyIn = true }
+            withAnimation(.easeOut(duration: 0.4)) { statIn = true }
+            withAnimation(.easeOut(duration: 0.35).delay(0.15)) { bodyIn = true }
         }
     }
 
@@ -368,7 +367,6 @@ private struct BadSleepStage: View {
                 .foregroundStyle(LinearGradient(
                     colors: [Color.red.opacity(0.9), Color.orange.opacity(0.85)],
                     startPoint: .top, endPoint: .bottom))
-                .scaleEffect(heartbeat ? 1.04 : 0.97)
             Text("are silently lost\nto grogginess + fatigue.")
                 .font(MooniFont.display(24))
                 .foregroundColor(.white)
@@ -457,7 +455,7 @@ private struct GoodSleepStage: View {
             HStack(spacing: 10) {
                 ZStack {
                     Circle()
-                        .fill(Color.yellow.opacity(glow ? 0.40 : 0.18))
+                        .fill(Color.yellow.opacity(glow ? 0.26 : 0.18))
                         .frame(width: 96, height: 96)
                         .blur(radius: 18)
                     PetIllustration(pet: brightPet, size: 80)
@@ -481,7 +479,7 @@ private struct GoodSleepStage: View {
             }
             .padding(.horizontal, 4)
             .onAppear {
-                withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) { glow = true }
+                withAnimation(.easeInOut(duration: 3.5).repeatForever(autoreverses: true)) { glow = true }
             }
 
             Group {
@@ -499,14 +497,14 @@ private struct GoodSleepStage: View {
         .padding(.horizontal, 24)
         .onAppear {
             heroIn = false; statIn = false; bodyIn = false
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.8)) { heroIn = true }
-            withAnimation(.easeOut(duration: 0.45).delay(0.18)) { statIn = true }
-            withAnimation(.easeOut(duration: 0.4).delay(0.36)) { bodyIn = true }
+            withAnimation(.easeOut(duration: 0.45)) { heroIn = true }
+            withAnimation(.easeOut(duration: 0.4).delay(0.15)) { statIn = true }
+            withAnimation(.easeOut(duration: 0.35).delay(0.30)) { bodyIn = true }
         }
         .onChange(of: subStage) { _, _ in
             statIn = false; bodyIn = false
-            withAnimation(.easeOut(duration: 0.45)) { statIn = true }
-            withAnimation(.easeOut(duration: 0.4).delay(0.18)) { bodyIn = true }
+            withAnimation(.easeOut(duration: 0.4)) { statIn = true }
+            withAnimation(.easeOut(duration: 0.35).delay(0.15)) { bodyIn = true }
         }
     }
 

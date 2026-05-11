@@ -406,7 +406,7 @@ struct OnboardingView: View {
         case .socialProof:         SocialProofScreen()
         case .simulatedResult:     SimulatedResultScreen(species: species, name: petName)
         case .firstQuest:          FirstQuestScreen(petName: petName, bedtime: bedtime, wakeTime: wakeTime)
-        case .soundscapePreview:   SoundscapePreviewScreen(petName: petName)
+        case .soundscapePreview:   WidgetPreviewScreen(petName: petName)
         case .featureTour:         FeatureTourScreen(petName: petName)
         case .prePaywall:          EmptyView()    // rendered full-screen above; never reaches here
         }
@@ -598,7 +598,7 @@ struct OnboardingView: View {
         case .socialProof:        return "Continue"
         case .simulatedResult:    return "See how it works"
         case .firstQuest:         return "Accept tonight's quest"
-        case .soundscapePreview:  return "Sounds great"
+        case .soundscapePreview:  return "Add to home screen later"
         case .featureTour:        return "Unlock all of this"
         default:                  return "Continue"
         }
@@ -720,8 +720,10 @@ struct OnboardingView: View {
         //    so we keep `scienceCredibility` and let it carry that weight.
         case .scienceTrust:
             return true
-        // ── Post-plan extras removed ───────────────────────────────────
-        case .rateApp, .firstQuest:
+        // ── Rate-app kept: shown right before paywall so warm users
+        //    are asked for a review before the price ask. firstQuest still
+        //    removed (lives inside the app after activation).
+        case .firstQuest:
             return true
         default:
             return false
@@ -3004,112 +3006,96 @@ private struct ScienceCredibilityScreen: View {
     ]
 
     private let citations: [(label: String, source: String)] = [
-        ("Sleep duration & adult health",      "Hirshkowitz et al., Sleep Health 2015"),
-        ("Sleep quality components",           "Buysse et al., PSQI · Pittsburgh"),
-        ("Light & circadian shift",            "Chang et al., PNAS 2015"),
-        ("Caffeine half-life sleep impact",    "Drake et al., JCSM 2013"),
-        ("Actigraphy validation",              "AASM clinical guideline 2018")
+        ("Sleep duration & adult health",   "Hirshkowitz · Sleep Health 2015"),
+        ("Light & circadian shift",         "Chang · PNAS 2015"),
+        ("Actigraphy validation",           "AASM clinical guideline 2018")
     ]
 
     var body: some View {
-        VStack(spacing: 22) {
-            // Eyebrow pill — Kairo-style "Science Policy" badge
+        VStack(spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "atom")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundColor(MooniColor.success)
                 Text("Science Policy")
-                    .font(MooniFont.title(14))
+                    .font(MooniFont.title(13))
                     .foregroundColor(MooniColor.textPrimary)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
             .background(Color.white.opacity(0.08))
             .clipShape(Capsule())
             .scaleEffect(pillPulse ? 1.0 : 0.92)
             .opacity(pillPulse ? 1 : 0)
 
-            VStack(spacing: 10) {
-                Text("SleepOwl is built on")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+            VStack(spacing: 2) {
+                Text("Built on what")
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundColor(MooniColor.textPrimary)
-                Text("what science says works")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                Text("science says works")
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
             }
-            .padding(.horizontal, 16)
 
-            Text("Every claim, score, and protocol is anchored in peer-reviewed sleep research.")
-                .font(MooniFont.body(14))
-                .foregroundColor(MooniColor.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-
-            // Big trust-numbers strip — concrete, scannable proof
+            // Trust-numbers strip
             HStack(spacing: 0) {
-                trustNumber("147", "peer-reviewed\nstudies cited")
-                Divider().frame(height: 38).background(Color.white.opacity(0.1))
-                trustNumber("23", "sleep researchers\nadvisory board")
-                Divider().frame(height: 38).background(Color.white.opacity(0.1))
-                trustNumber("8.4M", "nights of sleep\nanalyzed")
+                trustNumber("147", "studies cited")
+                Divider().frame(height: 32).background(Color.white.opacity(0.1))
+                trustNumber("23", "advisory board")
+                Divider().frame(height: 32).background(Color.white.opacity(0.1))
+                trustNumber("8.4M", "nights analyzed")
             }
-            .padding(.vertical, 14)
+            .padding(.vertical, 10)
             .background(Color.white.opacity(0.05))
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(MooniColor.success.opacity(0.18), lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.horizontal, 20)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            // University-style seals
-            VStack(spacing: 14) {
+            // University seals — compact horizontal row
+            HStack(spacing: 10) {
                 ForEach(Array(universities.enumerated()), id: \.offset) { idx, u in
-                    universityRow(u, isVisible: idx < reveal)
+                    universitySeal(u)
+                        .opacity(idx < reveal ? 1 : 0)
+                        .offset(y: idx < reveal ? 0 : 8)
                 }
             }
-            .padding(.top, 6)
 
-            // Citation strip — small, scrollable feel
-            VStack(spacing: 6) {
+            // Citation strip — 3 compact rows
+            VStack(spacing: 4) {
                 ForEach(Array(citations.enumerated()), id: \.offset) { idx, c in
                     HStack(spacing: 8) {
                         Image(systemName: "checkmark.seal.fill")
                             .foregroundColor(MooniColor.success.opacity(0.8))
-                            .font(.system(size: 11))
+                            .font(.system(size: 10))
                         Text(c.label)
-                            .font(MooniFont.caption(12))
+                            .font(MooniFont.caption(11))
                             .foregroundColor(MooniColor.textPrimary)
                         Spacer()
                         Text(c.source)
                             .font(MooniFont.caption(10))
                             .foregroundColor(MooniColor.textMuted)
                             .lineLimit(1)
-                            .truncationMode(.tail)
                     }
-                    .opacity(idx < reveal ? 1 : 0)
+                    .opacity(idx + universities.count < reveal ? 1 : 0)
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 6)
 
-            // Trust pills footer — reviewer board, IRB, certifications
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 trustPill(icon: "stethoscope", text: "MD-reviewed")
                 trustPill(icon: "lock.shield.fill", text: "On-device")
                 trustPill(icon: "checkmark.seal.fill", text: "IRB protocol")
             }
-            .padding(.top, 4)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 18)
         .onAppear {
             withAnimation(.spring(response: 0.55, dampingFraction: 0.7)) { pillPulse = true }
             reveal = 0
             let total = universities.count + citations.count
             for i in 0..<total {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18 + 0.14 * Double(i)) {
-                    withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15 + 0.10 * Double(i)) {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
                         reveal = i + 1
                     }
                 }
@@ -3117,38 +3103,28 @@ private struct ScienceCredibilityScreen: View {
         }
     }
 
-    private func universityRow(
-        _ u: (seal: String, name: String, sub: String, accent: Color),
-        isVisible: Bool
+    private func universitySeal(
+        _ u: (seal: String, name: String, sub: String, accent: Color)
     ) -> some View {
-        HStack(spacing: 16) {
+        VStack(spacing: 6) {
             ZStack {
                 Circle()
                     .fill(u.accent.opacity(0.18))
-                    .frame(width: 56, height: 56)
+                    .frame(width: 52, height: 52)
                 Circle()
-                    .stroke(u.accent.opacity(0.55), lineWidth: 2)
-                    .frame(width: 56, height: 56)
+                    .stroke(u.accent.opacity(0.55), lineWidth: 1.5)
+                    .frame(width: 52, height: 52)
                 Image(systemName: u.seal)
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundColor(u.accent.opacity(0.95))
             }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(u.name)
-                    .font(.system(size: 22, weight: .heavy, design: .serif))
-                    .foregroundColor(u.accent.opacity(0.95))
-                    .tracking(1.2)
-                Text(u.sub)
-                    .font(MooniFont.caption(11))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .tracking(1.2)
-            }
-            Spacer(minLength: 0)
+            Text(u.name)
+                .font(.system(size: 12, weight: .heavy, design: .serif))
+                .foregroundColor(u.accent.opacity(0.95))
+                .tracking(0.8)
+                .lineLimit(1)
         }
-        .padding(.horizontal, 22)
-        .opacity(isVisible ? 1 : 0)
-        .offset(y: isVisible ? 0 : 10)
+        .frame(maxWidth: .infinity)
     }
 
     private func trustNumber(_ number: String, _ caption: String) -> some View {
@@ -3185,6 +3161,173 @@ private struct ScienceCredibilityScreen: View {
 
 // MARK: - Screen: Soundscape preview
 
+private struct WidgetPreviewScreen: View {
+    let petName: String
+
+    @State private var appeared = false
+
+    var body: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "rectangle.3.offgrid.fill")
+                        .foregroundColor(MooniColor.accentSoft)
+                    Text("Home screen widgets")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.accentSoft)
+                        .tracking(2)
+                        .textCase(.uppercase)
+                }
+                Text("\(petName) on your home screen")
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                Text("See your sleep score and \(petName)'s mood at a glance — no app open required.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+
+            // Two mock widget cards, side by side. Pixel-rough imitation of the
+            // actual iOS home-screen tile so the user can picture it in place.
+            HStack(spacing: 14) {
+                smallWidget(
+                    title: "Tonight",
+                    big: "10:30 PM",
+                    sub: "Wind-down in 1h",
+                    icon: "moon.zzz.fill",
+                    tint: MooniColor.accentSoft
+                )
+                smallWidget(
+                    title: "Last night",
+                    big: "82",
+                    sub: "Sleep score",
+                    icon: "chart.bar.fill",
+                    tint: MooniColor.success
+                )
+            }
+            .scaleEffect(appeared ? 1 : 0.85)
+            .opacity(appeared ? 1 : 0)
+            .animation(.spring(response: 0.55, dampingFraction: 0.7), value: appeared)
+
+            mediumWidget()
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 14)
+                .animation(.spring(response: 0.55, dampingFraction: 0.75).delay(0.12), value: appeared)
+
+            HStack(spacing: 8) {
+                Image(systemName: "lock.shield.fill")
+                    .foregroundColor(MooniColor.accentSoft)
+                    .font(.system(size: 13))
+                Text("Updates locally — your sleep data never leaves the device.")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textSecondary)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(MooniColor.accentSoft.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .opacity(appeared ? 1 : 0)
+            .animation(.easeOut(duration: 0.4).delay(0.28), value: appeared)
+        }
+        .padding(.horizontal, 20)
+        .onAppear {
+            DispatchQueue.main.async { appeared = true }
+        }
+    }
+
+    private func smallWidget(title: String, big: String, sub: String, icon: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundColor(tint)
+                    .font(.system(size: 14, weight: .semibold))
+                Spacer()
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(MooniColor.textMuted)
+                    .tracking(0.8)
+            }
+            Spacer(minLength: 0)
+            Text(big)
+                .font(.system(size: 30, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textPrimary)
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+            Text(sub)
+                .font(MooniFont.caption(11))
+                .foregroundColor(MooniColor.textSecondary)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity)
+        .frame(height: 150)
+        .background(
+            LinearGradient(colors: [Color.white.opacity(0.08), Color.white.opacity(0.03)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(tint.opacity(0.25), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private func mediumWidget() -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "moon.stars.fill")
+                    .foregroundColor(MooniColor.accentSoft)
+                    .font(.system(size: 14, weight: .semibold))
+                Text("\(petName)'s week")
+                    .font(MooniFont.title(13))
+                    .foregroundColor(MooniColor.textPrimary)
+                Spacer()
+                Text("7-DAY AVG")
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textMuted)
+                    .tracking(1.2)
+            }
+            HStack(alignment: .lastTextBaseline, spacing: 6) {
+                Text("7h 24m")
+                    .font(.system(size: 28, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text("+12m")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundColor(MooniColor.success)
+            }
+            // Mini bar chart
+            HStack(alignment: .bottom, spacing: 5) {
+                ForEach(0..<7, id: \.self) { i in
+                    let h: CGFloat = [0.55, 0.7, 0.45, 0.85, 0.6, 0.9, 0.75][i]
+                    Capsule()
+                        .fill(LinearGradient(
+                            colors: [MooniColor.accentSoft, MooniColor.accent],
+                            startPoint: .bottom, endPoint: .top))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 30 * h)
+                }
+            }
+            .frame(height: 30)
+        }
+        .padding(14)
+        .frame(height: 130)
+        .frame(maxWidth: .infinity)
+        .background(
+            LinearGradient(colors: [Color.white.opacity(0.08), Color.white.opacity(0.03)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(MooniColor.accentSoft.opacity(0.25), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
+// Legacy soundscape screen — replaced by WidgetPreviewScreen in the flow.
+// Kept compiled for potential reuse elsewhere; not currently referenced.
 private struct SoundscapePreviewScreen: View {
     let petName: String
 
