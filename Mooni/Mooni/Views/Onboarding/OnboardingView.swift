@@ -4580,23 +4580,6 @@ private struct AutoTrackIntroScreen: View {
                     .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(idx) * 0.12), value: phase)
                 }
 
-                HStack(spacing: 8) {
-                    Image(systemName: "sparkles")
-                        .foregroundColor(MooniColor.warning)
-                        .font(.system(size: 12))
-                    Text("Like how Calai automated calorie counting — we do the same for sleep.")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.textSecondary)
-                        .multilineTextAlignment(.leading)
-                    Spacer()
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(MooniColor.warning.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .padding(.top, 4)
-                .opacity(phase > 0.7 ? 1 : 0)
-                .animation(.easeOut(duration: 0.4).delay(0.55), value: phase)
             }
             .onAppear {
                 withAnimation { phase = 1 }
