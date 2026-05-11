@@ -55,114 +55,82 @@ struct PaywallView: View {
     // MARK: - Main content
 
     private var mainContent: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 0) {
-                // Close button — small + faint when shown during onboarding
-                HStack {
-                    Spacer()
-                    Button {
-                        if hideCloseButton, let soft = onSoftDismiss {
-                            soft()
-                        } else {
-                            dismiss()
-                        }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(
-                                size: hideCloseButton ? 9 : 14,
-                                weight: hideCloseButton ? .regular : .semibold))
-                            .foregroundColor(
-                                hideCloseButton
-                                    ? Color.white.opacity(0.16)
-                                    : MooniColor.textSecondary
-                            )
-                            .padding(hideCloseButton ? 6 : 10)
-                            .background(
-                                hideCloseButton
-                                    ? Color.clear
-                                    : Color.white.opacity(0.10)
-                            )
-                            .clipShape(Circle())
-                            .contentShape(Rectangle())
-                    }
-                    .accessibilityLabel("Close paywall")
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-
-                // Hero spirit
-                DreamSpiritView(pet: heroPet, size: 120)
-                    .padding(.top, 0)
+        VStack(spacing: 0) {
+            // Top bar: small spirit + title + close
+            HStack(alignment: .center, spacing: 10) {
+                DreamSpiritView(pet: heroPet, size: 56)
                     .scaleEffect(animateIn ? 1.0 : 0.85)
                     .opacity(animateIn ? 1 : 0)
                     .animation(.spring(response: 0.6, dampingFraction: 0.7), value: animateIn)
-
-                // Title
-                VStack(spacing: 4) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "sparkles")
-                            .foregroundColor(MooniColor.warning)
-                        Text("SleepOwl Pro")
-                            .font(MooniFont.display(28))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Image(systemName: "sparkles")
-                            .foregroundColor(MooniColor.warning)
-                    }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("SleepOwl Pro")
+                        .font(MooniFont.display(22))
+                        .foregroundColor(MooniColor.textPrimary)
                     Text("Sleep better. Grow stronger.")
-                        .font(MooniFont.body(15))
+                        .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.textSecondary)
                 }
-                .padding(.top, 4)
+                Spacer()
+                Button {
+                    if hideCloseButton, let soft = onSoftDismiss { soft() } else { dismiss() }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(
+                            size: hideCloseButton ? 10 : 13,
+                            weight: hideCloseButton ? .regular : .semibold))
+                        .foregroundColor(hideCloseButton
+                                         ? Color.white.opacity(0.20)
+                                         : MooniColor.textSecondary)
+                        .padding(hideCloseButton ? 6 : 8)
+                        .background(hideCloseButton ? Color.clear : Color.white.opacity(0.10))
+                        .clipShape(Circle())
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Close paywall")
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
+
+            // Features
+            featuresSection
+                .padding(.horizontal, 20)
                 .offset(y: animateIn ? 0 : 12)
                 .opacity(animateIn ? 1 : 0)
-                .animation(.easeOut(duration: 0.5).delay(0.15), value: animateIn)
+                .animation(.easeOut(duration: 0.4).delay(0.10), value: animateIn)
 
-                // Features
-                featuresSection
-                    .padding(.top, 16)
-                    .padding(.horizontal, 20)
-                    .offset(y: animateIn ? 0 : 16)
-                    .opacity(animateIn ? 1 : 0)
-                    .animation(.easeOut(duration: 0.5).delay(0.25), value: animateIn)
+            // Plan picker
+            planPicker
+                .padding(.top, 12)
+                .padding(.horizontal, 20)
+                .offset(y: animateIn ? 0 : 12)
+                .opacity(animateIn ? 1 : 0)
+                .animation(.easeOut(duration: 0.4).delay(0.18), value: animateIn)
 
-                // Plan picker
-                planPicker
-                    .padding(.top, 14)
-                    .padding(.horizontal, 20)
-                    .offset(y: animateIn ? 0 : 16)
-                    .opacity(animateIn ? 1 : 0)
-                    .animation(.easeOut(duration: 0.5).delay(0.35), value: animateIn)
+            // Compact trial summary (replaces the long timeline)
+            trialSummary
+                .padding(.top, 10)
+                .padding(.horizontal, 20)
+                .opacity(animateIn ? 1 : 0)
+                .animation(.easeOut(duration: 0.4).delay(0.26), value: animateIn)
 
-                // "Here's how the trial works" timeline. People convert
-                // dramatically better when they understand what's coming
-                // (and what's free) on each day.
-                howItWorks
-                    .padding(.top, 18)
-                    .padding(.horizontal, 20)
-                    .offset(y: animateIn ? 0 : 16)
-                    .opacity(animateIn ? 1 : 0)
-                    .animation(.easeOut(duration: 0.5).delay(0.45), value: animateIn)
-
-                // Error
-                if let error = manager.errorMessage {
-                    Text(error)
-                        .font(MooniFont.caption(13))
-                        .foregroundColor(MooniColor.danger)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 8)
-                }
-
-                // Purchase CTA
-                purchaseButton
-                    .padding(.top, 14)
-                    .padding(.horizontal, 20)
-
-                // Footer links
-                footerLinks
-                    .padding(.top, 10)
-                    .padding(.bottom, 20)
+            if let error = manager.errorMessage {
+                Text(error)
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.danger)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 6)
             }
+
+            Spacer(minLength: 6)
+
+            purchaseButton
+                .padding(.horizontal, 20)
+
+            footerLinks
+                .padding(.top, 8)
+                .padding(.bottom, 14)
         }
         .onAppear {
             if selectedPackage == nil {
@@ -180,31 +148,25 @@ struct PaywallView: View {
     // MARK: - Features
 
     private var featuresSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             proFeatureRow(icon: "chart.bar.fill", color: MooniColor.accent,
-                          title: "Full Sleep History",
-                          detail: "Unlimited logs with trends")
-            proFeatureRow(icon: "sparkles", color: MooniColor.warning,
-                          title: "Exclusive Spirit Items",
-                          detail: "All colors & backgrounds")
+                          title: "Full Sleep History", detail: "Unlimited logs & trends")
             proFeatureRow(icon: "waveform.path.ecg", color: MooniColor.success,
-                          title: "Advanced Analytics",
-                          detail: "Sleep score breakdowns")
-            proFeatureRow(icon: "checklist", color: MooniColor.accentSoft,
-                          title: "Unlimited Habits",
-                          detail: "Customize your wind-down")
+                          title: "Advanced Analytics", detail: "Sleep score breakdowns")
+            proFeatureRow(icon: "sparkles", color: MooniColor.warning,
+                          title: "All Spirit Items", detail: "Every color & background")
         }
     }
 
     private func proFeatureRow(icon: String, color: Color, title: String, detail: String) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(color)
-                .frame(width: 32, height: 32)
+                .frame(width: 26, height: 26)
                 .background(color.opacity(0.16))
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            VStack(alignment: .leading, spacing: 1) {
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            VStack(alignment: .leading, spacing: 0) {
                 Text(title)
                     .font(MooniFont.title(13))
                     .foregroundColor(MooniColor.textPrimary)
@@ -214,118 +176,56 @@ struct PaywallView: View {
             }
             Spacer()
             Image(systemName: "checkmark")
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 10, weight: .bold))
                 .foregroundColor(MooniColor.success)
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .padding(.horizontal, 11)
         .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 
-    // MARK: - How it works (trial timeline)
+    // MARK: - Trial summary (compact, replaces the timeline)
 
-    private var howItWorks: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 6) {
-                Image(systemName: "calendar.badge.clock")
-                    .foregroundColor(MooniColor.accent)
-                Text("How your plan works")
-                    .font(MooniFont.title(15))
-                    .foregroundColor(MooniColor.textPrimary)
-            }
-
-            VStack(spacing: 0) {
-                timelineRow(
-                    icon: "lock.open.fill",
-                    color: MooniColor.success,
-                    title: "Today",
-                    detail: "Full access unlocks. Build your first wind-down quest with \(selectedAnnual ? "the yearly" : "weekly") plan.",
-                    isFirst: true,
-                    isLast: false
-                )
-                timelineRow(
-                    icon: "bell.badge.fill",
-                    color: MooniColor.accent,
-                    title: "Day 5",
-                    detail: "We'll remind you before your billing date so there are no surprises.",
-                    isFirst: false,
-                    isLast: false
-                )
-                timelineRow(
-                    icon: "sparkles",
-                    color: MooniColor.warning,
-                    title: selectedAnnual ? "Day 7" : "Every week",
-                    detail: selectedAnnual
-                        ? "Your yearly plan starts — locked in at the best price."
-                        : "Renews weekly. Cancel anytime in 2 taps.",
-                    isFirst: false,
-                    isLast: true
-                )
-            }
-            .padding(14)
-            .background(Color.white.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
-            )
+    private var trialSummary: some View {
+        HStack(spacing: 10) {
+            Image(systemName: selectedAnnual ? "gift.fill" : "bolt.fill")
+                .foregroundColor(MooniColor.warning)
+                .font(.system(size: 13, weight: .semibold))
+            Text(selectedAnnual
+                 ? "7-day free trial · cancel anytime"
+                 : "Renews weekly · cancel in 2 taps")
+                .font(MooniFont.caption(12))
+                .foregroundColor(.white.opacity(0.85))
+            Spacer()
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(MooniColor.warning.opacity(0.10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(MooniColor.warning.opacity(0.35), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var selectedAnnual: Bool {
         selectedPackage?.packageType == .annual
     }
 
-    private func timelineRow(icon: String, color: Color, title: String, detail: String,
-                             isFirst: Bool, isLast: Bool) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(spacing: 0) {
-                Rectangle()
-                    .fill(isFirst ? Color.clear : Color.white.opacity(0.15))
-                    .frame(width: 1.5, height: 8)
-                ZStack {
-                    Circle()
-                        .fill(color.opacity(0.18))
-                        .frame(width: 30, height: 30)
-                    Image(systemName: icon)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(color)
-                }
-                Rectangle()
-                    .fill(isLast ? Color.clear : Color.white.opacity(0.15))
-                    .frame(width: 1.5)
-                    .frame(maxHeight: .infinity)
-            }
-            .frame(width: 30)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(MooniFont.title(13))
-                    .foregroundColor(MooniColor.textPrimary)
-                Text(detail)
-                    .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.vertical, 4)
-            Spacer(minLength: 0)
-        }
-    }
-
     // MARK: - Plan Picker
 
     private var planPicker: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             if let annual = annualPackage {
-                planCard(package: annual, badge: "Best Value", badgeColor: MooniColor.success)
+                planCard(package: annual, badge: "7-day free trial", badgeColor: MooniColor.success)
             } else {
-                planCardPlaceholder(title: "Yearly", price: "$XX.XX / year", badge: "Best Value", badgeColor: MooniColor.success)
+                planCardPlaceholder(title: "Yearly", price: "$39.99 / year", badge: "7-day free trial", badgeColor: MooniColor.success)
             }
             if let weekly = weeklyPackage {
                 planCard(package: weekly, badge: nil, badgeColor: .clear)
             } else {
-                planCardPlaceholder(title: "Weekly", price: "$X.XX / week", badge: nil, badgeColor: .clear)
+                planCardPlaceholder(title: "Weekly", price: "$4.99 / week", badge: nil, badgeColor: .clear)
             }
         }
     }
@@ -369,13 +269,14 @@ struct PaywallView: View {
                     .font(MooniFont.title(15))
                     .foregroundColor(isSelected ? MooniColor.accent : MooniColor.textSecondary)
             }
-            .padding(16)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(isSelected ? MooniColor.accent.opacity(0.15) : Color.white.opacity(0.07))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.10), lineWidth: isSelected ? 1.5 : 1)
             )
         }
@@ -460,26 +361,36 @@ struct PaywallView: View {
     // MARK: - Footer
 
     private var footerLinks: some View {
-        VStack(spacing: 10) {
-            Button {
-                Task { await manager.restorePurchases() }
-            } label: {
-                Text("Restore Purchases")
-                    .font(MooniFont.body(14))
+        VStack(spacing: 6) {
+            // App Store guideline 3.1.2 requires: restore, EULA/terms, privacy,
+            // and clear auto-renew disclosure — all visible on the paywall.
+            HStack(spacing: 16) {
+                Button { Task { await manager.restorePurchases() } } label: {
+                    Text("Restore")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .underline()
+                }
+                Link("Terms",
+                     destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                    .font(MooniFont.caption(12))
                     .foregroundColor(MooniColor.textSecondary)
                     .underline()
+                Link("Privacy",
+                     destination: URL(string: "https://nathanielfiskaa.github.io/sleepowl-privacy/")!)
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .underline()
+                Button { showCustomerCenter = true } label: {
+                    Text("Manage")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .underline()
+                }
             }
 
-            Button {
-                showCustomerCenter = true
-            } label: {
-                Text("Manage Subscription")
-                    .font(MooniFont.caption(13))
-                    .foregroundColor(MooniColor.textMuted)
-            }
-
-            Text("Subscriptions auto-renew unless cancelled.\nCancel any time in Settings → App Store.")
-                .font(MooniFont.caption(11))
+            Text("Auto-renews unless cancelled in Settings → Apple ID → Subscriptions. Any unused portion of a free trial is forfeited when you purchase.")
+                .font(MooniFont.caption(10))
                 .foregroundColor(MooniColor.textMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)

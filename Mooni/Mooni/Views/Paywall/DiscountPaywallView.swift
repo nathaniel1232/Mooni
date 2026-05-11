@@ -85,7 +85,7 @@ struct DiscountPaywallView: View {
             StarsBackground(count: 60)
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 18) {
+                VStack(spacing: 12) {
                     // Hidden close — small + faint, always available.
                     HStack {
                         Spacer()
@@ -133,12 +133,32 @@ struct DiscountPaywallView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 8)
 
-                    Text("Subscriptions auto-renew. Cancel anytime in Settings.")
+                    HStack(spacing: 14) {
+                        Button { Task { await manager.restorePurchases() } } label: {
+                            Text("Restore")
+                                .font(MooniFont.caption(11))
+                                .foregroundColor(.white.opacity(0.55))
+                                .underline()
+                        }
+                        Link("Terms",
+                             destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(.white.opacity(0.55))
+                            .underline()
+                        Link("Privacy",
+                             destination: URL(string: "https://nathanielfiskaa.github.io/sleepowl-privacy/")!)
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(.white.opacity(0.55))
+                            .underline()
+                    }
+                    .padding(.top, 2)
+
+                    Text("Auto-renews unless cancelled in Settings → Apple ID → Subscriptions.")
                         .font(MooniFont.caption(10))
                         .foregroundColor(.white.opacity(0.4))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
-                        .padding(.bottom, 32)
+                        .padding(.bottom, 24)
                 }
             }
         }
@@ -231,8 +251,8 @@ struct DiscountPaywallView: View {
             // Outer dotted halo for celebration feel.
             Circle()
                 .stroke(MooniColor.warning.opacity(0.45),
-                        style: StrokeStyle(lineWidth: 2, dash: [3, 5]))
-                .frame(width: 280, height: 280)
+                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 5]))
+                .frame(width: 210, height: 210)
                 .scaleEffect(pulse ? 1.02 : 0.98)
 
             // The slices.
@@ -247,22 +267,23 @@ struct DiscountPaywallView: View {
                     WheelSliceLabel(index: idx, total: slices.count, label: slice.label, isWinner: slice.isWinner)
                 }
             }
-            .frame(width: 240, height: 240)
+            .frame(width: 180, height: 180)
             .clipShape(Circle())
             .overlay(
                 Circle().stroke(LinearGradient(
                     colors: [MooniColor.warning, MooniColor.accentSoft],
-                    startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 3)
+                    startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 2.5)
             )
             .rotationEffect(.degrees(wheelRotation))
 
             // Center cap.
             ZStack {
                 Circle().fill(Color.black)
-                    .frame(width: 46, height: 46)
+                    .frame(width: 36, height: 36)
                 Circle().stroke(MooniColor.warning, lineWidth: 2)
-                    .frame(width: 46, height: 46)
+                    .frame(width: 36, height: 36)
                 Image(systemName: "gift.fill")
+                    .font(.system(size: 14))
                     .foregroundColor(MooniColor.warning)
             }
 
@@ -270,13 +291,13 @@ struct DiscountPaywallView: View {
             VStack(spacing: 0) {
                 Triangle()
                     .fill(MooniColor.warning)
-                    .frame(width: 22, height: 22)
-                    .shadow(color: MooniColor.warning.opacity(0.6), radius: 6)
+                    .frame(width: 18, height: 18)
+                    .shadow(color: MooniColor.warning.opacity(0.6), radius: 5)
                 Spacer()
             }
-            .frame(height: 280)
+            .frame(height: 210)
         }
-        .frame(width: 280, height: 280)
+        .frame(width: 210, height: 210)
     }
 
     // MARK: - CTAs per stage
