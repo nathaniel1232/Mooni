@@ -1,9 +1,8 @@
 import SwiftUI
 import Combine
 
-/// Animated emotional pre-paywall sequence. Three screens drive the prospect
-/// through the problem (bad sleep), the promise (good sleep), and the
-/// commitment ("ready to invest in [pet]'s health?") before the actual paywall.
+/// Animated emotional pre-paywall sequence. Drives the prospect through
+/// bad sleep → good sleep → benefit slides → yes-ladder → commitment → paywall.
 struct PrePaywallView: View {
     let petName: String
     let species: PetSpecies
@@ -17,17 +16,12 @@ struct PrePaywallView: View {
     @State private var signatureStrokes: [SignatureStroke] = []
     @State private var typedCommitment: String = ""
 
-    // Transformation list reveal count
-    @State private var revealedTransformations: Int = 0
-
     private enum Phase: Int, CaseIterable {
         case badSleep
         case goodSleep
+        case transformList   // benefit slides, one per substage
         case yesLadder       // 5 quick yes-questions (foot-in-the-door)
         case signature       // type "I am committed" + draw signature
-        case transformAnim   // animated metrics climbing + pet evolving
-        case transformList   // benefits revealing one by one
-        case commitment      // final ready-to-invest stage
     }
 
     /// Number of yes-ladder sub-questions.
@@ -63,6 +57,9 @@ struct PrePaywallView: View {
                         BadSleepStage(subStage: subStage, petName: petName, species: species, profile: profile)
                     case .goodSleep:
                         GoodSleepStage(subStage: subStage, petName: petName, species: species)
+                    case .transformList:
+                        let item = BenefitSlideStage.items[min(subStage, BenefitSlideStage.items.count - 1)]
+                        BenefitSlideStage(item: item, index: subStage, total: BenefitSlideStage.items.count)
                     case .yesLadder:
                         YesLadderStage(
                             question: Self.yesLadderQuestions[min(subStage, Self.yesLadderCount - 1)],
@@ -76,12 +73,6 @@ struct PrePaywallView: View {
                             typedCommitment: $typedCommitment,
                             strokes: $signatureStrokes
                         )
-                    case .transformAnim:
-                        TransformAnimStage(petName: petName, species: species)
-                    case .transformList:
-                        TransformListStage(revealed: $revealedTransformations)
-                    case .commitment:
-                        CommitmentStage(petName: petName, species: species, profile: profile)
                     }
                 }
                 .id("\(phase.rawValue)-\(subStage)")
@@ -110,7 +101,6 @@ struct PrePaywallView: View {
                             .frame(width: geo.size.width * progressFraction(for: p))
                             .animation(.spring(response: 0.4), value: phase)
                             .animation(.spring(response: 0.4), value: subStage)
-                            .animation(.spring(response: 0.4), value: revealedTransformations)
                     }
                 }
                 .frame(height: 4)
@@ -118,25 +108,19 @@ struct PrePaywallView: View {
         }
     }
 
-    /// 0…1 fill for a single phase pill, taking sub-stage progress into account
-    /// so the bar inches forward on every tap rather than jumping once per phase.
     private func progressFraction(for p: Phase) -> CGFloat {
         if p.rawValue < phase.rawValue { return 1 }
         if p.rawValue > phase.rawValue { return 0 }
         switch phase {
-        case .badSleep:      return CGFloat(subStage + 1) / 3
-        case .goodSleep:     return CGFloat(subStage + 1) / 3
-        case .yesLadder:     return CGFloat(subStage + 1) / CGFloat(Self.yesLadderCount)
+        case .badSleep:       return CGFloat(subStage + 1) / 3
+        case .goodSleep:      return CGFloat(subStage + 1) / 3
+        case .transformList:  return CGFloat(subStage + 1) / CGFloat(BenefitSlideStage.items.count)
+        case .yesLadder:      return CGFloat(subStage + 1) / CGFloat(Self.yesLadderCount)
         case .signature:
             let typed = typedCommitment.trimmingCharacters(in: .whitespacesAndNewlines)
             let typedDone: CGFloat = Self.isCommitmentPhraseMatched(typed) ? 0.5 : CGFloat(min(typed.count, 14)) / 14 * 0.5
             let signed: CGFloat   = signatureStrokes.isEmpty ? 0 : 0.5
             return min(typedDone + signed, 1)
-        case .transformAnim: return 0.5
-        case .transformList:
-            let total = TransformListStage.items.count
-            return total == 0 ? 1 : CGFloat(revealedTransformations) / CGFloat(total)
-        case .commitment:    return 1
         }
     }
 
@@ -148,23 +132,18 @@ struct PrePaywallView: View {
         case (.goodSleep, 0): return "I want to feel this"
         case (.goodSleep, 1): return "Show me \(petName)"
         case (.goodSleep, _): return "Continue"
+        case (.transformList, _):
+            return subStage < BenefitSlideStage.items.count - 1 ? "Next" : "See my plan"
         case (.yesLadder, _): return "Yes"
-        case (.signature, _): return "I commit — sign me up"
-        case (.transformAnim, _): return "Show me everything"
-        case (.transformList, _): return revealedTransformations >= TransformListStage.items.count ? "I want all of this" : "..."
-        case (.commitment, _): return "Yes, I'm ready"
+        case (.signature, _): return "I commit — let's go"
         }
     }
 
     private var canAdvanceFromCurrent: Bool {
-        switch phase {
-        case .signature:
+        if phase == .signature {
             return Self.isCommitmentPhraseMatched(typedCommitment) && !signatureStrokes.isEmpty
-        case .transformList:
-            return revealedTransformations >= TransformListStage.items.count
-        default:
-            return true
         }
+        return true
     }
 
     fileprivate static func isCommitmentPhraseMatched(_ text: String) -> Bool {
@@ -232,37 +211,26 @@ struct PrePaywallView: View {
     @ViewBuilder
     private var footer: some View {
         switch phase {
-        case .commitment:
-            VStack(spacing: 10) {
-                PrimaryButton(title: primaryTitle, icon: "sparkles") {
-                    onContinue()
-                }
-                Text("This decision changes \(petName)'s future too.")
-                    .font(MooniFont.caption(12))
-                    .foregroundColor(.white.opacity(0.55))
-            }
         case .yesLadder:
-            // Just one big "Yes" to keep momentum. No button to tap "no".
             VStack(spacing: 10) {
                 PrimaryButton(title: "YES", icon: "checkmark.circle.fill") {
                     advance()
                 }
-                Text("Tap to commit.")
+                Text("Tap to continue.")
                     .font(MooniFont.caption(11))
                     .foregroundColor(.white.opacity(0.4))
             }
-        case .transformList:
-            PrimaryButton(title: primaryTitle, icon: revealedTransformations >= TransformListStage.items.count ? "sparkles" : nil) {
-                if canAdvanceFromCurrent { advance() }
-            }
-            .disabled(!canAdvanceFromCurrent)
-            .opacity(canAdvanceFromCurrent ? 1 : 0.4)
         case .signature:
-            PrimaryButton(title: primaryTitle, icon: "signature") {
-                if canAdvanceFromCurrent { advance() }
+            VStack(spacing: 10) {
+                PrimaryButton(title: primaryTitle, icon: "sparkles") {
+                    if canAdvanceFromCurrent { advance() }
+                }
+                .disabled(!canAdvanceFromCurrent)
+                .opacity(canAdvanceFromCurrent ? 1 : 0.4)
+                Text("Your plan unlocks immediately.")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(.white.opacity(0.45))
             }
-            .disabled(!canAdvanceFromCurrent)
-            .opacity(canAdvanceFromCurrent ? 1 : 0.4)
         default:
             PrimaryButton(title: primaryTitle) {
                 advance()
@@ -276,18 +244,15 @@ struct PrePaywallView: View {
             case .badSleep:
                 if subStage < 2 { subStage += 1 } else { phase = .goodSleep; subStage = 0 }
             case .goodSleep:
-                if subStage < 2 { subStage += 1 } else { phase = .yesLadder; subStage = 0 }
+                if subStage < 2 { subStage += 1 } else { phase = .transformList; subStage = 0 }
+            case .transformList:
+                if subStage < BenefitSlideStage.items.count - 1 { subStage += 1 }
+                else { phase = .yesLadder; subStage = 0 }
             case .yesLadder:
                 if subStage < Self.yesLadderCount - 1 { subStage += 1 }
                 else { phase = .signature; subStage = 0 }
             case .signature:
-                phase = .transformAnim; subStage = 0
-            case .transformAnim:
-                phase = .transformList; subStage = 0
-            case .transformList:
-                phase = .commitment; subStage = 0
-            case .commitment:
-                break
+                onContinue()
             }
         }
     }
@@ -679,82 +644,6 @@ private struct GoodSleepStage: View {
     }
 }
 
-// MARK: - Phase 3: Commitment
-
-private struct CommitmentStage: View {
-    let petName: String
-    let species: PetSpecies
-    let profile: OnboardingProfile
-
-    @State private var pulse = false
-    @State private var heartGlow = false
-
-    private var bondedPet: Pet {
-        var p = Pet(); p.species = species; p.mood = .cozy;        return p
-    }
-
-    var body: some View {
-        VStack(spacing: 22) {
-            ZStack {
-                Circle()
-                    .fill(MooniColor.accent.opacity(heartGlow ? 0.35 : 0.18))
-                    .frame(width: 240, height: 240)
-                    .blur(radius: 32)
-                PetIllustration(pet: bondedPet, size: 160)
-                Image(systemName: "heart.fill")
-                    .font(.system(size: 38))
-                    .foregroundColor(.pink.opacity(0.85))
-                    .offset(x: 80, y: -80)
-                    .scaleEffect(pulse ? 1.15 : 0.92)
-            }
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulse = true }
-                withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) { heartGlow = true }
-            }
-
-            VStack(spacing: 12) {
-                Text("Are you ready to invest")
-                    .font(MooniFont.display(26))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                Text("in your & \(petName)'s health?")
-                    .font(MooniFont.display(26))
-                    .foregroundStyle(LinearGradient(
-                        colors: [MooniColor.accentSoft, MooniColor.accent],
-                        startPoint: .leading, endPoint: .trailing))
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 16)
-
-            VStack(spacing: 10) {
-                bondRow(icon: "moon.zzz.fill", text: "A personalized sleep plan made for you")
-                bondRow(icon: "pawprint.fill", text: "\(petName)'s evolution unlocked")
-                bondRow(icon: "sparkles", text: "Become the version of you that sleeps well")
-            }
-            .padding(.horizontal, 4)
-        }
-        .padding(.horizontal, 24)
-    }
-
-    private func bondRow(icon: String, text: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(MooniColor.accent)
-                .frame(width: 36, height: 36)
-                .background(Color.white.opacity(0.10))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            Text(text)
-                .font(MooniFont.title(14))
-                .foregroundColor(.white)
-            Spacer()
-        }
-        .padding(12)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-
 // MARK: - Yes ladder stage (foot-in-the-door)
 
 private struct YesLadderStage: View {
@@ -989,206 +878,100 @@ private struct SignatureCanvas: View {
     }
 }
 
-// MARK: - Transform animation stage (pet evolves, metrics climb)
+// MARK: - Benefit slides (one per screen, replaces transform list)
 
-private struct TransformAnimStage: View {
-    let petName: String
-    let species: PetSpecies
+private struct BenefitSlideStage: View {
+    let item: (icon: String, color: Color, text: String, context: String)
+    let index: Int
+    let total: Int
 
-    @State private var phase: Int = 0
-    @State private var sleepScore: Double = 38
-    @State private var energy: Double = 24
-    @State private var clarity: Double = 30
+    @State private var appeared = false
 
-    private let timer = Timer.publish(every: 0.9, on: .main, in: .common).autoconnect()
-
-    private var pet: Pet {
-        var p = Pet(); p.species = species
-        p.mood = phase >= 2 ? .energized : (phase == 1 ? .cozy : .groggy)
-        return p
-    }
-
-    var body: some View {
-        VStack(spacing: 22) {
-            VStack(spacing: 6) {
-                Text("Watch what changes in 30 days")
-                    .font(MooniFont.display(24))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                Text("\(petName) grows with every cozy night.")
-                    .font(MooniFont.body(13))
-                    .foregroundColor(MooniColor.textSecondary)
-            }
-            .padding(.top, 4)
-
-            ZStack {
-                Circle()
-                    .fill(MooniColor.accent.opacity(0.18 + 0.08 * Double(phase)))
-                    .frame(width: 220, height: 220)
-                    .blur(radius: 30)
-                DreamSpiritView(pet: pet, size: 160)
-                    .id(phase)
-                    .transition(.scale.combined(with: .opacity))
-            }
-
-            // Day chips with active state
-            HStack(spacing: 10) {
-                dayChip("Day 1", active: phase >= 0, color: MooniColor.danger)
-                Image(systemName: "arrow.right").foregroundColor(.white.opacity(0.4))
-                dayChip("Day 14", active: phase >= 1, color: MooniColor.warning)
-                Image(systemName: "arrow.right").foregroundColor(.white.opacity(0.4))
-                dayChip("Day 30", active: phase >= 2, color: MooniColor.success)
-            }
-
-            // Climbing metrics
-            VStack(spacing: 8) {
-                metricRow("Sleep score", value: sleepScore, suffix: "", color: MooniColor.accent)
-                metricRow("Daily energy", value: energy, suffix: "%", color: MooniColor.warning)
-                metricRow("Mental clarity", value: clarity, suffix: "%", color: MooniColor.success)
-            }
-            .padding(14)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.horizontal, 24)
-        }
-        .onReceive(timer) { _ in
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.75)) {
-                if phase < 2 {
-                    phase += 1
-                    sleepScore = phase == 1 ? 64 : 88
-                    energy     = phase == 1 ? 58 : 92
-                    clarity    = phase == 1 ? 60 : 90
-                }
-            }
-        }
-    }
-
-    private func dayChip(_ label: String, active: Bool, color: Color) -> some View {
-        Text(label)
-            .font(MooniFont.caption(11))
-            .foregroundColor(active ? color : MooniColor.textMuted)
-            .padding(.vertical, 6).padding(.horizontal, 12)
-            .background(active ? color.opacity(0.18) : Color.white.opacity(0.06))
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(active ? color.opacity(0.5) : Color.white.opacity(0.10), lineWidth: 1))
-    }
-
-    private func metricRow(_ label: String, value: Double, suffix: String, color: Color) -> some View {
-        HStack {
-            Text(label)
-                .font(MooniFont.caption(13))
-                .foregroundColor(MooniColor.textSecondary)
-                .frame(width: 110, alignment: .leading)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.10))
-                    Capsule()
-                        .fill(LinearGradient(colors: [color.opacity(0.85), color],
-                                             startPoint: .leading, endPoint: .trailing))
-                        .frame(width: geo.size.width * CGFloat(value / 100))
-                        .animation(.spring(response: 0.7, dampingFraction: 0.75), value: value)
-                }
-            }
-            .frame(height: 8)
-            Text("\(Int(value))\(suffix)")
-                .font(MooniFont.title(13))
-                .foregroundColor(color)
-                .frame(width: 44, alignment: .trailing)
-                .contentTransition(.numericText())
-                .animation(.spring(response: 0.6), value: value)
-        }
-    }
-}
-
-// MARK: - Transformation list (benefits revealing one-by-one)
-
-private struct TransformListStage: View {
-    @Binding var revealed: Int
-
-    static let items: [(icon: String, color: Color, text: String)] = [
-        ("bolt.fill",                MooniColor.warning, "+92% daily energy"),
-        ("brain.head.profile",       MooniColor.accent,  "Sharper focus & memory"),
-        ("heart.fill",               .pink,              "Lower heart strain"),
-        ("flame.fill",               MooniColor.danger,  "Easier weight control"),
-        ("face.smiling.fill",        MooniColor.accent,  "Brighter, less puffy face"),
-        ("waveform.path.ecg",        MooniColor.success, "Lower cortisol"),
-        ("shield.fill",              MooniColor.accent,  "Stronger immune system"),
-        ("dollarsign.circle.fill",   MooniColor.success, "Better money decisions"),
-        ("figure.run",               MooniColor.warning, "Faster fitness recovery"),
-        ("staroflife.fill",          .pink,              "Lower disease risk")
+    static let items: [(icon: String, color: Color, text: String, context: String)] = [
+        ("bolt.fill",              MooniColor.warning, "+92% daily energy",
+         "Most users notice the difference within the first week."),
+        ("brain.head.profile",     MooniColor.accent,  "Sharper focus & memory",
+         "Deep sleep doubles your brain's nightly cleanup efficiency."),
+        ("heart.fill",             .pink,              "Lower heart strain",
+         "Chronic poor sleep raises resting heart rate by up to 8 bpm."),
+        ("flame.fill",             MooniColor.danger,  "Easier weight control",
+         "Sleep-deprived people eat ~385 more calories the next day."),
+        ("face.smiling.fill",      MooniColor.accent,  "Brighter, less puffy face",
+         "Growth hormone — the skin's repair signal — peaks during deep sleep."),
+        ("waveform.path.ecg",      MooniColor.success, "Lower cortisol",
+         "Quality sleep cuts morning cortisol by up to 37%."),
+        ("shield.fill",            MooniColor.accent,  "Stronger immune system",
+         "Your immune system nearly doubles its activity while you sleep."),
+        ("dollarsign.circle.fill", MooniColor.success, "Better money decisions",
+         "Sleep-deprived brains make 20% riskier financial choices."),
+        ("figure.run",             MooniColor.warning, "Faster fitness recovery",
+         "Muscle repair happens almost entirely during deep sleep."),
+        ("staroflife.fill",        .pink,              "Lower disease risk",
+         "8 chronic conditions are directly linked to sleep deprivation.")
     ]
 
-    private let timer = Timer.publish(every: 0.55, on: .main, in: .common).autoconnect()
-
     var body: some View {
-        VStack(spacing: 14) {
-            VStack(spacing: 4) {
-                Text("YOU WILL TRANSFORM")
-                    .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.accentSoft)
-                    .tracking(2)
-                Text("Sleep changes everything")
-                    .font(MooniFont.display(24))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.top, 4)
+        VStack(spacing: 28) {
+            // Counter
+            Text("\(index + 1) / \(total)")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(2)
+                .padding(.top, 8)
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 10) {
-                    ForEach(Array(Self.items.enumerated()), id: \.offset) { idx, item in
-                        HStack(spacing: 14) {
-                            Image(systemName: item.icon)
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(item.color)
-                                .frame(width: 38, height: 38)
-                                .background(item.color.opacity(0.16))
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            Text(item.text)
-                                .font(MooniFont.title(15))
-                                .foregroundColor(MooniColor.textPrimary)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Image(systemName: "checkmark")
-                                .foregroundColor(MooniColor.success)
-                                .font(.system(size: 12, weight: .bold))
-                                .opacity(idx < revealed ? 1 : 0)
-                        }
-                        .padding(.vertical, 11)
-                        .padding(.horizontal, 14)
-                        .background(Color.white.opacity(0.07))
-                        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                        .opacity(idx < revealed ? 1 : 0)
-                        .offset(y: idx < revealed ? 0 : 16)
-                        .scaleEffect(idx < revealed ? 1 : 0.9)
-                        .animation(.spring(response: 0.55, dampingFraction: 0.7), value: revealed)
-                    }
+            // Icon with glow
+            ZStack {
+                Circle()
+                    .fill(item.color.opacity(0.14))
+                    .frame(width: 170, height: 170)
+                    .blur(radius: 36)
+                    .scaleEffect(appeared ? 1.1 : 0.7)
+                    .animation(.easeOut(duration: 1.2), value: appeared)
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 30, style: .continuous)
+                        .fill(item.color.opacity(0.18))
+                        .frame(width: 110, height: 110)
+                    Image(systemName: item.icon)
+                        .font(.system(size: 52, weight: .semibold))
+                        .foregroundColor(item.color)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 4)
+                .scaleEffect(appeared ? 1 : 0.4)
+                .animation(.spring(response: 0.55, dampingFraction: 0.65), value: appeared)
             }
-            .frame(maxHeight: 440)
-            .mask(
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: .black, location: 0.05),
-                        .init(color: .black, location: 0.95),
-                        .init(color: .clear, location: 1)
-                    ],
-                    startPoint: .top, endPoint: .bottom
-                )
-            )
+
+            // Benefit headline
+            Text(item.text)
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 22)
+                .animation(.spring(response: 0.6, dampingFraction: 0.75).delay(0.12), value: appeared)
+
+            // Context line
+            Text(item.context)
+                .font(MooniFont.body(16))
+                .foregroundColor(MooniColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 12)
+                .animation(.easeOut(duration: 0.5).delay(0.28), value: appeared)
         }
         .onAppear {
-            // Reset whenever the view appears.
-            revealed = 0
+            appeared = false
+            DispatchQueue.main.async {
+                appeared = true
+                Haptics.soft()
+            }
         }
-        .onReceive(timer) { _ in
-            if revealed < Self.items.count {
-                revealed += 1
+        .onChange(of: index) { _, _ in
+            appeared = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                appeared = true
+                Haptics.soft()
             }
         }
     }

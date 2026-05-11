@@ -1730,46 +1730,41 @@ private struct TypicalSleepHoursScreen: View {
     var body: some View {
         QuestionScaffold(
             title: "When do you usually sleep & wake?",
-            subtitle: "Pick your typical times — even rough is fine."
+            subtitle: "Scroll to your typical times."
         ) {
-            VStack(spacing: 14) {
-                VStack(spacing: 10) {
-                    timeCard(
-                        icon: "moon.fill",
-                        label: "BEDTIME",
-                        accent: MooniColor.accentSoft,
-                        binding: bedDate
-                    )
-                    timeCard(
-                        icon: "sun.max.fill",
-                        label: "WAKE",
-                        accent: MooniColor.warning,
-                        binding: wakeDate
-                    )
-                }
+            VStack(spacing: 12) {
+                timeWheelCard(
+                    icon: "moon.fill",
+                    label: "BEDTIME",
+                    accent: MooniColor.accentSoft,
+                    binding: bedDate
+                )
+                timeWheelCard(
+                    icon: "sun.max.fill",
+                    label: "WAKE UP",
+                    accent: MooniColor.warning,
+                    binding: wakeDate
+                )
 
-                VStack(spacing: 4) {
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(MooniColor.textMuted)
                     Text(durationDisplay)
-                        .font(.system(size: 38, weight: .bold, design: .rounded))
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundStyle(LinearGradient(
                             colors: [MooniColor.accentSoft, MooniColor.accent],
-                            startPoint: .top, endPoint: .bottom))
-                    Text("of sleep, on a typical night")
-                        .font(MooniFont.caption(12))
+                            startPoint: .leading, endPoint: .trailing))
+                    Text("of sleep")
+                        .font(MooniFont.caption(13))
                         .foregroundColor(MooniColor.textMuted)
                 }
-                .padding(.top, 4)
-
-                Text(hoursMessage)
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 4)
-                    .padding(.top, 2)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.06))
+                .clipShape(Capsule())
+                .padding(.top, 2)
             }
-            .padding(18)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
 
@@ -1777,59 +1772,59 @@ private struct TypicalSleepHoursScreen: View {
         let h = profile.typicalSleepHours
         let whole = Int(h)
         let mins = Int(round((h - Double(whole)) * 60))
-        // Hard-rounding to 5-minute resolution keeps the display from
-        // jittering by a minute when the user nudges either picker.
         let snapped = Int(round(Double(mins) / 5.0)) * 5
-        if snapped == 60 {
-            return "\(whole + 1)h 00m"
-        }
+        if snapped == 60 { return "\(whole + 1)h 00m" }
         return String(format: "%dh %02dm", whole, snapped)
     }
 
-    private func timeCard(icon: String, label: String, accent: Color, binding: Binding<Date>) -> some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundColor(accent)
-                    .font(.system(size: 16, weight: .semibold))
+    private func formattedTime(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        return f.string(from: date)
+    }
+
+    private func timeWheelCard(icon: String, label: String, accent: Color, binding: Binding<Date>) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(accent.opacity(0.18))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(accent)
+                }
                 Text(label)
                     .font(.system(size: 11, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.textMuted)
                     .tracking(1.8)
                 Spacer()
+                Text(formattedTime(binding.wrappedValue))
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(accent)
+                    .monospacedDigit()
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 4)
 
-            HStack {
-                DatePicker("", selection: binding, displayedComponents: .hourAndMinute)
-                    .labelsHidden()
-                    .datePickerStyle(.compact)
-                    .scaleEffect(1.4, anchor: .leading)
-                    .padding(.leading, 4)
-                    .tint(accent)
-                    .onChange(of: binding.wrappedValue) { _, _ in Haptics.tap() }
-                Spacer()
-            }
-            .frame(height: 44)
+            DatePicker("", selection: binding, displayedComponents: .hourAndMinute)
+                .datePickerStyle(.wheel)
+                .labelsHidden()
+                .colorScheme(.dark)
+                .tint(accent)
+                .frame(height: 120)
+                .clipped()
+                .onChange(of: binding.wrappedValue) { _, _ in Haptics.tap() }
+                .padding(.horizontal, 4)
+                .padding(.bottom, 8)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.06))
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(accent.opacity(0.35), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private var hoursMessage: String {
-        switch profile.typicalSleepHours {
-        case ..<5.5: return "That's well below what your body needs to recover."
-        case 5.5..<6.7: return "You're running a meaningful sleep deficit most nights."
-        case 6.7..<7.4: return "Close — but still ~32 minutes short of your real need."
-        case 7.4..<8.4: return "Duration's solid. The next questions will check whether it's restorative."
-        default: return "Long sleeper. We'll check whether those hours are actually restorative."
-        }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     // MARK: - Helpers
@@ -1865,13 +1860,7 @@ private struct PhoneBeforeBedScreen: View {
     var body: some View {
         QuestionScaffold(
             title: "Do you use your phone in bed?",
-            subtitle: "Screens delay melatonin by up to 90 minutes.",
-            expert: ExpertNote(
-                quote: "Just 2 hours of screen use before bed delays melatonin by ~22%, even with night-mode on.",
-                author: "Chang et al.",
-                credential: "PNAS 2015 · Harvard Med",
-                icon: "iphone.gen3"
-            )
+            subtitle: "Screens delay melatonin by up to 90 minutes."
         ) {
             VStack(spacing: 18) {
                 ZStack {
