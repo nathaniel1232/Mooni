@@ -7,10 +7,12 @@ struct HomeView: View {
     @Binding var showPaywall: Bool
 
     @StateObject private var healthKit = HealthKitManager.shared
+    @StateObject private var streak = StreakManager.shared
     @State private var showWindDown = false
     @State private var showStartSleep = false
     @State private var showWhy = false
     @State private var showRecoveryPlan = false
+    @State private var showLostStreak = false
     /// Day key (yyyy-MM-dd) currently selected in the week strip. Nil = the
     /// most-recent night's entry. Drives the day-detail card and insight.
     @State private var selectedDayKey: String? = nil
@@ -26,12 +28,17 @@ struct HomeView: View {
 
     var body: some View {
         ZStack {
-            MooniGradient.night.ignoresSafeArea()
-            StarsBackground(count: 48)
+            MooniGradient.adaptive.ignoresSafeArea()
+            // Stars are quieter in daylight.
+            if !isDayTime {
+                StarsBackground(count: 48)
+            }
 
             ScrollView {
                 LazyVStack(spacing: 22) {
                     headerBar
+
+                    levelCard
 
                     heroCard
 
@@ -50,13 +57,21 @@ struct HomeView: View {
                         }
                     }
 
-                    growthFooter
+                    // Growth footer hidden until the feature is shipped.
 
                     Color.clear.frame(height: 24)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 96)
             }
+        }
+        .onAppear {
+            if streak.hasUnseenLoss { showLostStreak = true }
+        }
+        .alert("You lost your \(streak.lostStreakLength)-day streak", isPresented: $showLostStreak) {
+            Button("Start fresh") { streak.acknowledgeLostStreak() }
+        } message: {
+            Text("All freezes were used up. Log tonight's sleep to start a new streak — each level unlocks another freeze so you can miss a day without losing it.")
         }
         .sheet(isPresented: $showWindDown, onDismiss: {
             if !appState.isSleeping {
@@ -117,11 +132,19 @@ struct HomeView: View {
 
     // MARK: - Header
 
+    private var isDayTime: Bool {
+        switch TimeOfDay.current {
+        case .morning, .day: return true
+        case .evening, .night: return false
+        }
+    }
+
     private var headerBar: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center) {
+            HStack(alignment: .center, spacing: 10) {
                 SleepOwlBrandMark(size: .standard)
                 Spacer(minLength: 8)
+                StreakFlameChip(current: streak.current, freezes: streak.freezesRemaining)
                 if !subscriptionManager.isPro {
                     upgradeButton
                 }
@@ -166,6 +189,47 @@ struct HomeView: View {
             .shadow(color: MooniColor.accent.opacity(0.35), radius: 10, y: 4)
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Level card (XP bar)
+
+    private var levelCard: some View {
+        let p = appState.pet
+        let progress = p.levelProgress
+        return MooniCard(padding: 16, cornerRadius: 22) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [MooniColor.warning, MooniColor.accent],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 44, height: 44)
+                        Text("\(p.level)")
+                            .font(MooniFont.title(18))
+                            .foregroundColor(MooniColor.background)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Level \(p.level) · \(p.levelTitle)")
+                            .font(MooniFont.title(16))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Text("\(p.dreamEnergy) / \(p.energyForNextLevel) XP")
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.textSecondary)
+                    }
+                    Spacer()
+                }
+                MooniProgressBar(
+                    value: progress,
+                    height: 10,
+                    colors: [MooniColor.warning, MooniColor.accent]
+                )
+            }
+        }
     }
 
     // MARK: - Hero card (varies by mode)
@@ -243,25 +307,33 @@ struct HomeView: View {
                              color: scoreTint)
                 }
 
-                // See why pill
+                // See why — primary-style pill so it actually invites a tap.
                 Button { showWhy = true } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "text.magnifyingglass")
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("See why this score")
+                            .font(MooniFont.title(14))
+                        Image(systemName: "chevron.right")
                             .font(.system(size: 11, weight: .bold))
-                        Text("See why")
-                            .font(MooniFont.caption(13))
                     }
-                    .foregroundColor(MooniColor.accentSoft)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 9)
+                    .foregroundColor(MooniColor.background)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
                     .background(
-                        Capsule().fill(MooniColor.accent.opacity(0.18))
+                        Capsule().fill(
+                            LinearGradient(
+                                colors: [MooniColor.accentSoft, MooniColor.accent],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                     )
-                    .overlay(
-                        Capsule().stroke(MooniColor.accentSoft.opacity(0.30), lineWidth: 1)
-                    )
+                    .shadow(color: MooniColor.accent.opacity(0.35), radius: 12, y: 5)
                 }
                 .buttonStyle(.plain)
+                .padding(.horizontal, 4)
             }
         }
     }

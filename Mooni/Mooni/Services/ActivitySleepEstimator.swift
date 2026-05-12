@@ -59,7 +59,17 @@ final class ActivitySleepEstimator: ObservableObject {
 
     private func recordPossibleSleepStart(at date: Date) {
         guard isInSleepStartWindow(date) else { return }
+        // Always overwrite — the *latest* background event before wake is the
+        // best estimate of when the phone actually went down for the night.
         UserDefaults.standard.set(date.timeIntervalSince1970, forKey: Key.lastBackground)
+    }
+
+    /// The last recorded "phone went down" timestamp inside the evening
+    /// sleep-start window. Used by the home screen to show an Auto-tracked
+    /// estimated bedtime before the morning import runs.
+    var pendingEstimatedSleepStart: Date? {
+        guard let raw = UserDefaults.standard.object(forKey: Key.lastBackground) as? Double else { return nil }
+        return Date(timeIntervalSince1970: raw)
     }
 
     private func recordPossibleWake(at date: Date) {
@@ -109,8 +119,8 @@ final class ActivitySleepEstimator: ObservableObject {
 
     private func isInSleepStartWindow(_ date: Date) -> Bool {
         let h = Calendar.current.component(.hour, from: date)
-        // 20:00–23:59 OR 00:00–03:59
-        return h >= 20 || h < 4
+        // 19:00–23:59 OR 00:00–03:59 — covers early sleepers too.
+        return h >= 19 || h < 4
     }
 
     private func isInWakeWindow(_ date: Date) -> Bool {

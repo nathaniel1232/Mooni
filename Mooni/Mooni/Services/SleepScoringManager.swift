@@ -302,18 +302,27 @@ enum SleepScoringManager {
     }
 
     /// Duration vs. user's personal goal. 40 pts max.
-    /// Smooth-ish curve with full credit within ±30 min of goal, then drops.
+    /// Generous around the optimal 7–9h adult band: full credit within ±45 min
+    /// of goal *and* any night that lands inside 7–9h still gets near-full credit
+    /// even if the personal goal is higher.
     private static func durationPoints(actualHours: Double, goalHours: Double) -> Int {
         let safeGoal = max(4.0, min(10.0, goalHours))
         let deviation = abs(actualHours - safeGoal)
+        let inOptimalBand = actualHours >= 7.0 && actualHours <= 9.0
+
+        // Optimal-band floor: 7–9h is healthy adult sleep (AASM/NSF) — never
+        // score it as worse than 36/40, regardless of personal goal.
+        if inOptimalBand && deviation >= 0.75 {
+            return 36
+        }
 
         switch deviation {
-        case ..<0.5:  return 40
-        case ..<1.0:  return 36
-        case ..<1.5:  return 30
-        case ..<2.0:  return 24
-        case ..<2.5:  return 18
-        case ..<3.0:  return 12
+        case ..<0.75: return 40    // within ±45 min of goal = full credit
+        case ..<1.25: return 34
+        case ..<1.75: return 28
+        case ..<2.25: return 22
+        case ..<2.75: return 16
+        case ..<3.25: return 10
         case ..<4.0:  return 6
         default:      return 0
         }
@@ -323,8 +332,10 @@ enum SleepScoringManager {
     /// Clinical benchmark: ≥85% healthy, ≥90% excellent.
     private static func efficiencyPoints(totalSleep: TimeInterval, timeInBed: TimeInterval?) -> Int {
         guard let tib = timeInBed, tib > 0 else {
-            // No TIB known (HealthKit sometimes returns this). Stay neutral.
-            return 12
+            // No TIB known (HealthKit sometimes returns this). Stay slightly
+            // generous — assuming healthy efficiency by default keeps the
+            // score from being unfairly dragged down on user-logged nights.
+            return 14
         }
         let efficiency = min(1.0, totalSleep / tib)
         switch efficiency {

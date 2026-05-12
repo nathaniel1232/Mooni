@@ -192,6 +192,9 @@ final class AppState: ObservableObject {
         backfillDerivedSleepData()
         // Reset routine completion if it's a new day
         rolloverRoutineIfNeeded()
+        // Evaluate streak decay (spends freezes or breaks streak if days missed).
+        StreakManager.shared.evaluateOnLaunch()
+        StreakManager.shared.reconcileFreezes(forLevel: self.pet.level)
         // Maybe surface morning check-in
         evaluateMorningPrompt()
 
@@ -442,6 +445,7 @@ final class AppState: ObservableObject {
         }
 
         applyReward(energy: max(0, entry.energyEarned - previousEnergy), score: entry.score)
+        StreakManager.shared.registerSleepLogged(on: entry.wakeTime, durationHours: entry.hours)
         UserDefaults.standard.set(entry.dayKey, forKey: Key.lastMorningPrompt)
         showMorningCheckIn = false
         return entry
@@ -488,6 +492,9 @@ final class AppState: ObservableObject {
         self.pet = p
         self.lastEarnedEnergy = energy > 0 ? energy : nil
         self.lastLevelUp = leveledTo
+        if leveledTo != nil {
+            StreakManager.shared.reconcileFreezes(forLevel: p.level)
+        }
     }
 
     func addRoutineEnergy(_ amount: Int = 5) {
@@ -894,6 +901,7 @@ final class AppState: ObservableObject {
                 age: profile.age
             )
             entries.append(entry)
+            StreakManager.shared.registerSleepLogged(on: entry.wakeTime, durationHours: entry.hours)
 
             if dayKey == Date().dayKey {
                 applyReward(energy: max(0, entry.energyEarned - previousEnergy), score: entry.score)
@@ -968,6 +976,7 @@ final class AppState: ObservableObject {
             "mooni.estimator.intervals"
         ]
         for key in knownKeys { defaults.removeObject(forKey: key) }
+        StreakManager.shared.resetAll()
         defaults.synchronize()
 
         // Reset in-memory state so the UI immediately reflects the wipe.

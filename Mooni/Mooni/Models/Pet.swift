@@ -134,11 +134,24 @@ struct Pet: Codable {
 
     // MARK: - Derived
     var energyForNextLevel: Int {
-        100 + (level - 1) * 50
+        // Slightly steeper curve so higher levels feel earned.
+        100 + (level - 1) * 75
     }
 
     var levelProgress: Double {
         min(1.0, Double(dreamEnergy) / Double(energyForNextLevel))
+    }
+
+    /// Friendly title shown next to level number.
+    var levelTitle: String {
+        switch level {
+        case ..<3:   return "Drowsy"
+        case 3..<6:  return "Restful"
+        case 6..<10: return "Dreamer"
+        case 10..<15: return "Night Owl"
+        case 15..<22: return "Sleep Sage"
+        default:     return "Moonlit Legend"
+        }
     }
 
     /// Returns the highest stage reached for the given consistency-day count.

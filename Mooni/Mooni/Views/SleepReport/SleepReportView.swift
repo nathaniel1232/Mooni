@@ -12,7 +12,7 @@ struct SleepReportView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MooniGradient.night.ignoresSafeArea()
+                MooniGradient.adaptive.ignoresSafeArea()
                 ScrollView {
                     VStack(spacing: 16) {
                         if let entry = appState.lastEntry {

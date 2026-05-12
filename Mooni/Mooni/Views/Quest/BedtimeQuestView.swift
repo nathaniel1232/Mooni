@@ -18,11 +18,20 @@ struct BedtimeQuestView: View {
         }
     }
 
+    private var isDayTime: Bool {
+        switch TimeOfDay.current {
+        case .morning, .day: return true
+        case .evening, .night: return false
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
-                MooniGradient.night.ignoresSafeArea()
-                StarsBackground(count: 32)
+                MooniGradient.adaptive.ignoresSafeArea()
+                if !isDayTime {
+                    StarsBackground(count: 32)
+                }
 
                 ScrollView {
                     VStack(spacing: 18) {
@@ -191,19 +200,25 @@ struct BedtimeQuestView: View {
 
     private var programsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("Programs")
+            HStack {
+                Text("Programs")
+                    .font(MooniFont.title(18))
+                    .foregroundColor(MooniColor.textPrimary)
+                Spacer()
+                Text("Coming soon")
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.background)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(MooniColor.accentSoft)
+                    .clipShape(Capsule())
+            }
+            .padding(.horizontal, 4)
 
             ForEach(SleepProgram.catalog) { program in
-                Button {
-                    if subscriptionManager.isPro {
-                        showReadySheet = true
-                    } else {
-                        showPaywall = true
-                    }
-                } label: {
-                    programRow(program)
-                }
-                .buttonStyle(.plain)
+                programRow(program)
+                    .opacity(0.55)
+                    .allowsHitTesting(false)
             }
         }
     }
@@ -222,7 +237,7 @@ struct BedtimeQuestView: View {
                     Text(program.title)
                         .font(MooniFont.title(15))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text(subscriptionManager.isPro ? program.subtitle : "Preview day 1 • \(program.days) days")
+                    Text("\(program.days)-day plan · launching soon")
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.textSecondary)
                         .lineLimit(2)
@@ -230,9 +245,9 @@ struct BedtimeQuestView: View {
 
                 Spacer()
 
-                Image(systemName: subscriptionManager.isPro ? "chevron.right" : "lock.fill")
+                Image(systemName: "hourglass")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(subscriptionManager.isPro ? MooniColor.accent : MooniColor.textMuted)
+                    .foregroundColor(MooniColor.textMuted)
             }
         }
     }
@@ -366,6 +381,13 @@ private struct QuestFlowView: View {
     @State private var showedMicrocopy = false
     @State private var journalText = ""
     @State private var breathingExpanded = false
+    /// Seconds elapsed in the breathing exercise — must reach 30 before
+    /// the user can mark step 0 done. Stops shallow taps from speedrunning
+    /// the quest.
+    @State private var breathingElapsed: Int = 0
+    @State private var phoneAwayHoldProgress: Double = 0
+    @State private var holdTimer: Timer? = nil
+    @State private var breathTimer: Timer? = nil
 
     private var questHabits: [RoutineHabit] {
         ["breathing", "journal", "no_phone"].compactMap { id in
@@ -450,14 +472,29 @@ private struct QuestFlowView: View {
 
                     if index == 0 {
                         breathingCircle
+                        Text(breathingElapsed >= 30
+                             ? "Nice. You're calmer."
+                             : "Keep breathing… \(max(0, 30 - breathingElapsed))s")
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.textSecondary)
+                            .frame(maxWidth: .infinity)
                     }
 
                     if index == 1 {
                         journalField
+                        Text("\(journalText.trimmingCharacters(in: .whitespacesAndNewlines).count)/15 characters")
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(MooniColor.textMuted)
                     }
 
-                    PrimaryButton(title: ctaTitle(for: index), icon: ctaIcon(for: index)) {
-                        handleStepTap(habit: habit, index: index)
+                    if index == 2 && !showedMicrocopy {
+                        phoneAwayHoldButton(habit: habit, index: index)
+                    } else {
+                        PrimaryButton(title: ctaTitle(for: index), icon: ctaIcon(for: index)) {
+                            handleStepTap(habit: habit, index: index)
+                        }
+                        .disabled(!canCompleteStep(index: index))
+                        .opacity(canCompleteStep(index: index) ? 1 : 0.5)
                     }
 
                     if index == 1 && !showedMicrocopy {
@@ -481,8 +518,85 @@ private struct QuestFlowView: View {
                 withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
                     breathingExpanded = true
                 }
+                breathingElapsed = 0
+                breathTimer?.invalidate()
+                breathTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                    Task { @MainActor in
+                        if breathingElapsed < 30 {
+                            breathingElapsed += 1
+                        } else {
+                            breathTimer?.invalidate()
+                            breathTimer = nil
+                        }
+                    }
+                }
             }
         }
+        .onDisappear {
+            breathTimer?.invalidate(); breathTimer = nil
+            holdTimer?.invalidate(); holdTimer = nil
+        }
+    }
+
+    private func canCompleteStep(index: Int) -> Bool {
+        if showedMicrocopy { return true } // "Next" button stage — always enabled
+        switch index {
+        case 0: return breathingElapsed >= 30
+        case 1: return journalText.trimmingCharacters(in: .whitespacesAndNewlines).count >= 15
+        default: return true
+        }
+    }
+
+    /// Hold-to-confirm "phone away". Press for 2 seconds to register —
+    /// makes the quest harder to fake with a single tap.
+    private func phoneAwayHoldButton(habit: RoutineHabit, index: Int) -> some View {
+        let progress = phoneAwayHoldProgress
+        return ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(MooniColor.accent.opacity(0.22))
+            GeometryReader { geo in
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [MooniColor.accentSoft, MooniColor.accent],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: geo.size.width * CGFloat(progress))
+            }
+            HStack(spacing: 10) {
+                Image(systemName: "iphone.slash")
+                    .font(.system(size: 14, weight: .bold))
+                Text(progress > 0.05 ? "Keep holding…" : "Hold to confirm phone away")
+                    .font(MooniFont.title(15))
+            }
+            .foregroundColor(MooniColor.background)
+        }
+        .frame(height: 52)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if holdTimer == nil {
+                        holdTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+                            Task { @MainActor in
+                                phoneAwayHoldProgress = min(1, phoneAwayHoldProgress + 0.05 / 2.0)
+                                if phoneAwayHoldProgress >= 1 {
+                                    holdTimer?.invalidate(); holdTimer = nil
+                                    handleStepTap(habit: habit, index: index)
+                                }
+                            }
+                        }
+                    }
+                }
+                .onEnded { _ in
+                    holdTimer?.invalidate(); holdTimer = nil
+                    if phoneAwayHoldProgress < 1 {
+                        withAnimation { phoneAwayHoldProgress = 0 }
+                    }
+                }
+        )
     }
 
     private var breathingCircle: some View {

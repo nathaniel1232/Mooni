@@ -16,7 +16,11 @@ struct MooniCard<Content: View>: View {
     }
 
     var body: some View {
-        content()
+        // Wrap content() in a VStack so multi-view (TupleView) bodies stack
+        // predictably instead of relying on implicit layout behaviour.
+        VStack(alignment: .leading, spacing: 12) {
+            content()
+        }
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(MooniGradient.card)
@@ -189,52 +193,70 @@ struct MooniPremiumLockCard: View {
     var body: some View {
         Button(action: action) {
             MooniCard(padding: 16, cornerRadius: 24) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(MooniColor.accent.opacity(0.14))
-                            .frame(width: 48, height: 48)
-                        Image(systemName: icon)
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(MooniColor.accentSoft)
+                // Wrap entire content in a single VStack so SwiftUI doesn't
+                // collapse the sibling action title into the icon's HStack —
+                // that was the source of the squished button text.
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(MooniColor.accent.opacity(0.14))
+                                .frame(width: 48, height: 48)
+                            Image(systemName: icon)
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(MooniColor.accentSoft)
+                        }
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack(spacing: 6) {
+                                Text(title)
+                                    .font(MooniFont.title(15))
+                                    .foregroundColor(MooniColor.textPrimary)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                                Text(badge)
+                                    .font(MooniFont.caption(10))
+                                    .foregroundColor(MooniColor.background)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(MooniColor.accentSoft)
+                                    .clipShape(Capsule())
+                            }
+
+                            Text(subtitle)
+                                .font(MooniFont.caption(12))
+                                .foregroundColor(MooniColor.textSecondary)
+                                .multilineTextAlignment(.leading)
+                                .lineLimit(4)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
 
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(title)
-                            .font(MooniFont.title(15))
-                            .foregroundColor(MooniColor.textPrimary)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Text(subtitle)
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textSecondary)
-                            .multilineTextAlignment(.leading)
-                            .lineLimit(3)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Text(badge)
-                            .font(MooniFont.caption(10))
-                            .foregroundColor(MooniColor.background)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(MooniColor.accentSoft)
-                            .clipShape(Capsule())
-                            .padding(.top, 2)
+                    if let actionTitle {
+                        HStack(spacing: 6) {
+                            Text(actionTitle)
+                                .font(MooniFont.caption(13))
+                                .foregroundColor(MooniColor.background)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(MooniColor.background)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            Capsule().fill(
+                                LinearGradient(
+                                    colors: [MooniColor.accentSoft, MooniColor.accent],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                        )
                     }
-
-                    Spacer(minLength: 4)
-
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(MooniColor.textMuted)
-                }
-
-                if let actionTitle {
-                    Text(actionTitle)
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.accentSoft)
-                        .padding(.top, 8)
                 }
             }
         }

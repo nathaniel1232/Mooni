@@ -41,6 +41,17 @@ enum MooniGradient {
         endPoint: .bottom
     )
 
+    /// Soft daylight gradient — lighter and warmer than night.
+    static let day = LinearGradient(
+        colors: [
+            Color(red: 0.36, green: 0.46, blue: 0.78),
+            Color(red: 0.55, green: 0.58, blue: 0.86),
+            Color(red: 0.78, green: 0.74, blue: 0.94)
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
     static let card = LinearGradient(
         colors: [
             Color.white.opacity(0.10),
@@ -49,4 +60,12 @@ enum MooniGradient {
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
+
+    /// Background gradient that adapts to time of day.
+    static var adaptive: LinearGradient {
+        switch TimeOfDay.current {
+        case .morning, .day: return day
+        case .evening, .night: return night
+        }
+    }
 }
