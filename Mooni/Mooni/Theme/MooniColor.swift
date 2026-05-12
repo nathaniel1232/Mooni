@@ -41,12 +41,12 @@ enum MooniGradient {
         endPoint: .bottom
     )
 
-    /// Soft daylight gradient — lighter and warmer than night.
+    /// Daytime gradient — deep indigo/blue sky feel, dark enough for white text.
     static let day = LinearGradient(
         colors: [
-            Color(red: 0.36, green: 0.46, blue: 0.78),
-            Color(red: 0.55, green: 0.58, blue: 0.86),
-            Color(red: 0.78, green: 0.74, blue: 0.94)
+            Color(red: 0.08, green: 0.14, blue: 0.38),
+            Color(red: 0.16, green: 0.24, blue: 0.54),
+            Color(red: 0.26, green: 0.36, blue: 0.66)
         ],
         startPoint: .top,
         endPoint: .bottom

@@ -28,11 +28,11 @@ struct PrePaywallView: View {
     private static let yesLadderCount = 5
 
     private static let yesLadderQuestions: [String] = [
-        "Do you want to wake up rested tomorrow?",
-        "Are you tired of being tired?",
-        "Will you commit to your sleep this week?",
-        "Will you let your pet grow with you?",
-        "Are you ready to actually do this?"
+        "Do you want to stop getting sick every single season?",
+        "Are you tired of losing money to brain fog and poor decisions?",
+        "Do you want to stop gaining weight without even changing your diet?",
+        "Are you ready to have the energy your relationships deserve?",
+        "Are you done letting sleep deprivation age you faster than you should?"
     ]
 
     var body: some View {
@@ -214,6 +214,7 @@ struct PrePaywallView: View {
         case .yesLadder:
             VStack(spacing: 10) {
                 PrimaryButton(title: "YES", icon: "checkmark.circle.fill") {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                     advance()
                 }
                 Text("Tap to continue.")
@@ -561,7 +562,7 @@ private struct GoodSleepStage: View {
             }
 
             VStack(spacing: 8) {
-                futureRow(day: "Tonight",   text: "Wind-down + your soundscape", icon: "moon.stars.fill")
+                futureRow(day: "Tonight",   text: "Sleep auto-tracked while you rest", icon: "waveform.path.ecg")
                 futureRow(day: "Day 3",     text: "First night of unbroken sleep", icon: "sparkles")
                 futureRow(day: "Day 7",     text: "Wake before the alarm — rested", icon: "sun.max.fill")
                 futureRow(day: "Day 30",    text: "Energy, mood & focus rebuilt",  icon: "bolt.fill")

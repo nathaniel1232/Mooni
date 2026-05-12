@@ -55,82 +55,102 @@ struct PaywallView: View {
     // MARK: - Main content
 
     private var mainContent: some View {
-        VStack(spacing: 0) {
-            // Top bar: small spirit + title + close
-            HStack(alignment: .center, spacing: 10) {
-                DreamSpiritView(pet: heroPet, size: 56)
-                    .scaleEffect(animateIn ? 1.0 : 0.85)
-                    .opacity(animateIn ? 1 : 0)
-                    .animation(.spring(response: 0.6, dampingFraction: 0.7), value: animateIn)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("SleepOwl Pro")
-                        .font(MooniFont.display(22))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Text("Sleep better. Grow stronger.")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.textSecondary)
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                // Close button row
+                HStack {
+                    Spacer()
+                    Button {
+                        if hideCloseButton, let soft = onSoftDismiss { soft() } else { dismiss() }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(
+                                size: hideCloseButton ? 10 : 13,
+                                weight: hideCloseButton ? .regular : .semibold))
+                            .foregroundColor(hideCloseButton
+                                             ? Color.white.opacity(0.18)
+                                             : MooniColor.textSecondary)
+                            .padding(hideCloseButton ? 6 : 8)
+                            .background(hideCloseButton ? Color.clear : Color.white.opacity(0.10))
+                            .clipShape(Circle())
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Close paywall")
                 }
-                Spacer()
-                Button {
-                    if hideCloseButton, let soft = onSoftDismiss { soft() } else { dismiss() }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(
-                            size: hideCloseButton ? 10 : 13,
-                            weight: hideCloseButton ? .regular : .semibold))
-                        .foregroundColor(hideCloseButton
-                                         ? Color.white.opacity(0.20)
-                                         : MooniColor.textSecondary)
-                        .padding(hideCloseButton ? 6 : 8)
-                        .background(hideCloseButton ? Color.clear : Color.white.opacity(0.10))
-                        .clipShape(Circle())
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Close paywall")
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
-            .padding(.bottom, 10)
-
-            // Features
-            featuresSection
                 .padding(.horizontal, 20)
-                .offset(y: animateIn ? 0 : 12)
-                .opacity(animateIn ? 1 : 0)
-                .animation(.easeOut(duration: 0.4).delay(0.10), value: animateIn)
-
-            // Plan picker
-            planPicker
                 .padding(.top, 12)
-                .padding(.horizontal, 20)
-                .offset(y: animateIn ? 0 : 12)
-                .opacity(animateIn ? 1 : 0)
-                .animation(.easeOut(duration: 0.4).delay(0.18), value: animateIn)
 
-            // Compact trial summary (replaces the long timeline)
-            trialSummary
-                .padding(.top, 10)
-                .padding(.horizontal, 20)
-                .opacity(animateIn ? 1 : 0)
-                .animation(.easeOut(duration: 0.4).delay(0.26), value: animateIn)
+                // Hero section
+                VStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(RadialGradient(
+                                colors: [MooniColor.accent.opacity(0.40), .clear],
+                                center: .center, startRadius: 4, endRadius: 130))
+                            .frame(width: 260, height: 260)
+                            .blur(radius: 6)
+                        DreamSpiritView(pet: heroPet, size: 130)
+                            .scaleEffect(animateIn ? 1 : 0.82)
+                            .shadow(color: MooniColor.accent.opacity(0.45), radius: 28, y: 12)
+                    }
+                    .frame(height: 180)
 
-            if let error = manager.errorMessage {
-                Text(error)
-                    .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.danger)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 6)
+                    VStack(spacing: 6) {
+                        Text("SleepOwl Pro")
+                            .font(MooniFont.display(30))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Text("Sleep better. Grow stronger. Every night.")
+                            .font(MooniFont.body(15))
+                            .foregroundColor(MooniColor.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .opacity(animateIn ? 1 : 0)
+                .animation(.spring(response: 0.7, dampingFraction: 0.75), value: animateIn)
+                .padding(.top, 4)
+
+                // Features
+                featuresSection
+                    .padding(.horizontal, 20)
+                    .padding(.top, 18)
+                    .offset(y: animateIn ? 0 : 10)
+                    .opacity(animateIn ? 1 : 0)
+                    .animation(.easeOut(duration: 0.4).delay(0.12), value: animateIn)
+
+                // Plan picker
+                planPicker
+                    .padding(.top, 14)
+                    .padding(.horizontal, 20)
+                    .offset(y: animateIn ? 0 : 10)
+                    .opacity(animateIn ? 1 : 0)
+                    .animation(.easeOut(duration: 0.4).delay(0.20), value: animateIn)
+
+                // Trial summary
+                trialSummary
+                    .padding(.top, 10)
+                    .padding(.horizontal, 20)
+                    .opacity(animateIn ? 1 : 0)
+                    .animation(.easeOut(duration: 0.4).delay(0.28), value: animateIn)
+
+                if let error = manager.errorMessage {
+                    Text(error)
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.danger)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 8)
+                }
+
+                purchaseButton
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .opacity(animateIn ? 1 : 0)
+                    .animation(.easeOut(duration: 0.4).delay(0.32), value: animateIn)
+
+                footerLinks
+                    .padding(.top, 10)
+                    .padding(.bottom, 24)
             }
-
-            Spacer(minLength: 6)
-
-            purchaseButton
-                .padding(.horizontal, 20)
-
-            footerLinks
-                .padding(.top, 8)
-                .padding(.bottom, 14)
         }
         .onAppear {
             if selectedPackage == nil {
@@ -148,41 +168,47 @@ struct PaywallView: View {
     // MARK: - Features
 
     private var featuresSection: some View {
-        VStack(spacing: 6) {
-            proFeatureRow(icon: "chart.bar.fill", color: MooniColor.accent,
-                          title: "Full Sleep History", detail: "Unlimited logs & trends")
+        VStack(spacing: 8) {
             proFeatureRow(icon: "waveform.path.ecg", color: MooniColor.success,
-                          title: "Advanced Analytics", detail: "Sleep score breakdowns")
+                          title: "Auto sleep tracking", detail: "Zero manual logging — just sleep")
+            proFeatureRow(icon: "chart.bar.fill", color: MooniColor.accent,
+                          title: "Full sleep history & trends", detail: "Unlimited logs with score breakdowns")
             proFeatureRow(icon: "sparkles", color: MooniColor.warning,
-                          title: "All Spirit Items", detail: "Every color & background")
+                          title: "All spirit unlocks", detail: "Every color, animation & background")
+            proFeatureRow(icon: "brain.head.profile", color: .pink,
+                          title: "Deep sleep insights", detail: "REM, debt, recovery & sleep coach")
         }
     }
 
     private func proFeatureRow(icon: String, color: Color, title: String, detail: String) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(color)
-                .frame(width: 26, height: 26)
+                .frame(width: 36, height: 36)
                 .background(color.opacity(0.16))
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-            VStack(alignment: .leading, spacing: 0) {
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(MooniFont.title(13))
+                    .font(MooniFont.title(15))
                     .foregroundColor(MooniColor.textPrimary)
                 Text(detail)
-                    .font(MooniFont.caption(11))
+                    .font(MooniFont.caption(12))
                     .foregroundColor(MooniColor.textSecondary)
             }
             Spacer()
-            Image(systemName: "checkmark")
-                .font(.system(size: 10, weight: .bold))
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(MooniColor.success)
         }
-        .padding(.vertical, 7)
-        .padding(.horizontal, 11)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
         .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.07), lineWidth: 1)
+        )
     }
 
     // MARK: - Trial summary (compact, replaces the timeline)

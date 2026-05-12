@@ -3178,31 +3178,30 @@ private struct WidgetPreviewScreen: View {
                         .tracking(2)
                         .textCase(.uppercase)
                 }
-                Text("\(petName) on your home screen")
+                Text("Wake up. See your night.")
                     .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("See your sleep score and \(petName)'s mood at a glance — no app open required.")
+                Text("Your auto-tracked sleep score and \(petName)'s mood — waiting on your home screen every morning. No app open needed.")
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
             }
 
-            // Two mock widget cards, side by side. Pixel-rough imitation of the
-            // actual iOS home-screen tile so the user can picture it in place.
+            // Two mock widget cards — styled like the actual iOS home-screen tiles.
             HStack(spacing: 14) {
                 smallWidget(
-                    title: "Tonight",
-                    big: "10:30 PM",
-                    sub: "Wind-down in 1h",
-                    icon: "moon.zzz.fill",
+                    title: "Auto-tracked",
+                    big: "7h 24m",
+                    sub: "Last night · 11:02 PM–6:26 AM",
+                    icon: "waveform.path.ecg",
                     tint: MooniColor.accentSoft
                 )
                 smallWidget(
-                    title: "Last night",
-                    big: "82",
-                    sub: "Sleep score",
+                    title: "Sleep score",
+                    big: "84",
+                    sub: "Great · on target",
                     icon: "chart.bar.fill",
                     tint: MooniColor.success
                 )
@@ -4681,10 +4680,10 @@ private struct AutoTrackIntroScreen: View {
     @State private var phase: CGFloat = 0
 
     private let features: [(icon: String, title: String, detail: String)] = [
-        ("waveform.path.ecg", "Motion & sound analysis", "Passive sensors map every micro-movement"),
-        ("chart.xyaxis.line", "Sleep-stage detection", "REM, light, and deep sleep — identified nightly"),
-        ("moon.zzz.fill", "Onset timing", "Knows within 8 min when you actually fell asleep"),
-        ("heart.text.square.fill", "Recovery score", "Weighted algorithm, not just hours in bed")
+        ("iphone", "Put your phone down. Done.", "Tracking starts automatically — no button, no ritual"),
+        ("chart.xyaxis.line", "REM & deep sleep detected", "Light, deep, and REM stages mapped every night"),
+        ("moon.zzz.fill", "Bedtime within 8 minutes", "Knows when you actually fell asleep, not just when you lay down"),
+        ("sun.max.fill", "Morning report ready", "Open the app — your full night is already analyzed")
     ]
 
     var body: some View {

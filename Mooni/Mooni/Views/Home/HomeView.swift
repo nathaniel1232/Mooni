@@ -13,6 +13,8 @@ struct HomeView: View {
     @State private var showWhy = false
     @State private var showRecoveryPlan = false
     @State private var showLostStreak = false
+    @State private var showAutoWakeUp = false
+    @State private var showManualOptions = false
     /// Day key (yyyy-MM-dd) currently selected in the week strip. Nil = the
     /// most-recent night's entry. Drives the day-detail card and insight.
     @State private var selectedDayKey: String? = nil
@@ -67,6 +69,7 @@ struct HomeView: View {
         }
         .onAppear {
             if streak.hasUnseenLoss { showLostStreak = true }
+            checkAutoWakeUp()
         }
         .alert("You lost your \(streak.lostStreakLength)-day streak", isPresented: $showLostStreak) {
             Button("Start fresh") { streak.acknowledgeLostStreak() }
@@ -91,6 +94,11 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showRecoveryPlan) {
             RecoveryPlanSheet(showPaywall: $showPaywall)
+        }
+        .sheet(isPresented: $showAutoWakeUp) {
+            if let entry = appState.lastEntry {
+                AutoWakeUpSheet(entry: entry, petName: appState.pet.name, showPaywall: $showPaywall)
+            }
         }
     }
 
@@ -358,10 +366,19 @@ struct HomeView: View {
                 .frame(height: 200)
 
                 VStack(spacing: 6) {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(MooniColor.success)
+                            .frame(width: 6, height: 6)
+                        Text("AUTO-TRACKING ON")
+                            .font(MooniFont.caption(10))
+                            .foregroundColor(MooniColor.success)
+                            .tracking(1.2)
+                    }
                     Text("Your first night")
                         .font(MooniFont.display(28))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text("Help \(appState.pet.name) settle in. Tomorrow you'll see your sleep score.")
+                    Text("Just sleep — \(appState.pet.name) will track everything automatically. Your score appears in the morning.")
                         .font(MooniFont.body(14))
                         .foregroundColor(MooniColor.textSecondary)
                         .multilineTextAlignment(.center)
@@ -398,11 +415,15 @@ struct HomeView: View {
                 .frame(height: 180)
 
                 VStack(spacing: 6) {
-                    Text("Tonight")
-                        .font(MooniFont.caption(11))
-                        .foregroundColor(MooniColor.accentSoft)
-                        .tracking(1.5)
-                        .textCase(.uppercase)
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(MooniColor.success)
+                            .frame(width: 6, height: 6)
+                        Text("AUTO-TRACKING TONIGHT")
+                            .font(MooniFont.caption(10))
+                            .foregroundColor(MooniColor.success)
+                            .tracking(1.2)
+                    }
                     Text("\(appState.pet.name) is getting sleepy")
                         .font(MooniFont.display(24))
                         .foregroundColor(MooniColor.textPrimary)
@@ -457,33 +478,82 @@ struct HomeView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    // MARK: - Tonight plan
+    // MARK: - Tonight plan (automation-first)
 
     private var tonightPlanCard: some View {
         MooniCard(padding: 18, cornerRadius: 26) {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Tonight's plan")
-                            .font(MooniFont.title(18))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Text("Wind down at \(windDownTime.hourMinuteString) · sleep at \(appState.targetBedtime.hourMinuteString)")
+                // Automation status header
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(MooniColor.success.opacity(0.18))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "waveform.path.ecg")
+                            .foregroundColor(MooniColor.success)
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(MooniColor.success)
+                                .frame(width: 6, height: 6)
+                            Text("AUTO-TRACKING ACTIVE")
+                                .font(MooniFont.caption(10))
+                                .foregroundColor(MooniColor.success)
+                                .tracking(1.2)
+                        }
+                        Text("Sleep detection starts automatically tonight")
                             .font(MooniFont.caption(12))
                             .foregroundColor(MooniColor.textSecondary)
                     }
                     Spacer()
-                    Image(systemName: "moon.stars.fill")
-                        .foregroundColor(MooniColor.accentSoft)
-                        .font(.system(size: 17, weight: .semibold))
+                }
+                .padding(12)
+                .background(MooniColor.success.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(MooniColor.success.opacity(0.22), lineWidth: 1)
+                )
+
+                // Schedule at a glance
+                HStack(spacing: 8) {
+                    scheduleChip(icon: "bed.double.fill", label: "Target bed", value: appState.targetBedtime.hourMinuteString, color: MooniColor.accent)
+                    scheduleChip(icon: "sunrise.fill", label: "Wake goal", value: appState.targetWakeTime.hourMinuteString, color: MooniColor.warning)
+                    scheduleChip(icon: "moon.zzz.fill", label: "Wind-down", value: windDownTime.hourMinuteString, color: MooniColor.success)
                 }
 
-                VStack(spacing: 10) {
-                    PrimaryButton(title: "Start wind-down", icon: "moon.zzz.fill") {
-                        showWindDown = true
+                // Optional actions (collapsed by default)
+                Button {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                        showManualOptions.toggle()
                     }
-                    SecondaryButton(title: "Going to bed now", icon: "bed.double.fill") {
-                        showStartSleep = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: showManualOptions ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(showManualOptions ? "Hide sleep tools" : "Sleep tools")
+                            .font(MooniFont.caption(12))
                     }
+                    .foregroundColor(MooniColor.textMuted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.05))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+
+                if showManualOptions {
+                    VStack(spacing: 8) {
+                        PrimaryButton(title: "Start wind-down ritual", icon: "moon.zzz.fill") {
+                            showWindDown = true
+                        }
+                        SecondaryButton(title: "Log bedtime manually", icon: "bed.double.fill") {
+                            showStartSleep = true
+                        }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 if !isHealthConnected {
@@ -491,7 +561,7 @@ struct HomeView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "heart.text.square.fill")
                                 .font(.system(size: 11, weight: .bold))
-                            Text("Connect Apple Health")
+                            Text("Connect Apple Health for richer data")
                                 .font(MooniFont.caption(12))
                         }
                         .foregroundColor(MooniColor.accentSoft)
@@ -504,6 +574,30 @@ struct HomeView: View {
                 }
             }
         }
+    }
+
+    private func scheduleChip(icon: String, label: String, value: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(color)
+            Text(value)
+                .font(MooniFont.title(14))
+                .foregroundColor(MooniColor.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(MooniFont.caption(9))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(0.3)
+                .textCase(.uppercase)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(color.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: - Week strip
@@ -937,6 +1031,21 @@ struct HomeView: View {
         return f.string(from: date)
     }
 
+    // MARK: - Auto wake-up detection
+
+    private func checkAutoWakeUp() {
+        let hour = Calendar.current.component(.hour, from: Date())
+        guard hour >= 5 && hour < 13 else { return }
+        let todayKey = Date().dayKey
+        guard UserDefaults.standard.string(forKey: "mooni.autoWakeShownDay") != todayKey else { return }
+        guard let entry = appState.lastEntry, Calendar.current.isDateInToday(entry.wakeTime) else { return }
+        guard !appState.isSleeping else { return }
+        UserDefaults.standard.set(todayKey, forKey: "mooni.autoWakeShownDay")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            showAutoWakeUp = true
+        }
+    }
+
     // MARK: - Helpers
 
     private var windDownTime: Date {
@@ -1321,6 +1430,192 @@ private struct RecoveryPlanSheet: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Auto Wake-Up Sheet
+
+private struct AutoWakeUpSheet: View {
+    @EnvironmentObject var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    let entry: SleepEntry
+    let petName: String
+    @Binding var showPaywall: Bool
+
+    @State private var ringVisible = false
+    @State private var statsVisible = false
+
+    private var scoreTint: Color {
+        switch entry.score {
+        case 85...: return MooniColor.success
+        case 70..<85: return MooniColor.accent
+        case 50..<70: return MooniColor.warning
+        default: return MooniColor.danger
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MooniGradient.night.ignoresSafeArea()
+                StarsBackground(count: 50)
+
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Morning greeting
+                        VStack(spacing: 6) {
+                            Text("GOOD MORNING")
+                                .font(MooniFont.caption(11))
+                                .foregroundColor(MooniColor.accentSoft)
+                                .tracking(2)
+                            Text("\(petName) tracked your night")
+                                .font(MooniFont.display(26))
+                                .foregroundColor(MooniColor.textPrimary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.top, 8)
+
+                        // Auto-tracked badge
+                        HStack(spacing: 8) {
+                            Image(systemName: "waveform.path.ecg")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Auto-tracked while you slept")
+                                .font(MooniFont.caption(12))
+                        }
+                        .foregroundColor(MooniColor.success)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(MooniColor.success.opacity(0.14))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(MooniColor.success.opacity(0.3), lineWidth: 1))
+
+                        // Score ring + pet
+                        ZStack {
+                            Circle()
+                                .fill(RadialGradient(
+                                    colors: [scoreTint.opacity(0.28), .clear],
+                                    center: .center, startRadius: 4, endRadius: 150))
+                                .frame(width: 300, height: 300)
+                                .blur(radius: 4)
+                            DreamSpiritView(pet: appState.pet, size: 56)
+                                .offset(y: -106)
+                            SleepScoreRing(score: ringVisible ? entry.score : 0, size: 180, lineWidth: 13)
+                                .animation(.spring(response: 1.2, dampingFraction: 0.72).delay(0.3), value: ringVisible)
+                        }
+                        .frame(height: 220)
+
+                        // Core stats
+                        MooniCard(padding: 18, cornerRadius: 24) {
+                            VStack(spacing: 14) {
+                                HStack {
+                                    Text(entry.formattedDuration)
+                                        .font(MooniFont.display(30))
+                                        .foregroundColor(MooniColor.textPrimary)
+                                    Spacer()
+                                    Text("\(entry.score)")
+                                        .font(MooniFont.title(20))
+                                        .foregroundColor(scoreTint)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .background(Capsule().fill(scoreTint.opacity(0.16)))
+                                        .overlay(Capsule().stroke(scoreTint.opacity(0.4), lineWidth: 1))
+                                }
+
+                                Divider().background(Color.white.opacity(0.06))
+
+                                HStack(spacing: 0) {
+                                    wakeStatItem(icon: "moon.fill", label: "Went to bed", value: entry.bedtime.hourMinuteString, color: MooniColor.accent)
+                                    Divider().background(Color.white.opacity(0.08)).frame(width: 1, height: 40)
+                                    wakeStatItem(icon: "sun.max.fill", label: "Woke up", value: entry.wakeTime.hourMinuteString, color: MooniColor.warning)
+                                    Divider().background(Color.white.opacity(0.08)).frame(width: 1, height: 40)
+                                    wakeStatItem(icon: "bolt.heart.fill", label: "Readiness", value: "\(entry.readinessScore ?? entry.score)", color: scoreTint)
+                                }
+                            }
+                        }
+                        .opacity(statsVisible ? 1 : 0)
+                        .offset(y: statsVisible ? 0 : 12)
+
+                        // Insight
+                        MooniCard(padding: 14, cornerRadius: 18) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "lightbulb.fill")
+                                    .foregroundColor(MooniColor.warning)
+                                    .frame(width: 32, height: 32)
+                                    .background(MooniColor.warning.opacity(0.16))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                Text(wakeUpInsight)
+                                    .font(MooniFont.body(14))
+                                    .foregroundColor(MooniColor.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .opacity(statsVisible ? 1 : 0)
+                        .offset(y: statsVisible ? 0 : 8)
+
+                        // CTA
+                        VStack(spacing: 10) {
+                            PrimaryButton(title: "See full analysis", icon: "sparkles") {
+                                dismiss()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                    // showWhy opens automatically from parent via mode detection
+                                }
+                            }
+                        }
+                        .opacity(statsVisible ? 1 : 0)
+                        .padding(.bottom, 8)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 24)
+                }
+            }
+            .navigationTitle("This morning")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundColor(MooniColor.accent)
+                }
+            }
+            .onAppear {
+                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                withAnimation { ringVisible = true }
+                withAnimation(.easeOut(duration: 0.5).delay(0.4)) { statsVisible = true }
+            }
+        }
+    }
+
+    private func wakeStatItem(icon: String, label: String, value: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(color)
+            Text(value)
+                .font(MooniFont.title(15))
+                .foregroundColor(MooniColor.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(MooniFont.caption(9))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(0.3)
+                .textCase(.uppercase)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var wakeUpInsight: String {
+        let name = petName
+        if entry.score >= 80 {
+            return "\(name) recharged fully. Your timing was close to ideal — try to keep it consistent."
+        }
+        if entry.score >= 60 {
+            return "A decent night. Staying within 30 min of your target bedtime will sharpen the score."
+        }
+        return "Rough night — that's okay. A gentle evening today gives \(name) a stronger foundation tomorrow."
     }
 }
 
