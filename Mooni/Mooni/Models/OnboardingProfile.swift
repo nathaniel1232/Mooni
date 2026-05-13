@@ -97,8 +97,8 @@ struct OnboardingProfile: Codable, Equatable {
         if stressLevel >= 6 || racingThoughtsAtNight == true {
             out.append("Mind racing keeps you out of deep sleep")
         }
-        if typicalSleepHours < 7 {
-            out.append("You're \(String(format: "%.1f", 7.5 - typicalSleepHours)) hrs short most nights")
+        if typicalSleepHours < 8 {
+            out.append("You're \(String(format: "%.1f", 8.5 - typicalSleepHours)) hrs short most nights")
         }
         if caffeineCutoff == .evening || caffeineCutoff == .afternoon {
             out.append("Caffeine half-life is steeling your sleep")

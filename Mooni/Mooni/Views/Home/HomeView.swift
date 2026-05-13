@@ -1435,15 +1435,237 @@ private struct RecoveryPlanSheet: View {
 
 // MARK: - Auto Wake-Up Sheet
 
+// MARK: - Wake-up stats
+
+/// Derived stats for the morning sheet — deltas, percentile, records,
+/// newly unlocked badges. Pure value type; no side effects.
+fileprivate struct WakeUpStats {
+    let entry: SleepEntry
+    let goalHours: Double
+    let pet: Pet
+    let leveledUpTo: Int?
+    let newlyUnlockedBadges: [UnlockableItem]
+    let currentStreak: Int
+    let longestStreak: Int
+    let newLongestStreak: Bool
+    let freezesRemaining: Int
+    let scoreDelta: Int?
+    let percentile: Int?
+    /// If today's score is a record, the number of nights it took to beat.
+    let bestInDays: Int?
+    let goalDeltaMinutes: Int
+    let consistencyDays: Int
+    let energyEarned: Int
+    let xpToNextLevel: Int
+    let levelProgress: Double
+    let totalPastEntries: Int
+
+    init(entry: SleepEntry,
+         history: [SleepEntry],
+         goalHours: Double,
+         pet: Pet,
+         lastLevelUp: Int?,
+         currentStreak: Int,
+         longestStreak: Int,
+         freezesRemaining: Int,
+         consistencyDays: Int) {
+        self.entry = entry
+        self.goalHours = goalHours
+        self.pet = pet
+        self.currentStreak = currentStreak
+        self.longestStreak = longestStreak
+        self.freezesRemaining = freezesRemaining
+        self.consistencyDays = consistencyDays
+        self.energyEarned = entry.energyEarned
+
+        let past = history
+            .filter { $0.dayKey != entry.dayKey }
+            .sorted { $0.wakeTime > $1.wakeTime }
+        self.totalPastEntries = past.count
+
+        if let prev = past.first {
+            self.scoreDelta = entry.score - prev.score
+        } else {
+            self.scoreDelta = nil
+        }
+
+        if past.count >= 4 {
+            let beat = past.filter { entry.score > $0.score }.count
+            self.percentile = Int((Double(beat) / Double(past.count) * 100).rounded())
+        } else {
+            self.percentile = nil
+        }
+
+        if past.count >= 5 {
+            if let idx = past.firstIndex(where: { $0.score >= entry.score }) {
+                self.bestInDays = idx >= 5 ? idx : nil
+            } else {
+                self.bestInDays = past.count
+            }
+        } else {
+            self.bestInDays = nil
+        }
+
+        if let level = lastLevelUp {
+            self.leveledUpTo = level
+            self.newlyUnlockedBadges = UnlockableItem.catalog.filter { $0.requiredLevel == level }
+        } else {
+            self.leveledUpTo = nil
+            self.newlyUnlockedBadges = []
+        }
+
+        self.newLongestStreak = (currentStreak > 0 && currentStreak == longestStreak && longestStreak >= 3)
+
+        let goalSec = goalHours * 3600
+        self.goalDeltaMinutes = Int(((entry.totalSleepDuration - goalSec) / 60).rounded())
+
+        self.xpToNextLevel = max(0, pet.energyForNextLevel - pet.dreamEnergy)
+        self.levelProgress = pet.levelProgress
+    }
+
+    /// Up to three "wow" chips shown right under the score ring.
+    /// Picked dynamically so each morning surfaces the strongest signal.
+    var highlightChips: [WakeHighlightChip] {
+        var chips: [WakeHighlightChip] = []
+        if let n = bestInDays, n >= 6 {
+            chips.append(.init(icon: "trophy.fill",
+                               value: "Best in \(n)",
+                               label: "nights",
+                               tint: MooniColor.warning))
+        }
+        if let d = scoreDelta, abs(d) >= 3 {
+            let up = d > 0
+            chips.append(.init(icon: up ? "arrow.up.right" : "arrow.down.right",
+                               value: "\(up ? "+" : "")\(d)",
+                               label: "vs last night",
+                               tint: up ? MooniColor.success : MooniColor.danger))
+        }
+        if let p = percentile, p >= 60 {
+            chips.append(.init(icon: "chart.line.uptrend.xyaxis",
+                               value: "Top \(max(1, 100 - p))%",
+                               label: "of your nights",
+                               tint: MooniColor.accent))
+        }
+        if chips.count < 3, let p = percentile, p < 60 {
+            chips.append(.init(icon: "chart.bar.fill",
+                               value: "\(p)\u{00A0}pct",
+                               label: "of your nights",
+                               tint: MooniColor.accentSoft))
+        }
+        if chips.count < 3 {
+            // Goal delta chip
+            let mins = goalDeltaMinutes
+            let absMins = abs(mins)
+            let h = absMins / 60
+            let m = absMins % 60
+            let value = h > 0 ? "\(mins >= 0 ? "+" : "-")\(h)h \(m)m" : "\(mins >= 0 ? "+" : "-")\(m)m"
+            chips.append(.init(icon: mins >= 0 ? "target" : "hourglass",
+                               value: value,
+                               label: mins >= -10 ? "of goal" : "short of goal",
+                               tint: mins >= -10 ? MooniColor.success : MooniColor.warning))
+        }
+        if chips.count < 3 {
+            chips.append(.init(icon: "bed.double.fill",
+                               value: entry.formattedDuration,
+                               label: "total sleep",
+                               tint: MooniColor.accentSoft))
+        }
+        return Array(chips.prefix(3))
+    }
+
+    /// Headline shown above the score ring — picks the most exciting fact.
+    func heroHeadline(petName: String) -> String {
+        if leveledUpTo != nil {
+            return "\(petName) leveled up!"
+        }
+        if newLongestStreak {
+            return "New longest streak!"
+        }
+        if let n = bestInDays, n >= 7 {
+            return "Your best night in \(n) days"
+        }
+        if let p = percentile, p >= 85 {
+            return "Top \(max(1, 100 - p))% night ever"
+        }
+        if let d = scoreDelta, d >= 8 {
+            return "+\(d) better than yesterday"
+        }
+        if entry.score >= 85 {
+            return "\(petName) feels recharged"
+        }
+        if entry.score >= 70 {
+            return "Solid night for \(petName)"
+        }
+        return "\(petName) tracked your night"
+    }
+
+    /// Pet's spoken message at the bottom — dynamic, never repeats the headline verbatim.
+    func petMessage(petName: String) -> String {
+        if let level = leveledUpTo {
+            return "I leveled up to \(level)! Keep this rhythm and we'll unlock even more."
+        }
+        if newLongestStreak {
+            return "\(currentStreak) days in a row — that's our longest ever. Don't break it tonight!"
+        }
+        if let n = bestInDays, n >= 7 {
+            return "I haven't felt this rested in \(n) nights. Whatever you did last night — do it again."
+        }
+        if let p = percentile, p >= 75 {
+            return "This was a top \(max(1, 100 - p))% night for us. Going to coast on that all day."
+        }
+        if let d = scoreDelta, d >= 8 {
+            return "We jumped \(d) points from yesterday. Small wins compound."
+        }
+        if entry.score >= 85 {
+            return "Fully charged. Today's going to feel light."
+        }
+        if entry.score >= 70 {
+            return "Solid recovery. A consistent bedtime tonight pushes us into top territory."
+        }
+        if entry.score >= 50 {
+            return "Mid night. A gentler wind-down can sharpen tomorrow."
+        }
+        return "Rough one. Let's go easier on screens tonight — I'll bounce back."
+    }
+}
+
+fileprivate struct WakeHighlightChip: Identifiable {
+    let id = UUID()
+    let icon: String
+    let value: String
+    let label: String
+    let tint: Color
+}
+
+// MARK: - Sheet
+
 private struct AutoWakeUpSheet: View {
     @EnvironmentObject var appState: AppState
+    @StateObject private var streak = StreakManager.shared
     @Environment(\.dismiss) private var dismiss
     let entry: SleepEntry
     let petName: String
     @Binding var showPaywall: Bool
 
+    @State private var heroVisible = false
     @State private var ringVisible = false
-    @State private var statsVisible = false
+    @State private var rowVisible = false
+    @State private var cardsVisible = false
+    @State private var levelUpPulse = false
+
+    private var stats: WakeUpStats {
+        WakeUpStats(
+            entry: entry,
+            history: appState.entries,
+            goalHours: appState.goalHours,
+            pet: appState.pet,
+            lastLevelUp: appState.lastLevelUp,
+            currentStreak: streak.current,
+            longestStreak: streak.longest,
+            freezesRemaining: streak.freezesRemaining,
+            consistencyDays: appState.bedtimeConsistencyDays
+        )
+    }
 
     private var scoreTint: Color {
         switch entry.score {
@@ -1458,115 +1680,58 @@ private struct AutoWakeUpSheet: View {
         NavigationStack {
             ZStack {
                 MooniGradient.night.ignoresSafeArea()
-                StarsBackground(count: 50)
+                StarsBackground(count: 60)
 
                 ScrollView {
-                    VStack(spacing: 24) {
-                        // Morning greeting
-                        VStack(spacing: 6) {
-                            Text("GOOD MORNING")
-                                .font(MooniFont.caption(11))
-                                .foregroundColor(MooniColor.accentSoft)
-                                .tracking(2)
-                            Text("\(petName) tracked your night")
-                                .font(MooniFont.display(26))
-                                .foregroundColor(MooniColor.textPrimary)
-                                .multilineTextAlignment(.center)
+                    VStack(spacing: 18) {
+                        heroSection
+                            .opacity(heroVisible ? 1 : 0)
+
+                        highlightRow
+                            .opacity(rowVisible ? 1 : 0)
+                            .offset(y: rowVisible ? 0 : 10)
+
+                        if let level = stats.leveledUpTo {
+                            levelUpCard(level: level)
+                                .opacity(cardsVisible ? 1 : 0)
+                                .offset(y: cardsVisible ? 0 : 12)
                         }
-                        .padding(.top, 8)
 
-                        // Auto-tracked badge
-                        HStack(spacing: 8) {
-                            Image(systemName: "waveform.path.ecg")
-                                .font(.system(size: 11, weight: .bold))
-                            Text("Auto-tracked while you slept")
-                                .font(MooniFont.caption(12))
+                        if stats.currentStreak > 0 || stats.newLongestStreak {
+                            streakCard
+                                .opacity(cardsVisible ? 1 : 0)
+                                .offset(y: cardsVisible ? 0 : 12)
                         }
-                        .foregroundColor(MooniColor.success)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(MooniColor.success.opacity(0.14))
-                        .clipShape(Capsule())
-                        .overlay(Capsule().stroke(MooniColor.success.opacity(0.3), lineWidth: 1))
 
-                        // Score ring + pet
-                        ZStack {
-                            Circle()
-                                .fill(RadialGradient(
-                                    colors: [scoreTint.opacity(0.28), .clear],
-                                    center: .center, startRadius: 4, endRadius: 150))
-                                .frame(width: 300, height: 300)
-                                .blur(radius: 4)
-                            DreamSpiritView(pet: appState.pet, size: 56)
-                                .offset(y: -106)
-                            SleepScoreRing(score: ringVisible ? entry.score : 0, size: 180, lineWidth: 13)
-                                .animation(.spring(response: 1.2, dampingFraction: 0.72).delay(0.3), value: ringVisible)
+                        xpCard
+                            .opacity(cardsVisible ? 1 : 0)
+                            .offset(y: cardsVisible ? 0 : 12)
+
+                        if let s = entry.stages, s.totalSleep > 0 {
+                            stagesCard(s)
+                                .opacity(cardsVisible ? 1 : 0)
+                                .offset(y: cardsVisible ? 0 : 12)
                         }
-                        .frame(height: 220)
 
-                        // Core stats
-                        MooniCard(padding: 18, cornerRadius: 24) {
-                            VStack(spacing: 14) {
-                                HStack {
-                                    Text(entry.formattedDuration)
-                                        .font(MooniFont.display(30))
-                                        .foregroundColor(MooniColor.textPrimary)
-                                    Spacer()
-                                    Text("\(entry.score)")
-                                        .font(MooniFont.title(20))
-                                        .foregroundColor(scoreTint)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .background(Capsule().fill(scoreTint.opacity(0.16)))
-                                        .overlay(Capsule().stroke(scoreTint.opacity(0.4), lineWidth: 1))
-                                }
+                        coreStatsCard
+                            .opacity(cardsVisible ? 1 : 0)
+                            .offset(y: cardsVisible ? 0 : 12)
 
-                                Divider().background(Color.white.opacity(0.06))
+                        sparklineCard
+                            .opacity(cardsVisible ? 1 : 0)
+                            .offset(y: cardsVisible ? 0 : 12)
 
-                                HStack(spacing: 0) {
-                                    wakeStatItem(icon: "moon.fill", label: "Went to bed", value: entry.bedtime.hourMinuteString, color: MooniColor.accent)
-                                    Divider().background(Color.white.opacity(0.08)).frame(width: 1, height: 40)
-                                    wakeStatItem(icon: "sun.max.fill", label: "Woke up", value: entry.wakeTime.hourMinuteString, color: MooniColor.warning)
-                                    Divider().background(Color.white.opacity(0.08)).frame(width: 1, height: 40)
-                                    wakeStatItem(icon: "bolt.heart.fill", label: "Readiness", value: "\(entry.readinessScore ?? entry.score)", color: scoreTint)
-                                }
-                            }
-                        }
-                        .opacity(statsVisible ? 1 : 0)
-                        .offset(y: statsVisible ? 0 : 12)
+                        petMessageCard
+                            .opacity(cardsVisible ? 1 : 0)
+                            .offset(y: cardsVisible ? 0 : 12)
 
-                        // Insight
-                        MooniCard(padding: 14, cornerRadius: 18) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "lightbulb.fill")
-                                    .foregroundColor(MooniColor.warning)
-                                    .frame(width: 32, height: 32)
-                                    .background(MooniColor.warning.opacity(0.16))
-                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                Text(wakeUpInsight)
-                                    .font(MooniFont.body(14))
-                                    .foregroundColor(MooniColor.textSecondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Spacer(minLength: 0)
-                            }
-                        }
-                        .opacity(statsVisible ? 1 : 0)
-                        .offset(y: statsVisible ? 0 : 8)
-
-                        // CTA
-                        VStack(spacing: 10) {
-                            PrimaryButton(title: "See full analysis", icon: "sparkles") {
-                                dismiss()
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                                    // showWhy opens automatically from parent via mode detection
-                                }
-                            }
-                        }
-                        .opacity(statsVisible ? 1 : 0)
-                        .padding(.bottom, 8)
+                        ctaButton
+                            .opacity(cardsVisible ? 1 : 0)
+                            .padding(.top, 4)
                     }
                     .padding(.horizontal, 20)
-                    .padding(.bottom, 24)
+                    .padding(.top, 4)
+                    .padding(.bottom, 32)
                 }
             }
             .navigationTitle("This morning")
@@ -1578,10 +1743,418 @@ private struct AutoWakeUpSheet: View {
                         .foregroundColor(MooniColor.accent)
                 }
             }
-            .onAppear {
-                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-                withAnimation { ringVisible = true }
-                withAnimation(.easeOut(duration: 0.5).delay(0.4)) { statsVisible = true }
+            .onAppear { runEntryAnimation() }
+        }
+    }
+
+    private func runEntryAnimation() {
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        withAnimation(.easeOut(duration: 0.4)) { heroVisible = true }
+        withAnimation(.spring(response: 1.15, dampingFraction: 0.72).delay(0.2)) {
+            ringVisible = true
+        }
+        withAnimation(.easeOut(duration: 0.45).delay(0.35)) { rowVisible = true }
+        withAnimation(.easeOut(duration: 0.5).delay(0.55)) { cardsVisible = true }
+        if stats.leveledUpTo != nil || stats.newLongestStreak || (stats.bestInDays ?? 0) >= 7 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
+                levelUpPulse = true
+            }
+        }
+    }
+
+    // MARK: Hero
+
+    private var heroSection: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 10, weight: .bold))
+                Text("AUTO-TRACKED · \(entry.wakeTime.hourMinuteString)")
+                    .font(MooniFont.caption(10))
+                    .tracking(1.5)
+            }
+            .foregroundColor(MooniColor.success)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(MooniColor.success.opacity(0.14))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(MooniColor.success.opacity(0.3), lineWidth: 1))
+
+            Text("GOOD MORNING")
+                .font(MooniFont.caption(11))
+                .foregroundColor(MooniColor.accentSoft)
+                .tracking(2)
+
+            Text(stats.heroHeadline(petName: petName))
+                .font(MooniFont.display(26))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 8)
+
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [scoreTint.opacity(0.32), .clear],
+                        center: .center, startRadius: 4, endRadius: 160))
+                    .frame(width: 320, height: 320)
+                    .blur(radius: 6)
+                DreamSpiritView(pet: appState.pet, size: 64)
+                    .offset(y: -112)
+                    .scaleEffect(levelUpPulse ? 1.04 : 1.0)
+                SleepScoreRing(score: ringVisible ? entry.score : 0, size: 188, lineWidth: 14)
+                    .animation(.spring(response: 1.2, dampingFraction: 0.72).delay(0.25), value: ringVisible)
+            }
+            .frame(height: 220)
+        }
+    }
+
+    // MARK: Highlight row
+
+    private var highlightRow: some View {
+        HStack(spacing: 10) {
+            ForEach(stats.highlightChips) { chip in
+                highlightChipView(chip)
+            }
+        }
+    }
+
+    private func highlightChipView(_ chip: WakeHighlightChip) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: chip.icon)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(chip.tint)
+            Text(chip.value)
+                .font(MooniFont.title(17))
+                .foregroundColor(MooniColor.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(chip.label)
+                .font(MooniFont.caption(10))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(0.4)
+                .textCase(.uppercase)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(chip.tint.opacity(0.12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(chip.tint.opacity(0.32), lineWidth: 1)
+                )
+        )
+    }
+
+    // MARK: Level-up card
+
+    private func levelUpCard(level: Int) -> some View {
+        let badges = stats.newlyUnlockedBadges
+        return MooniCard(padding: 18, cornerRadius: 24) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(MooniColor.warning.opacity(0.22))
+                            .frame(width: 44, height: 44)
+                            .scaleEffect(levelUpPulse ? 1.15 : 1.0)
+                            .blur(radius: levelUpPulse ? 1.5 : 0)
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(MooniColor.warning)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("LEVEL UP")
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(MooniColor.warning)
+                            .tracking(2)
+                        Text("Level \(level) · \(appState.pet.levelTitle)")
+                            .font(MooniFont.title(18))
+                            .foregroundColor(MooniColor.textPrimary)
+                    }
+                    Spacer()
+                }
+
+                HStack(spacing: 8) {
+                    Image(systemName: "snowflake")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(MooniColor.accentSoft)
+                    Text("+1 streak freeze unlocked")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.06))
+                .clipShape(Capsule())
+
+                if !badges.isEmpty {
+                    Divider().background(Color.white.opacity(0.08))
+                    Text("Just unlocked")
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.textMuted)
+                        .tracking(1)
+                    HStack(spacing: 10) {
+                        ForEach(badges.prefix(3), id: \.id) { item in
+                            newBadgeTile(item)
+                        }
+                        if badges.count > 3 {
+                            Text("+\(badges.count - 3)")
+                                .font(MooniFont.caption(12))
+                                .foregroundColor(MooniColor.textSecondary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(MooniColor.warning.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    private func newBadgeTile(_ item: UnlockableItem) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: item.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(MooniColor.warning)
+            Text(item.name)
+                .font(MooniFont.caption(12))
+                .foregroundColor(MooniColor.textPrimary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(MooniColor.warning.opacity(0.14))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(MooniColor.warning.opacity(0.3), lineWidth: 1))
+    }
+
+    // MARK: Streak card
+
+    private var streakCard: some View {
+        MooniCard(padding: 16, cornerRadius: 22) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(MooniColor.warning.opacity(0.18))
+                        .frame(width: 50, height: 50)
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(MooniColor.warning)
+                        .scaleEffect(stats.newLongestStreak && levelUpPulse ? 1.1 : 1.0)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    if stats.newLongestStreak {
+                        Text("NEW LONGEST · \(stats.currentStreak) DAYS")
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(MooniColor.warning)
+                            .tracking(1.5)
+                    } else {
+                        Text("STREAK")
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(MooniColor.textMuted)
+                            .tracking(2)
+                    }
+                    Text("\(stats.currentStreak) day\(stats.currentStreak == 1 ? "" : "s") in a row")
+                        .font(MooniFont.title(18))
+                        .foregroundColor(MooniColor.textPrimary)
+                    HStack(spacing: 6) {
+                        if stats.currentStreak < stats.longestStreak {
+                            Text("Personal best: \(stats.longestStreak)")
+                                .font(MooniFont.caption(11))
+                                .foregroundColor(MooniColor.textSecondary)
+                        } else if !stats.newLongestStreak {
+                            Text("Keep going to beat your best")
+                                .font(MooniFont.caption(11))
+                                .foregroundColor(MooniColor.textSecondary)
+                        }
+                        if stats.freezesRemaining > 0 {
+                            HStack(spacing: 3) {
+                                Image(systemName: "snowflake")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("\(stats.freezesRemaining)")
+                                    .font(MooniFont.caption(11))
+                            }
+                            .foregroundColor(MooniColor.accentSoft)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(MooniColor.accent.opacity(0.14))
+                            .clipShape(Capsule())
+                        }
+                    }
+                }
+                Spacer()
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(stats.newLongestStreak ? MooniColor.warning.opacity(0.35) : Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    // MARK: XP card
+
+    private var xpCard: some View {
+        MooniCard(padding: 16, cornerRadius: 22) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("DREAM ENERGY EARNED")
+                            .font(MooniFont.caption(10))
+                            .foregroundColor(MooniColor.textMuted)
+                            .tracking(1.5)
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("+\(stats.energyEarned)")
+                                .font(MooniFont.display(28))
+                                .foregroundColor(MooniColor.accent)
+                            Text("XP")
+                                .font(MooniFont.caption(12))
+                                .foregroundColor(MooniColor.textSecondary)
+                                .offset(y: -4)
+                        }
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("LEVEL \(appState.pet.level)")
+                            .font(MooniFont.caption(10))
+                            .foregroundColor(MooniColor.textMuted)
+                            .tracking(1.5)
+                        Text(appState.pet.levelTitle)
+                            .font(MooniFont.title(14))
+                            .foregroundColor(MooniColor.accentSoft)
+                    }
+                }
+
+                MooniProgressBar(value: stats.levelProgress, height: 8)
+
+                HStack {
+                    Text("\(appState.pet.dreamEnergy) / \(appState.pet.energyForNextLevel)")
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.textSecondary)
+                    Spacer()
+                    Text("\(stats.xpToNextLevel) XP to level \(appState.pet.level + 1)")
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.textMuted)
+                }
+            }
+        }
+    }
+
+    // MARK: Stages
+
+    private func stagesCard(_ s: SleepStagesEstimate) -> some View {
+        let total = max(s.totalSleep + s.awakeTime, 1)
+        let segments: [(String, TimeInterval, Color)] = [
+            ("Deep", s.deepSleep, MooniColor.success),
+            ("Light", s.lightSleep, MooniColor.accentSoft),
+            ("REM", s.remSleep, MooniColor.accent),
+            ("Awake", s.awakeTime, MooniColor.warning)
+        ]
+        return MooniCard(padding: 16, cornerRadius: 22) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("SLEEP STAGES")
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(MooniColor.textMuted)
+                        .tracking(1.5)
+                    Spacer()
+                    if s.isEstimated {
+                        Text("Estimated")
+                            .font(MooniFont.caption(10))
+                            .foregroundColor(MooniColor.textMuted)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.06))
+                            .clipShape(Capsule())
+                    }
+                }
+
+                GeometryReader { geo in
+                    HStack(spacing: 2) {
+                        ForEach(segments.indices, id: \.self) { idx in
+                            let (_, sec, color) = segments[idx]
+                            let w = max(2, geo.size.width * CGFloat(sec / total))
+                            Rectangle()
+                                .fill(color)
+                                .frame(width: w)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .frame(height: 12)
+
+                HStack(spacing: 10) {
+                    ForEach(segments.indices, id: \.self) { idx in
+                        let (label, sec, color) = segments[idx]
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 5) {
+                                Circle().fill(color).frame(width: 6, height: 6)
+                                Text(label)
+                                    .font(MooniFont.caption(10))
+                                    .foregroundColor(MooniColor.textMuted)
+                                    .lineLimit(1)
+                            }
+                            Text(formatStage(sec))
+                                .font(MooniFont.title(13))
+                                .foregroundColor(MooniColor.textPrimary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+        }
+    }
+
+    private func formatStage(_ sec: TimeInterval) -> String {
+        let mins = Int(sec / 60)
+        let h = mins / 60
+        let m = mins % 60
+        return h > 0 ? "\(h)h \(m)m" : "\(m)m"
+    }
+
+    // MARK: Core stats
+
+    private var coreStatsCard: some View {
+        MooniCard(padding: 18, cornerRadius: 24) {
+            VStack(spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(entry.formattedDuration)
+                        .font(MooniFont.display(30))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Spacer()
+                    Text("\(entry.score)")
+                        .font(MooniFont.title(20))
+                        .foregroundColor(scoreTint)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(scoreTint.opacity(0.16)))
+                        .overlay(Capsule().stroke(scoreTint.opacity(0.4), lineWidth: 1))
+                }
+
+                Divider().background(Color.white.opacity(0.06))
+
+                HStack(spacing: 0) {
+                    wakeStatItem(icon: "moon.fill", label: "Went to bed", value: entry.bedtime.hourMinuteString, color: MooniColor.accent)
+                    Divider().background(Color.white.opacity(0.08)).frame(width: 1, height: 40)
+                    wakeStatItem(icon: "sun.max.fill", label: "Woke up", value: entry.wakeTime.hourMinuteString, color: MooniColor.warning)
+                    Divider().background(Color.white.opacity(0.08)).frame(width: 1, height: 40)
+                    wakeStatItem(icon: "bolt.heart.fill", label: "Readiness", value: "\(entry.readinessScore ?? entry.score)", color: scoreTint)
+                }
             }
         }
     }
@@ -1607,15 +2180,101 @@ private struct AutoWakeUpSheet: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var wakeUpInsight: String {
-        let name = petName
-        if entry.score >= 80 {
-            return "\(name) recharged fully. Your timing was close to ideal — try to keep it consistent."
+    // MARK: Sparkline of recent scores
+
+    private var sparklineCard: some View {
+        let recent = Array(appState.entries
+            .sorted { $0.wakeTime < $1.wakeTime }
+            .suffix(7))
+        return Group {
+            if recent.count >= 2 {
+                MooniCard(padding: 16, cornerRadius: 22) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("LAST 7 NIGHTS")
+                                .font(MooniFont.caption(10))
+                                .foregroundColor(MooniColor.textMuted)
+                                .tracking(1.5)
+                            Spacer()
+                            let avg = recent.map(\.score).reduce(0, +) / max(1, recent.count)
+                            Text("Avg \(avg)")
+                                .font(MooniFont.caption(11))
+                                .foregroundColor(MooniColor.textSecondary)
+                        }
+                        sparkline(recent: recent)
+                            .frame(height: 56)
+                    }
+                }
+            }
         }
-        if entry.score >= 60 {
-            return "A decent night. Staying within 30 min of your target bedtime will sharpen the score."
+    }
+
+    private func sparkline(recent: [SleepEntry]) -> some View {
+        let scores = recent.map { Double($0.score) }
+        let minS = max(0, (scores.min() ?? 0) - 5)
+        let maxS = min(100, (scores.max() ?? 100) + 5)
+        let range = max(1, maxS - minS)
+        let todayKey = entry.dayKey
+        return GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let step = scores.count > 1 ? w / CGFloat(scores.count - 1) : w
+            ZStack(alignment: .topLeading) {
+                Path { path in
+                    for (i, s) in scores.enumerated() {
+                        let x = CGFloat(i) * step
+                        let y = h - CGFloat((s - minS) / range) * h
+                        if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
+                        else { path.addLine(to: CGPoint(x: x, y: y)) }
+                    }
+                }
+                .stroke(MooniColor.accent.opacity(0.85), style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+
+                ForEach(recent.indices, id: \.self) { i in
+                    let s = scores[i]
+                    let x = CGFloat(i) * step
+                    let y = h - CGFloat((s - minS) / range) * h
+                    let isToday = recent[i].dayKey == todayKey
+                    Circle()
+                        .fill(isToday ? scoreTint : MooniColor.accentSoft.opacity(0.7))
+                        .frame(width: isToday ? 10 : 6, height: isToday ? 10 : 6)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(isToday ? 0.6 : 0), lineWidth: 1.5)
+                        )
+                        .position(x: x, y: y)
+                }
+            }
         }
-        return "Rough night — that's okay. A gentle evening today gives \(name) a stronger foundation tomorrow."
+    }
+
+    // MARK: Pet message
+
+    private var petMessageCard: some View {
+        MooniCard(padding: 14, cornerRadius: 18) {
+            HStack(alignment: .top, spacing: 12) {
+                DreamSpiritView(pet: appState.pet, size: 36)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(petName)
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.accentSoft)
+                        .tracking(1.2)
+                    Text(stats.petMessage(petName: petName))
+                        .font(MooniFont.body(14))
+                        .foregroundColor(MooniColor.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    // MARK: CTA
+
+    private var ctaButton: some View {
+        PrimaryButton(title: "See full analysis", icon: "sparkles") {
+            dismiss()
+        }
     }
 }
 

@@ -490,3 +490,926 @@ struct SignInScreen: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
+
+// MARK: - Pre-paywall science sequence
+//
+// Six screens shown right before sign-in / pre-paywall. Their job is to convert
+// emotional commitment into intellectual conviction. Every claim is verifiable.
+
+// MARK: 1 / 6 — Audio hook
+
+struct AudioInsightScreen: View {
+    @State private var pulse = false
+    @State private var eventsIn = 0
+    @State private var waveAmp: CGFloat = 0
+
+    private let events: [(label: String, color: Color, icon: String)] = [
+        ("snore",    Color.pink,                  "wind"),
+        ("speech",   MooniColor.warning,          "bubble.left.fill"),
+        ("breath",   MooniColor.success,          "lungs.fill"),
+        ("movement", MooniColor.accent,           "arrow.left.and.right"),
+        ("silence",  MooniColor.accentSoft,       "moon.stars.fill")
+    ]
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 4)
+
+            VStack(spacing: 8) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.accent, MooniColor.accentSoft],
+                        startPoint: .leading, endPoint: .trailing))
+                Text("THE SCIENCE")
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.accentSoft)
+                    .tracking(2)
+                Text("Your phone hears more\nthan you think.")
+                    .font(MooniFont.display(26))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+            }
+
+            // Animated waveform
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.white.opacity(0.04))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(MooniColor.accent.opacity(0.18), lineWidth: 1)
+                    )
+
+                HStack(spacing: 3) {
+                    ForEach(0..<32, id: \.self) { i in
+                        let h = barHeight(for: i)
+                        Capsule()
+                            .fill(LinearGradient(
+                                colors: [MooniColor.accent.opacity(0.8), MooniColor.accentSoft],
+                                startPoint: .top, endPoint: .bottom))
+                            .frame(width: 4, height: h)
+                            .animation(.easeInOut(duration: 0.9 + Double(i % 5) * 0.1)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(i) * 0.04),
+                                       value: pulse)
+                    }
+                }
+                .frame(height: 80)
+            }
+            .frame(height: 110)
+            .padding(.horizontal, 4)
+
+            // Event chips floating up from waveform
+            VStack(alignment: .leading, spacing: 8) {
+                Text("EACH SOUND IS CLASSIFIED")
+                    .font(MooniFont.caption(10))
+                    .foregroundColor(MooniColor.textMuted)
+                    .tracking(1.5)
+
+                FlexibleEventTags(events: events, visibleCount: eventsIn)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Playable demo — 3 emoji buttons for real recognized sounds
+            VStack(alignment: .leading, spacing: 8) {
+                Text("HEAR THREE OF THEM")
+                    .font(MooniFont.caption(10))
+                    .foregroundColor(MooniColor.textMuted)
+                    .tracking(1.5)
+                HStack(spacing: 8) {
+                    AudioSampleButton(emoji: "😴", label: "Snore",      resource: "sample_snore",     tint: Color.pink)
+                    AudioSampleButton(emoji: "💬", label: "Sleep talk", resource: "sample_sleeptalk", tint: MooniColor.warning)
+                    AudioSampleButton(emoji: "🌬️", label: "Breath",     resource: "sample_breath",    tint: MooniColor.success)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("Source: CDC, Sleep & Sleep Disorders, 2023")
+                .font(MooniFont.caption(9))
+                .foregroundColor(MooniColor.textMuted)
+
+            Spacer(minLength: 4)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            pulse = true
+            Haptics.medium()
+            for i in 0..<events.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25 + 0.18 * Double(i)) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
+                        eventsIn = i + 1
+                    }
+                    Haptics.tick()
+                }
+            }
+        }
+    }
+
+    private func barHeight(for i: Int) -> CGFloat {
+        let pattern: [CGFloat] = [12, 28, 44, 70, 52, 30, 22, 38, 60, 40, 24, 18, 32, 50, 76, 58, 36, 20]
+        return pattern[i % pattern.count]
+    }
+}
+
+private struct FlexibleEventTags: View {
+    let events: [(label: String, color: Color, icon: String)]
+    let visibleCount: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                ForEach(0..<min(3, events.count), id: \.self) { i in
+                    eventChip(events[i], visible: i < visibleCount)
+                }
+            }
+            HStack(spacing: 6) {
+                ForEach(3..<events.count, id: \.self) { i in
+                    eventChip(events[i], visible: i < visibleCount)
+                }
+            }
+        }
+    }
+
+    private func eventChip(_ e: (label: String, color: Color, icon: String), visible: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: e.icon)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(e.color)
+            Text(e.label)
+                .font(MooniFont.caption(11))
+                .foregroundColor(MooniColor.textPrimary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(e.color.opacity(0.14))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(e.color.opacity(0.32), lineWidth: 1))
+        .opacity(visible ? 1 : 0)
+        .scaleEffect(visible ? 1 : 0.85)
+    }
+}
+
+// MARK: 2 / 6 — YAMNet
+
+struct YAMNetScreen: View {
+    @State private var dotsIn = 0
+    @State private var statsIn = false
+
+    private let highlights: [(angle: Double, label: String, color: Color)] = [
+        (0,    "snore",    Color.pink),
+        (60,   "speech",   MooniColor.warning),
+        (120,  "breath",   MooniColor.success),
+        (180,  "movement", MooniColor.accent),
+        (240,  "cough",    MooniColor.accentSoft),
+        (300,  "silence",  MooniColor.warning)
+    ]
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer(minLength: 4)
+
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "cpu.fill")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("GOOGLE RESEARCH · 2018")
+                        .font(MooniFont.caption(10))
+                        .tracking(1.6)
+                }
+                .foregroundColor(MooniColor.success)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(MooniColor.success.opacity(0.14))
+                .clipShape(Capsule())
+
+                Text("Powered by YAMNet")
+                    .font(MooniFont.display(28))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text("the AI that\nrecognizes your night.")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            // Constellation visual
+            ZStack {
+                Circle()
+                    .stroke(MooniColor.accent.opacity(0.18), lineWidth: 1)
+                    .frame(width: 200, height: 200)
+                Circle()
+                    .stroke(MooniColor.accent.opacity(0.12), lineWidth: 1)
+                    .frame(width: 140, height: 140)
+
+                // Background constellation dots (representing 521 classes)
+                ForEach(0..<48, id: \.self) { i in
+                    let angle = Double(i) * (360.0 / 48.0)
+                    let radius: CGFloat = (i % 3 == 0) ? 100 : (i % 2 == 0 ? 75 : 55)
+                    Circle()
+                        .fill(MooniColor.accentSoft.opacity(0.35))
+                        .frame(width: 3, height: 3)
+                        .offset(x: radius * cos(angle * .pi / 180),
+                                y: radius * sin(angle * .pi / 180))
+                        .opacity(i < dotsIn * 4 ? 1 : 0)
+                }
+
+                // Highlighted sleep-relevant labels
+                ForEach(Array(highlights.enumerated()), id: \.offset) { idx, h in
+                    let r: CGFloat = 110
+                    HStack(spacing: 4) {
+                        Circle().fill(h.color).frame(width: 6, height: 6)
+                        Text(h.label)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundColor(MooniColor.textPrimary)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(h.color.opacity(0.18))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(h.color.opacity(0.4), lineWidth: 1))
+                    .offset(x: r * cos(h.angle * .pi / 180),
+                            y: r * sin(h.angle * .pi / 180))
+                    .opacity(idx < dotsIn ? 1 : 0)
+                    .scaleEffect(idx < dotsIn ? 1 : 0.8)
+                }
+
+                // Center node
+                ZStack {
+                    Circle().fill(MooniColor.accent.opacity(0.22)).frame(width: 64, height: 64)
+                    Circle().stroke(MooniColor.accent.opacity(0.6), lineWidth: 1.5).frame(width: 64, height: 64)
+                    VStack(spacing: 1) {
+                        Text("521")
+                            .font(.system(size: 19, weight: .heavy, design: .rounded))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Text("classes")
+                            .font(.system(size: 8, weight: .semibold, design: .rounded))
+                            .foregroundColor(MooniColor.textMuted)
+                            .tracking(0.5)
+                    }
+                }
+            }
+            .frame(width: 240, height: 240)
+
+            // Big stats
+            HStack(spacing: 8) {
+                yamStat("521", "sound classes")
+                yamStat("8M", "clips trained")
+                yamStat("100%", "on-device")
+            }
+            .opacity(statsIn ? 1 : 0)
+            .offset(y: statsIn ? 0 : 12)
+
+            Text("Gemmeke et al., AudioSet, ICASSP 2017 · TensorFlow Hub")
+                .font(MooniFont.caption(9))
+                .foregroundColor(MooniColor.textMuted)
+                .multilineTextAlignment(.center)
+
+            Spacer(minLength: 4)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            Haptics.soft()
+            for i in 0..<highlights.count + 1 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2 + Double(i) * 0.18) {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
+                        dotsIn = i + 1
+                    }
+                    Haptics.tick()
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                withAnimation(.easeOut(duration: 0.5)) { statsIn = true }
+                Haptics.success()
+            }
+        }
+    }
+
+    private func yamStat(_ number: String, _ caption: String) -> some View {
+        VStack(spacing: 4) {
+            Text(number)
+                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .foregroundStyle(LinearGradient(
+                    colors: [MooniColor.success, MooniColor.accentSoft],
+                    startPoint: .top, endPoint: .bottom))
+            Text(caption)
+                .font(MooniFont.caption(10))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(0.4)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(MooniColor.success.opacity(0.18), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: 3 / 6 — Sleep Efficiency
+
+struct EfficiencyFormulaScreen: View {
+    @State private var numIn = false
+    @State private var denomIn = false
+    @State private var resultIn = false
+    @State private var bedFill: CGFloat = 0
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 4)
+
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "function")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("CLINICAL STANDARD · SINCE 1972")
+                        .font(MooniFont.caption(10))
+                        .tracking(1.5)
+                }
+                .foregroundColor(MooniColor.accent)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(MooniColor.accent.opacity(0.14))
+                .clipShape(Capsule())
+
+                Text("Sleep Efficiency")
+                    .font(MooniFont.display(28))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text("the formula every sleep lab\nin the world uses.")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            // Animated formula
+            VStack(spacing: 14) {
+                HStack(alignment: .center, spacing: 10) {
+                    Text("SE")
+                        .font(.system(size: 28, weight: .heavy, design: .serif))
+                        .foregroundColor(MooniColor.accentSoft)
+                    Text("=")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(MooniColor.textMuted)
+                    VStack(spacing: 4) {
+                        Text("Time Asleep")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundColor(MooniColor.success)
+                            .opacity(numIn ? 1 : 0)
+                        Rectangle()
+                            .fill(Color.white.opacity(0.4))
+                            .frame(height: 1)
+                            .frame(width: 120)
+                        Text("Time in Bed")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundColor(MooniColor.accent)
+                            .opacity(denomIn ? 1 : 0)
+                    }
+                    Text("× 100")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .opacity(resultIn ? 1 : 0)
+                }
+
+                // Bed visual showing fill
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white.opacity(0.07))
+                        .frame(height: 40)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(MooniColor.accent.opacity(0.25), lineWidth: 1)
+                        )
+                    GeometryReader { geo in
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(LinearGradient(
+                                colors: [MooniColor.success.opacity(0.7), MooniColor.success],
+                                startPoint: .leading, endPoint: .trailing))
+                            .frame(width: geo.size.width * bedFill, height: 40)
+                    }
+                    .frame(height: 40)
+                    HStack {
+                        Text("Asleep · 7h 32m")
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(MooniColor.textPrimary)
+                            .padding(.leading, 12)
+                            .opacity(resultIn ? 1 : 0)
+                        Spacer()
+                        Text("\(Int(bedFill * 100))%")
+                            .font(MooniFont.title(15))
+                            .foregroundColor(MooniColor.textPrimary)
+                            .padding(.trailing, 12)
+                    }
+                    .frame(height: 40)
+                }
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(MooniColor.accent.opacity(0.22), lineWidth: 1)
+            )
+
+            // Trust strip
+            HStack(spacing: 8) {
+                effStat("2,500+", "AASM-accredited\nlabs in the US")
+                effStat("AASM", "the global scoring\nstandard")
+                effStat("50+", "years of\nclinical use")
+            }
+
+            Text("AASM Manual for the Scoring of Sleep, v3.0 · Berry et al., 2023")
+                .font(MooniFont.caption(9))
+                .foregroundColor(MooniColor.textMuted)
+
+            Spacer(minLength: 4)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            Haptics.soft()
+            withAnimation(.easeOut(duration: 0.5).delay(0.2)) { numIn = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { Haptics.tick() }
+            withAnimation(.easeOut(duration: 0.5).delay(0.55)) { denomIn = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { Haptics.tick() }
+            withAnimation(.easeOut(duration: 0.5).delay(0.95)) { resultIn = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) { Haptics.medium() }
+            withAnimation(.easeOut(duration: 1.4).delay(1.0)) { bedFill = 0.94 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { Haptics.success() }
+        }
+    }
+
+    private func effStat(_ number: String, _ caption: String) -> some View {
+        VStack(spacing: 4) {
+            Text(number)
+                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textPrimary)
+            Text(caption)
+                .font(MooniFont.caption(9))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(0.3)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 4)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+// MARK: 4 / 6 — Sleep architecture
+
+struct SleepArchitectureScreen: View {
+    @State private var pathPhase: CGFloat = 0
+    @State private var rowsIn = 0
+
+    private let stages: [(label: String, color: Color, share: String)] = [
+        ("REM",        MooniColor.accent,    "20–25%"),
+        ("Light · N2", MooniColor.accentSoft,"45–55%"),
+        ("Deep · N3",  MooniColor.success,   "13–23%"),
+        ("Awake",      MooniColor.warning,   "<5%")
+    ]
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer(minLength: 4)
+
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "waveform.path")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("AASM SCORING · PER MINUTE")
+                        .font(MooniFont.caption(10))
+                        .tracking(1.5)
+                }
+                .foregroundColor(MooniColor.accentSoft)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(MooniColor.accent.opacity(0.14))
+                .clipShape(Capsule())
+
+                Text("We map your night,\nminute by minute.")
+                    .font(MooniFont.display(26))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+            }
+
+            // Hypnogram
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white.opacity(0.04))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(MooniColor.accent.opacity(0.18), lineWidth: 1)
+                    )
+
+                HypnogramShape()
+                    .trim(from: 0, to: pathPhase)
+                    .stroke(LinearGradient(
+                        colors: [MooniColor.accent, MooniColor.success, MooniColor.accentSoft],
+                        startPoint: .leading, endPoint: .trailing),
+                            style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 18)
+
+                // Y-axis labels
+                VStack(alignment: .leading, spacing: 0) {
+                    stageLabel("REM",   tint: MooniColor.accent)
+                    Spacer(minLength: 4)
+                    stageLabel("Light", tint: MooniColor.accentSoft)
+                    Spacer(minLength: 4)
+                    stageLabel("Deep",  tint: MooniColor.success)
+                }
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 8)
+
+                // X-axis time labels
+                VStack {
+                    Spacer()
+                    HStack {
+                        Text("11pm").font(.system(size: 9)).foregroundColor(MooniColor.textMuted)
+                        Spacer()
+                        Text("2am").font(.system(size: 9)).foregroundColor(MooniColor.textMuted)
+                        Spacer()
+                        Text("5am").font(.system(size: 9)).foregroundColor(MooniColor.textMuted)
+                        Spacer()
+                        Text("7am").font(.system(size: 9)).foregroundColor(MooniColor.textMuted)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 4)
+                }
+            }
+            .frame(height: 160)
+
+            // Stage breakdown rows
+            VStack(spacing: 6) {
+                ForEach(Array(stages.enumerated()), id: \.offset) { idx, s in
+                    HStack {
+                        Circle().fill(s.color).frame(width: 8, height: 8)
+                        Text(s.label)
+                            .font(MooniFont.body(13))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Spacer()
+                        Text(s.share)
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(MooniColor.textSecondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(s.color.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+                    .padding(.vertical, 2)
+                    .opacity(idx < rowsIn ? 1 : 0)
+                    .offset(x: idx < rowsIn ? 0 : -8)
+                }
+            }
+            .padding(.horizontal, 4)
+
+            Text("AASM Manual for the Scoring of Sleep, v3.0 · Berry et al., 2023")
+                .font(MooniFont.caption(9))
+                .foregroundColor(MooniColor.textMuted)
+
+            Spacer(minLength: 4)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            Haptics.soft()
+            withAnimation(.easeOut(duration: 1.6).delay(0.2)) { pathPhase = 1 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { Haptics.success() }
+            for i in 0..<stages.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5 + Double(i) * 0.12) {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                        rowsIn = i + 1
+                    }
+                    Haptics.tick()
+                }
+            }
+        }
+    }
+
+    private func stageLabel(_ text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .foregroundColor(tint)
+            .tracking(1)
+    }
+}
+
+private struct HypnogramShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        // Realistic hypnogram silhouette: 4 sleep cycles ~90 min each.
+        // y-bands: 0.15 = REM, 0.45 = N2, 0.85 = N3, 0.0 = wake.
+        let pts: [CGPoint] = [
+            CGPoint(x: 0.00, y: 0.0),
+            CGPoint(x: 0.04, y: 0.0),
+            CGPoint(x: 0.07, y: 0.45),
+            CGPoint(x: 0.12, y: 0.85),
+            CGPoint(x: 0.20, y: 0.85),
+            CGPoint(x: 0.24, y: 0.45),
+            CGPoint(x: 0.28, y: 0.15),
+            CGPoint(x: 0.31, y: 0.45),
+            CGPoint(x: 0.36, y: 0.65),
+            CGPoint(x: 0.44, y: 0.65),
+            CGPoint(x: 0.49, y: 0.45),
+            CGPoint(x: 0.53, y: 0.15),
+            CGPoint(x: 0.57, y: 0.45),
+            CGPoint(x: 0.62, y: 0.55),
+            CGPoint(x: 0.68, y: 0.55),
+            CGPoint(x: 0.72, y: 0.45),
+            CGPoint(x: 0.78, y: 0.15),
+            CGPoint(x: 0.83, y: 0.45),
+            CGPoint(x: 0.90, y: 0.45),
+            CGPoint(x: 0.95, y: 0.15),
+            CGPoint(x: 1.00, y: 0.0)
+        ]
+        var path = Path()
+        for (i, p) in pts.enumerated() {
+            let pt = CGPoint(x: rect.minX + p.x * rect.width,
+                             y: rect.minY + p.y * rect.height)
+            if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+        }
+        return path
+    }
+}
+
+// MARK: 5 / 6 — On-device privacy
+
+struct OnDevicePrivacyScreen: View {
+    @State private var phoneIn = false
+    @State private var pulse = false
+    @State private var rowsIn = 0
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer(minLength: 4)
+
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("ON-DEVICE · ALWAYS")
+                        .font(MooniFont.caption(10))
+                        .tracking(1.6)
+                }
+                .foregroundColor(MooniColor.success)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(MooniColor.success.opacity(0.14))
+                .clipShape(Capsule())
+
+                Text("Nothing leaves your phone.")
+                    .font(MooniFont.display(26))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                Text("Audio is processed by Apple's Neural Engine and discarded within seconds.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 12)
+            }
+
+            // Phone visual
+            ZStack {
+                Circle()
+                    .fill(MooniColor.success.opacity(pulse ? 0.30 : 0.14))
+                    .frame(width: 200, height: 200)
+                    .blur(radius: 30)
+
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(MooniColor.surface)
+                    .frame(width: 110, height: 165)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .stroke(MooniColor.accent.opacity(0.45), lineWidth: 2)
+                    )
+                    .overlay(
+                        VStack(spacing: 8) {
+                            Image(systemName: "lock.shield.fill")
+                                .font(.system(size: 28, weight: .bold))
+                                .foregroundColor(MooniColor.success)
+                            Text("0 BYTES")
+                                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                                .foregroundColor(MooniColor.textPrimary)
+                                .tracking(1.5)
+                            Text("uploaded")
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .foregroundColor(MooniColor.textMuted)
+                                .tracking(1)
+                        }
+                    )
+                    .scaleEffect(phoneIn ? 1 : 0.85)
+                    .opacity(phoneIn ? 1 : 0)
+
+                // No-cloud slash
+                Image(systemName: "icloud.slash.fill")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(MooniColor.danger.opacity(0.85))
+                    .offset(x: 80, y: -55)
+                    .opacity(phoneIn ? 1 : 0)
+            }
+            .frame(height: 200)
+
+            // Privacy proof rows
+            VStack(spacing: 6) {
+                privacyRow(idx: 0, icon: "cpu.fill",
+                           title: "Apple Neural Engine",
+                           sub: "17 trillion operations / sec",
+                           color: MooniColor.accent)
+                privacyRow(idx: 1, icon: "antenna.radiowaves.left.and.right.slash",
+                           title: "Zero network calls",
+                           sub: "Audio never touches a server",
+                           color: MooniColor.success)
+                privacyRow(idx: 2, icon: "trash.fill",
+                           title: "Auto-deleted",
+                           sub: "Recordings discarded after analysis",
+                           color: MooniColor.warning)
+            }
+
+            Text("Apple Core ML · processed on-device using A-series Neural Engine")
+                .font(MooniFont.caption(9))
+                .foregroundColor(MooniColor.textMuted)
+                .multilineTextAlignment(.center)
+
+            Spacer(minLength: 4)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            Haptics.medium()
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) { phoneIn = true }
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { pulse = true }
+            for i in 0..<3 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4 + Double(i) * 0.14) {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                        rowsIn = i + 1
+                    }
+                    Haptics.tick()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func privacyRow(idx: Int, icon: String, title: String, sub: String, color: Color) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(color)
+                .frame(width: 32, height: 32)
+                .background(color.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(MooniFont.title(13))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text(sub)
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            Spacer()
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(MooniColor.success.opacity(0.85))
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .opacity(idx < rowsIn ? 1 : 0)
+        .offset(x: idx < rowsIn ? 0 : -8)
+    }
+}
+
+// MARK: 6 / 6 — Pro promise
+
+struct ProPromiseScreen: View {
+    @State private var rowsIn = 0
+    @State private var pulse = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer(minLength: 4)
+
+            VStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(MooniColor.warning.opacity(pulse ? 0.35 : 0.18))
+                        .frame(width: 120, height: 120)
+                        .blur(radius: 22)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundStyle(LinearGradient(
+                            colors: [MooniColor.warning, MooniColor.accentSoft],
+                            startPoint: .top, endPoint: .bottom))
+                }
+
+                Text("Clinical-grade detail.\nFrom your phone.")
+                    .font(MooniFont.display(26))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+
+                Text("Mooni Pro uses every bit of the science you just saw — running for you, every night.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+            }
+
+            // Pillar rows
+            VStack(spacing: 8) {
+                pillar(idx: 0,
+                       icon: "wind",
+                       tint: Color.pink,
+                       title: "Snore detection & timing",
+                       sub: "YAMNet flags every snore episode and when it spiked")
+                pillar(idx: 1,
+                       icon: "exclamationmark.triangle.fill",
+                       tint: MooniColor.warning,
+                       title: "Wake-cause attribution",
+                       sub: "Find the noise — partner, traffic, alarm — that broke your night")
+                pillar(idx: 2,
+                       icon: "waveform.path.ecg",
+                       tint: MooniColor.accent,
+                       title: "Full sleep architecture",
+                       sub: "Minute-by-minute hypnogram with REM, deep, and light stages")
+                pillar(idx: 3,
+                       icon: "chart.line.uptrend.xyaxis",
+                       tint: MooniColor.success,
+                       title: "Trends over weeks",
+                       sub: "See exactly which habits move your score — and which don't")
+            }
+
+            // Bottom value framing
+            HStack(spacing: 8) {
+                Image(systemName: "stethoscope")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(MooniColor.accentSoft)
+                Text("In-lab sleep studies cost **$1,000+**. You get the same metrics for the price of a coffee.")
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(MooniColor.accent.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(MooniColor.accent.opacity(0.25), lineWidth: 1)
+            )
+
+            Text("US polysomnography costs: AASM 2022 patient resource")
+                .font(MooniFont.caption(9))
+                .foregroundColor(MooniColor.textMuted)
+
+            Spacer(minLength: 4)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            Haptics.success()
+            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) { pulse = true }
+            for i in 0..<4 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3 + Double(i) * 0.13) {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                        rowsIn = i + 1
+                    }
+                    Haptics.tick()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pillar(idx: Int, icon: String, tint: Color, title: String, sub: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(tint)
+                .frame(width: 36, height: 36)
+                .background(tint.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(MooniFont.title(14))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text(sub)
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(tint.opacity(0.18), lineWidth: 1)
+        )
+        .opacity(idx < rowsIn ? 1 : 0)
+        .offset(y: idx < rowsIn ? 0 : 8)
+    }
+}

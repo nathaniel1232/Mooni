@@ -132,6 +132,14 @@ struct OnboardingView: View {
         case firstQuest
         case soundscapePreview        // interactive rainforest/rain sound demo
         case featureTour              // Quick "what unlocks tonight" tour
+        // ── Pre-paywall science sequence (6 screens) ──────────────────────
+        // Final credibility hit before sign-in / paywall. Every claim cited.
+        case scienceAudioHook         // "Your phone hears more than you think"
+        case scienceYAMNet            // Google Research's YAMNet
+        case scienceEfficiency        // Sleep Efficiency formula (AASM)
+        case scienceArchitecture      // Hypnogram — REM/Deep/Light per minute
+        case scienceOnDevice          // 0 bytes uploaded — Apple Neural Engine
+        case scienceProPromise        // Bridge to Pro: snore/wake-cause/architecture
         case signIn                   // Sign in with Apple → Supabase — moved to live
                                       //   right before paywall so the user is fully
                                       //   bought in before being asked to authenticate.
@@ -408,6 +416,12 @@ struct OnboardingView: View {
         case .firstQuest:          FirstQuestScreen(petName: petName, bedtime: bedtime, wakeTime: wakeTime)
         case .soundscapePreview:   WidgetPreviewScreen(petName: petName)
         case .featureTour:         FeatureTourScreen(petName: petName)
+        case .scienceAudioHook:    AudioInsightScreen()
+        case .scienceYAMNet:       YAMNetScreen()
+        case .scienceEfficiency:   EfficiencyFormulaScreen()
+        case .scienceArchitecture: SleepArchitectureScreen()
+        case .scienceOnDevice:     OnDevicePrivacyScreen()
+        case .scienceProPromise:   ProPromiseScreen()
         case .prePaywall:          EmptyView()    // rendered full-screen above; never reaches here
         }
     }
@@ -599,7 +613,13 @@ struct OnboardingView: View {
         case .simulatedResult:    return "See how it works"
         case .firstQuest:         return "Accept tonight's quest"
         case .soundscapePreview:  return "Add to home screen later"
-        case .featureTour:        return "Unlock all of this"
+        case .featureTour:        return "Show me the science"
+        case .scienceAudioHook:   return "How does it work?"
+        case .scienceYAMNet:      return "What's in my score?"
+        case .scienceEfficiency:  return "Show me my night"
+        case .scienceArchitecture:return "Is my data safe?"
+        case .scienceOnDevice:    return "What does Pro unlock?"
+        case .scienceProPromise:  return "I'm in"
         default:                  return "Continue"
         }
     }
@@ -627,7 +647,7 @@ struct OnboardingView: View {
     // MARK: - Navigation
 
     private func advance() {
-        Haptics.soft()
+        Haptics.medium()
         // Demo screen has 3 sub-stages
         if step == .demo && demoStage < 2 {
             withAnimation(.easeInOut) { demoStage += 1 }
@@ -680,8 +700,10 @@ struct OnboardingView: View {
         // ── Pet ceremony trimmed ───────────────────────────────────────
         case .petAttachment, .bondMessage, .demo:
             return true
-        // ── Bio questions removed (defaults used in score calc) ────────
-        case .ageQuestion, .genderQuestion, .heightQuestion, .weightQuestion:
+        // ── Bio questions: age kept (used to set ideal sleep hours +
+        //    personalized fact screens). Gender/height/weight still skipped —
+        //    we use defaults for those in scoring.
+        case .genderQuestion, .heightQuestion, .weightQuestion:
             return true
         // ── Auto-track REM kept in flow (key credibility hit) ──────────
         // (autoTrackRem stays visible alongside autoTrackIntro + autoTrackAccuracy
@@ -1264,7 +1286,7 @@ private struct DemoScreen: View {
     private var subtitle: String {
         switch stage {
         case 0: return "5 hours sleep"
-        case 1: return "7.5 hours sleep"
+        case 1: return "8.5 hours sleep"
         default: return "Consistent bedtime"
         }
     }
@@ -1337,6 +1359,7 @@ private struct AgeScreen: View {
                 .colorScheme(.dark)
                 .onChange(of: ageValue) { _, newValue in
                     profile.age = newValue
+                    Haptics.tick()
                 }
             }
         }
@@ -2832,12 +2855,18 @@ private struct SleepScoreRevealScreen: View {
         }
         .padding(.horizontal, 16)
         .onAppear {
+            Haptics.medium()
             withAnimation(.easeOut(duration: 1.6)) {
                 animateNumber = Double(profile.derivedSleepScore)
             }
             withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
                 pulse = true
             }
+            // Tick on the way up, then a final warning when the score lands.
+            for delay in stride(from: 0.25, through: 1.5, by: 0.25) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { Haptics.tick() }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) { Haptics.warning() }
         }
     }
 
@@ -2928,11 +2957,13 @@ private struct TopIssuesScreen: View {
             .padding(.top, 4)
         }
         .padding(.horizontal, 20)
+        .onAppear { Haptics.medium() }
         .onReceive(revealTimer) { _ in
             if revealed < issues.count {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.75)) {
                     revealed += 1
                 }
+                Haptics.tick()
             }
         }
     }
@@ -2995,20 +3026,19 @@ private struct ScienceCredibilityScreen: View {
     @State private var reveal = 0
     @State private var pillPulse = false
 
-    /// University-style trust signals — modeled on the "Kairo is built on
-    /// what science says works" pattern: small logo-mark + name, big bold
-    /// type, sparse layout. The marks are SF Symbols stylized into seals
-    /// since we don't ship real university brand assets.
-    private let universities: [(seal: String, name: String, sub: String, accent: Color)] = [
-        ("graduationcap.fill", "HARVARD",   "MEDICAL SCHOOL",         Color(red: 0.62, green: 0.10, blue: 0.18)),
-        ("book.closed.fill",   "OXFORD",    "SLEEP & CIRCADIAN INST", Color(red: 0.10, green: 0.20, blue: 0.55)),
-        ("flame.fill",         "STANFORD",  "SLEEP MEDICINE CENTER",  Color(red: 0.55, green: 0.10, blue: 0.10))
+    /// Trust signals from real, citable institutions and platforms — no
+    /// university branding (we don't have sponsorship). Each row reflects a
+    /// real published source the user can verify by name.
+    private let institutions: [(seal: String, name: String, sub: String, accent: Color)] = [
+        ("waveform.path.ecg", "AASM",   "SCORING MANUAL v3",     MooniColor.accent),
+        ("cpu.fill",          "GOOGLE", "RESEARCH · YAMNET",     MooniColor.success),
+        ("heart.text.square.fill", "APPLE", "HEALTHKIT · CORE ML", MooniColor.accentSoft)
     ]
 
     private let citations: [(label: String, source: String)] = [
-        ("Sleep duration & adult health",   "Hirshkowitz · Sleep Health 2015"),
-        ("Light & circadian shift",         "Chang · PNAS 2015"),
-        ("Actigraphy validation",           "AASM clinical guideline 2018")
+        ("Sleep duration consensus",        "Hirshkowitz · Sleep Health 2015"),
+        ("Audio event classification",      "Gemmeke · ICASSP 2017 (AudioSet)"),
+        ("Sleep stage scoring rules",       "Berry · AASM Manual v3 · 2023")
     ]
 
     var body: some View {
@@ -3037,13 +3067,13 @@ private struct ScienceCredibilityScreen: View {
                     .foregroundColor(MooniColor.textPrimary)
             }
 
-            // Trust-numbers strip
+            // Source-of-truth strip — facts about what we use, not vanity counts
             HStack(spacing: 0) {
-                trustNumber("147", "studies cited")
+                trustNumber("521", "audio classes\n(YAMNet)")
                 Divider().frame(height: 32).background(Color.white.opacity(0.1))
-                trustNumber("23", "advisory board")
+                trustNumber("AASM", "scoring\nstandard")
                 Divider().frame(height: 32).background(Color.white.opacity(0.1))
-                trustNumber("8.4M", "nights analyzed")
+                trustNumber("0", "bytes leave\nyour phone")
             }
             .padding(.vertical, 10)
             .background(Color.white.opacity(0.05))
@@ -3053,10 +3083,10 @@ private struct ScienceCredibilityScreen: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            // University seals — compact horizontal row
+            // Institution seals — real, citable sources
             HStack(spacing: 10) {
-                ForEach(Array(universities.enumerated()), id: \.offset) { idx, u in
-                    universitySeal(u)
+                ForEach(Array(institutions.enumerated()), id: \.offset) { idx, u in
+                    institutionSeal(u)
                         .opacity(idx < reveal ? 1 : 0)
                         .offset(y: idx < reveal ? 0 : 8)
                 }
@@ -3078,21 +3108,21 @@ private struct ScienceCredibilityScreen: View {
                             .foregroundColor(MooniColor.textMuted)
                             .lineLimit(1)
                     }
-                    .opacity(idx + universities.count < reveal ? 1 : 0)
+                    .opacity(idx + institutions.count < reveal ? 1 : 0)
                 }
             }
 
             HStack(spacing: 6) {
-                trustPill(icon: "stethoscope", text: "MD-reviewed")
                 trustPill(icon: "lock.shield.fill", text: "On-device")
-                trustPill(icon: "checkmark.seal.fill", text: "IRB protocol")
+                trustPill(icon: "function", text: "Cited formula")
+                trustPill(icon: "leaf.fill", text: "Open-source AI")
             }
         }
         .padding(.horizontal, 18)
         .onAppear {
             withAnimation(.spring(response: 0.55, dampingFraction: 0.7)) { pillPulse = true }
             reveal = 0
-            let total = universities.count + citations.count
+            let total = institutions.count + citations.count
             for i in 0..<total {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15 + 0.10 * Double(i)) {
                     withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
@@ -3103,7 +3133,7 @@ private struct ScienceCredibilityScreen: View {
         }
     }
 
-    private func universitySeal(
+    private func institutionSeal(
         _ u: (seal: String, name: String, sub: String, accent: Color)
     ) -> some View {
         VStack(spacing: 6) {
@@ -3118,11 +3148,19 @@ private struct ScienceCredibilityScreen: View {
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(u.accent.opacity(0.95))
             }
-            Text(u.name)
-                .font(.system(size: 12, weight: .heavy, design: .serif))
-                .foregroundColor(u.accent.opacity(0.95))
-                .tracking(0.8)
-                .lineLimit(1)
+            VStack(spacing: 1) {
+                Text(u.name)
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(u.accent.opacity(0.95))
+                    .tracking(0.8)
+                    .lineLimit(1)
+                Text(u.sub)
+                    .font(.system(size: 8, weight: .semibold, design: .rounded))
+                    .foregroundColor(MooniColor.textMuted)
+                    .tracking(0.6)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -4146,6 +4184,7 @@ private struct FactScaffold<Content: View>: View {
         .padding(.horizontal, 20)
         .padding(.top, 4)
         .onAppear {
+            Haptics.success()
             withAnimation(.easeOut(duration: 0.5)) { titleAppear = true }
         }
     }
@@ -4867,7 +4906,9 @@ private struct AutoTrackAccuracyScreen: View {
                 .animation(.easeOut(duration: 0.4).delay(0.5), value: phase)
             }
             .onAppear {
+                Haptics.medium()
                 withAnimation { phase = 1 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { Haptics.warning() }
             }
         }
     }
@@ -4881,10 +4922,9 @@ private struct BodyFactScreen: View {
     private var idealHours: Double {
         switch profile.age ?? 28 {
         case ..<18: return 9.0
-        case 18..<25: return 8.0
-        case 25..<45: return 7.5
-        case 45..<65: return 7.0
-        default: return 7.0
+        case 18..<45: return 8.5
+        case 45..<65: return 8.0
+        default: return 8.0
         }
     }
 
@@ -4974,10 +5014,9 @@ private struct SleepDebtFactScreen: View {
     private var idealHours: Double {
         switch profile.age ?? 28 {
         case ..<18: return 9.0
-        case 18..<25: return 8.0
-        case 25..<45: return 7.5
-        case 45..<65: return 7.0
-        default: return 7.0
+        case 18..<45: return 8.5
+        case 45..<65: return 8.0
+        default: return 8.0
         }
     }
 
@@ -5094,7 +5133,15 @@ private struct SleepDebtFactScreen: View {
             .background(Color.white.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .onAppear {
+                Haptics.medium()
                 withAnimation(.easeOut(duration: 1.8)) { phase = 1 }
+                // Sequential ticks while the debt bars rise across the week.
+                for i in 1...6 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2 + 0.18 * Double(i)) {
+                        Haptics.tick()
+                    }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { Haptics.warning() }
             }
         }
     }
@@ -6157,8 +6204,10 @@ private struct PseudoAnalysisScreen: View {
             .offset(y: cardVisible ? 0 : 12)
         }
         .onAppear {
+            Haptics.soft()
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1)) { badgeVisible = true }
             withAnimation(.spring(response: 0.55, dampingFraction: 0.8).delay(0.3)) { cardVisible = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { Haptics.tick() }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { animateType() }
         }
     }
