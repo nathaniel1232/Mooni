@@ -89,37 +89,87 @@ struct OnboardingProfile: Codable, Equatable {
     }
 
     /// Top 3 issues to surface on the "we found these" screen.
+    /// Personalised issues to surface on the TopIssues screen.
+    /// Returns 4-6 items — lower thresholds + more checks make the result
+    /// feel like an actual analysis, not a generic list.
     var topIssues: [String] {
         var out: [String] = []
-        if usesPhoneBeforeBed == true && phoneScreenMinutes >= 30 {
+
+        // ── Screens & blue light
+        if usesPhoneBeforeBed == true && phoneScreenMinutes >= 20 {
             out.append("Late-night screens flatten your melatonin")
+        } else if usesPhoneBeforeBed == true {
+            out.append("Phone glow keeps your brain in 'awake' mode")
         }
-        if stressLevel >= 6 || racingThoughtsAtNight == true {
-            out.append("Mind racing keeps you out of deep sleep")
+
+        // ── Stress + racing thoughts
+        if stressLevel >= 7 && racingThoughtsAtNight == true {
+            out.append("Anxious thoughts steal your deep sleep")
+        } else if stressLevel >= 6 {
+            out.append("Stress is holding back your recovery")
+        } else if racingThoughtsAtNight == true {
+            out.append("Mind racing pushes sleep out by ~25 min")
         }
-        if typicalSleepHours < 8 {
-            out.append("You're \(String(format: "%.1f", 8.5 - typicalSleepHours)) hrs short most nights")
+
+        // ── Short sleep
+        if typicalSleepHours < 6.5 {
+            out.append("You're sleeping \(String(format: "%.1f", 8.5 - typicalSleepHours))h short — every night")
+        } else if typicalSleepHours < 8 {
+            out.append("Your body wants \(String(format: "%.1f", 8.5 - typicalSleepHours))h more rest")
         }
-        if caffeineCutoff == .evening || caffeineCutoff == .afternoon {
-            out.append("Caffeine half-life is steeling your sleep")
+
+        // ── Caffeine
+        if caffeineCutoff == .evening {
+            out.append("Evening caffeine is wrecking deep sleep")
+        } else if caffeineCutoff == .afternoon {
+            out.append("Afternoon coffee lingers for 6+ hours")
         }
-        if wakeFeeling == .exhausted || wakeFeeling == .groggy {
-            out.append("You wake up in the wrong sleep stage")
+
+        // ── Wake feeling
+        if wakeFeeling == .exhausted {
+            out.append("Alarm hits while you're in deep sleep")
+        } else if wakeFeeling == .groggy {
+            out.append("Wake-up is mistimed — you're in the wrong stage")
         }
-        // Always surface 3 issues, even when the user's answers look good.
-        // The first-week plan is built around fixing them — we never show
-        // an empty "you're perfect" state.
+
+        // ── Energy dip / daytime tells
+        if energyDip == .afternoon || energyDip == .allDay {
+            out.append("Afternoon crashes signal hidden debt")
+        }
+        if napsDuringDay == true {
+            out.append("Daytime naps fragment tonight's sleep")
+        }
+
+        // ── Environment
+        if roomDarkness == .bright {
+            out.append("Light leak shortens your REM cycles")
+        }
+        if roomNoise == .loud || roomNoise == .someNoise {
+            out.append("Noise wakes you 4-6× a night — without you knowing")
+        }
+        if bedComfort == .uncomfortable {
+            out.append("Your bed setup is fighting your sleep")
+        }
+
+        // ── Long-running struggle
+        if struggleDuration == .severalYears || struggleDuration == .asLongAsRemember {
+            out.append("This has been a years-long pattern")
+        }
+
+        // ── Universal fallbacks (only if we have under 4 personalised hits)
         let fallback: [String] = [
             "Your bedtime drifts ~37 min later on stressful days",
             "Wake variance widens on weekends — your rhythm slips",
-            "Avg adult loses 38 min/night to micro-arousals"
+            "Avg adult loses 38 min/night to micro-arousals",
+            "Sleep efficiency drops 8% the night before deadlines"
         ]
-        while out.count < 3 {
+        while out.count < 4 {
             if let next = fallback.first(where: { !out.contains($0) }) {
                 out.append(next)
             } else { break }
         }
-        return Array(out.prefix(3))
+        // Cap at 6 so the screen stays scannable.
+        return Array(out.prefix(6))
     }
 }
 

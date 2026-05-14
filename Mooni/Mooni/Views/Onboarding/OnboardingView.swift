@@ -38,6 +38,15 @@ struct OnboardingView: View {
     // Demo screen state
     @State private var demoStage: Int = 0   // 0 short / 1 long / 2 consistent
 
+    // Tap-driven page index for the widgets showcase (Small → Medium → Sleep Circle).
+    @State private var widgetPage: Int = 0
+    // Tap-driven page index for the Sleep Circle / friends showcase.
+    @State private var sleepCirclePage: Int = 0
+    // Tap-driven page index for the body-studies showcase (hormones / growth / etc).
+    @State private var bodyStudyPage: Int = 0
+    // Tap-driven page index for the sleep-debt showcase (hours / money / experiences / growth).
+    @State private var sleepDebtPage: Int = 0
+
     // Loading screens
     @State private var planMessageIndex: Int = 0
     @State private var planProgress: Double = 0
@@ -123,6 +132,7 @@ struct OnboardingView: View {
         case analyzingAnswers         // loading 1 (long, variable)
         case sleepScoreReveal
         case topIssues
+        case bodyStudies              // tap-through: hormones / growth / brain / heart / immunity / quality
         case scienceCredibility       // research + expert-panel credibility
         case scienceTrust             // formula + phone fallback before plan generation
         case generatingPlan           // loading 2 (long, variable)
@@ -186,18 +196,24 @@ struct OnboardingView: View {
                         .padding(.horizontal, 20)
                         .padding(.top, 14)
 
-                    ScrollView(showsIndicators: false) {
-                        content
-                            .padding(.top, 16)
-                            // Trailing padding so the last line of any
-                            // screen never tucks under the Continue
-                            // footer — even on small phones.
-                            .padding(.bottom, 36)
-                            .frame(maxWidth: .infinity)
-                            .id(step)
-                            .transition(transition)
+                    // GeometryReader lets us give the ScrollView's content a
+                    // minHeight just under the visible area. With center
+                    // alignment, content sits in the upper-center band —
+                    // closer to the progress bar than to the footer — which
+                    // feels more "purposeful" than dead-center on tall phones.
+                    // Oversize content still scrolls naturally.
+                    GeometryReader { geo in
+                        ScrollView(showsIndicators: false) {
+                            content
+                                .padding(.top, 8)
+                                .padding(.bottom, 28)
+                                .frame(maxWidth: .infinity)
+                                .frame(minHeight: geo.size.height * 0.86, alignment: .center)
+                                .id(step)
+                                .transition(transition)
+                        }
+                        .scrollDismissesKeyboard(.interactively)
                     }
-                    .scrollDismissesKeyboard(.interactively)
 
                     footer
                         .padding(.horizontal, 20)
@@ -378,7 +394,7 @@ struct OnboardingView: View {
         case .autoTrackIntro:      AutoTrackIntroScreen()
         case .autoTrackRem:        AutoTrackRemScreen()
         case .autoTrackAccuracy:   AutoTrackAccuracyScreen()
-        case .sleepDebtFact:       SleepDebtFactScreen(profile: profile)
+        case .sleepDebtFact:       SleepDebtFactScreen(profile: profile, page: $sleepDebtPage)
         case .phoneBeforeBed:      PhoneBeforeBedScreen(profile: $profile)
         case .phoneScreenTime:     PhoneScreenTimeScreen(profile: $profile)
         case .phoneFact:           PhoneFactScreen(profile: profile)
@@ -406,6 +422,7 @@ struct OnboardingView: View {
                 .onAppear { runAnalyzingAnimation() }
         case .sleepScoreReveal:    SleepScoreRevealScreen(profile: profile, petName: petName)
         case .topIssues:           TopIssuesScreen(profile: profile)
+        case .bodyStudies:         BodyStudiesScreen(page: $bodyStudyPage)
         case .scienceCredibility:   ScienceCredibilityScreen()
         case .scienceTrust:         ScienceFormulaScreen(profile: profile)
         case .generatingPlan:
@@ -414,8 +431,8 @@ struct OnboardingView: View {
         case .socialProof:         SocialProofScreen()
         case .simulatedResult:     SimulatedResultScreen(species: species, name: petName)
         case .firstQuest:          FirstQuestScreen(petName: petName, bedtime: bedtime, wakeTime: wakeTime)
-        case .soundscapePreview:   WidgetPreviewScreen(petName: petName)
-        case .featureTour:         FeatureTourScreen(petName: petName)
+        case .soundscapePreview:   WidgetPreviewScreen(petName: petName, page: $widgetPage)
+        case .featureTour:         FeatureTourScreen(petName: petName, page: $sleepCirclePage)
         case .scienceAudioHook:    AudioInsightScreen()
         case .scienceYAMNet:       YAMNetScreen()
         case .scienceEfficiency:   EfficiencyFormulaScreen()
@@ -447,13 +464,10 @@ struct OnboardingView: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "person.crop.circle.fill")
-                            Text("I already have an account")
-                                .font(MooniFont.body(14))
-                        }
-                        .foregroundColor(MooniColor.textSecondary)
-                        .padding(.vertical, 6)
+                        Text("Already have an account?")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundColor(MooniColor.textMuted.opacity(0.7))
+                            .padding(.vertical, 2)
                     }
                     if let err = authErrorMessage {
                         Text(err)
@@ -587,7 +601,8 @@ struct OnboardingView: View {
         case .autoTrackIntro:     return "How accurate is it?"
         case .autoTrackRem:       return "Tell me more"
         case .autoTrackAccuracy:  return "Got it"
-        case .sleepDebtFact:      return "I want to fix this"
+        case .sleepDebtFact:
+            return sleepDebtPage < SleepDebtFactScreen.pageCount - 1 ? "Continue" : "I want to fix this"
         case .phoneBeforeBed:     return "Continue"
         case .phoneScreenTime:    return "Continue"
         case .phoneFact:          return "I get it"
@@ -606,19 +621,23 @@ struct OnboardingView: View {
         case .reflection:         return "Continue"
         case .roomPicker:         return "Build \(petName)'s room"
         case .sleepScoreReveal:   return "Show me the issues"
-        case .topIssues:          return "Show me the science"
+        case .topIssues:          return "Show me what's at stake"
+        case .bodyStudies:
+            return bodyStudyPage < BodyStudiesScreen.pageCount - 1 ? "Next study" : "Show me the science"
         case .scienceCredibility:  return "Show me the formula"
         case .scienceTrust:       return "Build my plan"
         case .socialProof:        return "Continue"
         case .simulatedResult:    return "See how it works"
         case .firstQuest:         return "Accept tonight's quest"
-        case .soundscapePreview:  return "Add to home screen later"
-        case .featureTour:        return "Show me the science"
+        case .soundscapePreview:
+            return widgetPage < WidgetPreviewScreen.pageCount - 1 ? "See next widget" : "I want these"
+        case .featureTour:
+            return sleepCirclePage < FeatureTourScreen.pageCount - 1 ? "Continue" : "Show me the science"
         case .scienceAudioHook:   return "How does it work?"
         case .scienceYAMNet:      return "What's in my score?"
         case .scienceEfficiency:  return "Show me my night"
         case .scienceArchitecture:return "Is my data safe?"
-        case .scienceOnDevice:    return "What does Pro unlock?"
+        case .scienceOnDevice:    return "What do I get?"
         case .scienceProPromise:  return "I'm in"
         default:                  return "Continue"
         }
@@ -653,6 +672,34 @@ struct OnboardingView: View {
             withAnimation(.easeInOut) { demoStage += 1 }
             return
         }
+        // Widgets showcase pages through 3 widget mocks before advancing
+        if step == .soundscapePreview && widgetPage < WidgetPreviewScreen.pageCount - 1 {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                widgetPage += 1
+            }
+            return
+        }
+        // Sleep Circle / friends showcase pages through its substages
+        if step == .featureTour && sleepCirclePage < FeatureTourScreen.pageCount - 1 {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                sleepCirclePage += 1
+            }
+            return
+        }
+        // Body-studies showcase (hormones / growth / etc) pages through its cards
+        if step == .bodyStudies && bodyStudyPage < BodyStudiesScreen.pageCount - 1 {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                bodyStudyPage += 1
+            }
+            return
+        }
+        // Sleep-debt showcase (hours → money → experiences → growth)
+        if step == .sleepDebtFact && sleepDebtPage < SleepDebtFactScreen.pageCount - 1 {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                sleepDebtPage += 1
+            }
+            return
+        }
         var nextIndex = step.index + 1
         while nextIndex < Step.total && shouldSkip(Step.allCases[nextIndex]) {
             nextIndex += 1
@@ -661,6 +708,12 @@ struct OnboardingView: View {
         transitionDirection = .forward
         withAnimation(.easeInOut(duration: 0.35)) {
             step = Step.allCases[nextIndex]
+            // Reset paged-screen indices on entry so the user always starts
+            // at page 0 when (re)visiting them.
+            if step == .soundscapePreview { widgetPage = 0 }
+            if step == .featureTour { sleepCirclePage = 0 }
+            if step == .bodyStudies { bodyStudyPage = 0 }
+            if step == .sleepDebtFact { sleepDebtPage = 0 }
         }
     }
 
@@ -668,6 +721,22 @@ struct OnboardingView: View {
         Haptics.tap()
         if step == .demo && demoStage > 0 {
             withAnimation(.easeInOut) { demoStage -= 1 }
+            return
+        }
+        if step == .soundscapePreview && widgetPage > 0 {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { widgetPage -= 1 }
+            return
+        }
+        if step == .featureTour && sleepCirclePage > 0 {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { sleepCirclePage -= 1 }
+            return
+        }
+        if step == .bodyStudies && bodyStudyPage > 0 {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { bodyStudyPage -= 1 }
+            return
+        }
+        if step == .sleepDebtFact && sleepDebtPage > 0 {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { sleepDebtPage -= 1 }
             return
         }
         var prevIndex = step.index - 1
@@ -711,25 +780,25 @@ struct OnboardingView: View {
         // ── Goal studies trimmed to 1 ──────────────────────────────────
         case .goalStudy2, .goalStudy3, .goalStudy4, .goalStudy5:
             return true
-        // ── Redundant question screens ─────────────────────────────────
-        // biggestProblem duplicates sleepGoal (same answer set: falling asleep,
-        // waking tired, schedule, stress). Drop it so users don't feel asked twice.
-        case .motivationQuestion, .struggleDuration, .biggestProblem:
+        // ── Question screens are back in: motivation + struggleDuration drive
+        //    personalised analysis and TopIssues. Only biggestProblem stays
+        //    skipped (it duplicates sleepGoal's answer set).
+        case .biggestProblem:
             return true
-        // ── Phone deep-dive removed ────────────────────────────────────
-        case .phoneScreenTime, .phoneFact:
+        // ── Phone fact chart stays hidden; the question is back in.
+        case .phoneFact:
             return true
-        // ── Caffeine flow removed ──────────────────────────────────────
-        case .caffeineCutoff, .caffeineFact:
+        // ── Caffeine fact chart stays hidden; caffeineCutoff question is back.
+        case .caffeineFact:
             return true
-        // ── Stress deep-dive removed ───────────────────────────────────
-        case .stressLevel, .racingThoughts, .stressFact:
+        // ── Stress fact chart stays hidden; questions are back.
+        case .stressFact:
             return true
-        // ── Energy / nap / circadian cluster removed ───────────────────
-        case .energyDip, .napsDay, .dayCycleFact:
+        // ── dayCycleFact still hidden; energyDip + napsDay questions back in.
+        case .dayCycleFact:
             return true
-        // ── Environment cluster removed ────────────────────────────────
-        case .roomEnvironment, .environmentFact:
+        // ── environmentFact chart stays hidden; roomEnvironment question back.
+        case .environmentFact:
             return true
         // ── Scheduling ceremony trimmed ────────────────────────────────
         case .reflection, .roomPicker, .anticipation:
@@ -742,10 +811,11 @@ struct OnboardingView: View {
         //    so we keep `scienceCredibility` and let it carry that weight.
         case .scienceTrust:
             return true
-        // ── Rate-app kept: shown right before paywall so warm users
-        //    are asked for a review before the price ask. firstQuest still
-        //    removed (lives inside the app after activation).
-        case .firstQuest:
+        // ── Rate prompt removed entirely from onboarding. SKStoreReviewController
+        //    dismisses the modal flow and burns 1 of 3 yearly prompts — too costly
+        //    on a not-yet-converted user. We'll prompt after first successful sleep
+        //    review in-app instead. firstQuest still hidden (lives post-paywall).
+        case .firstQuest, .rateApp:
             return true
         default:
             return false
@@ -885,19 +955,23 @@ struct OnboardingView: View {
 private struct QuestionScaffold<Content: View>: View {
     let title: String
     var subtitle: String? = nil
-    /// Optional one-line expert/research note shown directly under the question.
-    /// Used to anchor each answer in real evidence so the user feels like the
-    /// quiz is built on science, not vibes.
+    /// Kept on the API so existing call sites compile without edits — but the
+    /// inline expert/research chip is no longer rendered. The "fun fact" lives
+    /// in its own dedicated screen (BodyStudiesScreen) where it has room to
+    /// breathe with a real visual.
     var expert: ExpertNote? = nil
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 6) {
+        VStack(spacing: 20) {
+            Spacer(minLength: 4)
+
+            VStack(spacing: 8) {
                 Text(title)
                     .font(MooniFont.display(26))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
+                    .lineSpacing(2)
                     .padding(.horizontal, 16)
                 if let s = subtitle {
                     Text(s)
@@ -907,19 +981,12 @@ private struct QuestionScaffold<Content: View>: View {
                         .padding(.horizontal, 24)
                 }
             }
-            .padding(.top, 8)
-
-            if let e = expert {
-                ExpertQuoteView(note: e)
-                    .padding(.horizontal, 20)
-            }
 
             content()
                 .padding(.horizontal, 20)
 
-            Spacer().frame(height: 12)
+            Spacer(minLength: 8)
         }
-        .padding(.top, 4)
     }
 }
 
@@ -1032,48 +1099,60 @@ private struct OptionRow<T: Hashable>: View {
 
 // MARK: - Screen 0: Hero
 
+/// Opening emotional hook — one tired pet image, one bold line. That's it.
+/// Lighter than the original: no 3-line headline + dense subhead — let the
+/// pet do the emotional work, follow with one direct sentence.
 private struct HeroScreen: View {
     let species: PetSpecies
     @State private var dim = false
+    @State private var fadeIn = false
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer().frame(height: 6)
+        VStack(spacing: 30) {
+            Spacer(minLength: 8)
 
             ZStack {
-                // Heavy, low-contrast halo — a tired aura, not a glow.
                 Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [Color.black.opacity(0.55), .clear],
-                            center: .center,
-                            startRadius: 4,
-                            endRadius: 220
-                        )
-                    )
+                    .fill(RadialGradient(
+                        colors: [Color.black.opacity(0.55), .clear],
+                        center: .center, startRadius: 4, endRadius: 220))
                     .frame(width: 340, height: 340)
 
-                DreamSpiritView(pet: tiredPet, size: 170)
+                DreamSpiritView(pet: tiredPet, size: 190)
                     .saturation(0.55)
-                    .opacity(dim ? 0.78 : 0.92)
+                    .opacity(dim ? 0.75 : 0.95)
                     .animation(.easeInOut(duration: 3.6).repeatForever(autoreverses: true), value: dim)
+
+                // Sleepy "Zzz" floating above
+                Text("z z Z")
+                    .font(.system(size: 24, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.accentSoft.opacity(0.7))
+                    .offset(x: 70, y: -90)
+                    .opacity(dim ? 0.85 : 0.4)
+                    .animation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true), value: dim)
             }
-            .onAppear { dim = true }
+            .onAppear {
+                dim = true
+                withAnimation(.easeOut(duration: 0.55).delay(0.15)) { fadeIn = true }
+            }
 
             VStack(spacing: 14) {
-                Text("You're probably\nmore sleep deprived\nthan you think.")
-                    .font(MooniFont.display(30))
+                Text("You're tired.\nWe'll show you why.")
+                    .font(MooniFont.display(32))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
 
-                Text("Poor sleep quietly affects energy, focus, mood, recovery, and motivation — even when you can't feel it directly.")
-                    .font(MooniFont.body(15))
+                Text("It takes 2 minutes.")
+                    .font(MooniFont.body(16))
                     .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
             }
+            .opacity(fadeIn ? 1 : 0)
+            .offset(y: fadeIn ? 0 : 12)
+
+            Spacer(minLength: 12)
         }
+        .padding(.horizontal, 24)
         .padding(.top, 6)
     }
 
@@ -1085,76 +1164,88 @@ private struct HeroScreen: View {
 
 // MARK: - Screen 1: Relatable pain — "Ever wake up already exhausted?"
 
+/// 4 BIG emoji cards — each one immediate, no icon-system noise.
+/// Reveal one-by-one with haptics so it feels alive.
 private struct SleepImpactStatScreen: View {
     @State private var revealedCount: Int = 0
+    @State private var titleIn = false
 
-    private let pains: [(icon: String, label: String)] = [
-        ("brain.head.profile",   "Brain fog"),
-        ("battery.25",           "No energy"),
-        ("face.dashed",          "Bad mood"),
-        ("eye.slash",            "Poor focus"),
-        ("figure.walk",          "Low motivation"),
-        ("calendar.badge.exclamationmark", "Ruined schedule")
+    private let pains: [(emoji: String, label: String, tint: Color)] = [
+        ("🧠", "Brain fog",     MooniColor.warning),
+        ("🔋", "No energy",     MooniColor.danger),
+        ("😤", "Bad mood",      Color.pink),
+        ("🎯", "Can't focus",   MooniColor.accent)
     ]
 
     var body: some View {
-        VStack(spacing: 22) {
-            VStack(spacing: 10) {
-                Text("Ever wake up\nalready exhausted?")
-                    .font(MooniFont.display(28))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                Text("Most people quietly carry one or more of these every day.")
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            .padding(.top, 8)
+        VStack(spacing: 26) {
+            Spacer(minLength: 8)
 
             VStack(spacing: 10) {
+                Text("😴 SOUND FAMILIAR?")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.warning)
+                    .tracking(2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(MooniColor.warning.opacity(0.16))
+                    .clipShape(Capsule())
+
+                Text("Bad sleep does\nthis to you.")
+                    .font(MooniFont.display(30))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            }
+            .opacity(titleIn ? 1 : 0)
+            .offset(y: titleIn ? 0 : 8)
+
+            VStack(spacing: 12) {
                 ForEach(Array(pains.enumerated()), id: \.offset) { idx, item in
-                    PainCard(icon: item.icon, label: item.label)
-                        .opacity(idx < revealedCount ? 1 : 0)
-                        .offset(y: idx < revealedCount ? 0 : 14)
-                        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: revealedCount)
+                    painCard(emoji: item.emoji, label: item.label, tint: item.tint,
+                             visible: idx < revealedCount)
                 }
             }
-            .padding(.horizontal, 22)
 
             Spacer(minLength: 8)
         }
+        .padding(.horizontal, 22)
         .onAppear {
+            withAnimation(.easeOut(duration: 0.45)) { titleIn = true }
+            Haptics.medium()
             for i in 0..<pains.count {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18 * Double(i)) {
-                    revealedCount = i + 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 + 0.18 * Double(i)) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                        revealedCount = i + 1
+                    }
+                    Haptics.tick()
                 }
             }
         }
     }
 
-    private struct PainCard: View {
-        let icon: String
-        let label: String
-
-        var body: some View {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(MooniColor.warning)
-                    .frame(width: 38, height: 38)
-                    .background(MooniColor.warning.opacity(0.16))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text(label)
-                    .font(MooniFont.title(15))
-                    .foregroundColor(MooniColor.textPrimary)
-                Spacer()
-            }
-            .padding(14)
-            .background(Color.white.opacity(0.07))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    private func painCard(emoji: String, label: String, tint: Color, visible: Bool) -> some View {
+        HStack(spacing: 16) {
+            Text(emoji)
+                .font(.system(size: 32))
+                .frame(width: 56, height: 56)
+                .background(tint.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            Text(label)
+                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textPrimary)
+            Spacer()
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(tint.opacity(0.22), lineWidth: 1)
+        )
+        .opacity(visible ? 1 : 0)
+        .offset(x: visible ? 0 : -16)
     }
 }
 
@@ -2692,50 +2783,62 @@ private struct AnalyzingAnswersScreen: View {
 
     @State private var orbit: Double = 0
 
-    private var messages: [String] {
+    private var messages: [(emoji: String, text: String)] {
         [
-            "Reading your answers…",
-            "Mapping your chronotype…",
-            "Calculating your sleep debt…",
-            "Identifying your top 3 issues…",
-            "Tuning your wake-up window…",
-            "Aligning \(petName)'s growth schedule…"
+            ("📝", "Reading your answers"),
+            ("🌙", "Mapping your night style"),
+            ("💸", "Calculating your sleep debt"),
+            ("🎯", "Finding your top 3 issues"),
+            ("⏰", "Tuning your wake-up window"),
+            ("🦉", "Setting up \(petName)")
         ]
     }
 
     var body: some View {
         VStack(spacing: 26) {
-            Spacer().frame(height: 14)
+            Spacer(minLength: 14)
 
-            // Orbit halo around progress ring
+            Text("🔬 ANALYZING YOU")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.accentSoft)
+                .tracking(2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(MooniColor.accent.opacity(0.16))
+                .clipShape(Capsule())
+
+            // Big ring with percent + orbit dots
             ZStack {
                 Circle()
-                    .stroke(Color.white.opacity(0.08), lineWidth: 8)
-                    .frame(width: 180, height: 180)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 12)
+                    .frame(width: 200, height: 200)
                 Circle()
                     .trim(from: 0, to: progress)
-                    .stroke(LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
-                                           startPoint: .top, endPoint: .bottom),
-                            style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                    .frame(width: 180, height: 180)
+                    .stroke(LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .top, endPoint: .bottom),
+                        style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                    .frame(width: 200, height: 200)
                     .rotationEffect(.degrees(-90))
+                    .shadow(color: MooniColor.accent.opacity(0.4), radius: 18)
                     .animation(.easeInOut(duration: 0.55), value: progress)
                 ForEach(0..<3) { i in
                     Circle()
-                        .fill(MooniColor.accent.opacity(0.6))
-                        .frame(width: 6, height: 6)
-                        .offset(x: 90)
+                        .fill(MooniColor.accent.opacity(0.65))
+                        .frame(width: 7, height: 7)
+                        .offset(x: 100)
                         .rotationEffect(.degrees(orbit + Double(i) * 120))
                 }
-                VStack(spacing: 2) {
+                VStack(spacing: -2) {
                     Text("\(Int(progress * 100))")
-                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                        .font(.system(size: 54, weight: .heavy, design: .rounded))
                         .foregroundColor(MooniColor.textPrimary)
                         .contentTransition(.numericText())
                         .animation(.easeOut(duration: 0.4), value: progress)
-                    Text("%")
-                        .font(MooniFont.caption(12))
+                    Text("PERCENT")
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
                         .foregroundColor(MooniColor.textMuted)
+                        .tracking(1.6)
                 }
             }
             .onAppear {
@@ -2744,223 +2847,381 @@ private struct AnalyzingAnswersScreen: View {
                 }
             }
 
-            // Currently animating message
-            Text(messages[min(currentStep, messages.count - 1)])
-                .font(MooniFont.title(17))
-                .foregroundColor(MooniColor.textPrimary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-                .id(currentStep)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            // Current step — big, animated
+            HStack(spacing: 10) {
+                Text(messages[min(currentStep, messages.count - 1)].emoji)
+                    .font(.system(size: 22))
+                Text(messages[min(currentStep, messages.count - 1)].text)
+                    .font(.system(size: 17, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textPrimary)
+            }
+            .id(currentStep)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
 
-            VStack(alignment: .leading, spacing: 10) {
+            // Step checklist
+            VStack(spacing: 8) {
                 ForEach(Array(messages.enumerated()), id: \.offset) { idx, msg in
                     HStack(spacing: 12) {
-                        ZStack {
+                        Group {
                             if idx < currentStep {
                                 Image(systemName: "checkmark.circle.fill")
                                     .foregroundColor(MooniColor.success)
-                                    .transition(.scale)
                             } else if idx == currentStep {
                                 Circle()
-                                    .stroke(MooniColor.accent, lineWidth: 1.5)
-                                    .frame(width: 18, height: 18)
-                                Circle()
                                     .fill(MooniColor.accent)
-                                    .frame(width: 8, height: 8)
-                                    .scaleEffect(idx == currentStep ? 1 : 0)
+                                    .frame(width: 14, height: 14)
                             } else {
-                                Image(systemName: "circle.dashed")
-                                    .foregroundColor(MooniColor.textMuted)
+                                Circle()
+                                    .stroke(Color.white.opacity(0.22), lineWidth: 1.5)
+                                    .frame(width: 14, height: 14)
                             }
                         }
                         .frame(width: 22)
-                        Text(msg)
-                            .font(MooniFont.body(14))
-                            .foregroundColor(idx <= currentStep ? MooniColor.textPrimary : MooniColor.textSecondary)
+
+                        Text(msg.emoji)
+                            .font(.system(size: 16))
+                            .opacity(idx <= currentStep ? 1 : 0.4)
+
+                        Text(msg.text)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundColor(idx <= currentStep ? MooniColor.textPrimary : MooniColor.textMuted)
                             .strikethrough(idx < currentStep, color: MooniColor.textMuted)
                         Spacer()
                     }
                 }
             }
-            .padding(18)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.06))
+            .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .padding(.horizontal, 24)
+
+            Spacer(minLength: 4)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 22)
     }
 }
 
 // MARK: - Screen: Sleep score reveal
 
+/// Sleep score — big ring + verdict word, then a 4-stat grid showing the
+/// breakdown (Duration / Stress / Habits / Environment), then a "vs. ideal"
+/// mini gauge row. Way more data than v1, all in a clean uniform grid.
 private struct SleepScoreRevealScreen: View {
     let profile: OnboardingProfile
     let petName: String
 
     @State private var animateNumber: Double = 0
     @State private var pulse = false
+    @State private var gridIn = false
+    @State private var compareIn = false
+
+    private var idealHours: Double {
+        switch profile.age ?? 28 {
+        case ..<18: return 9.0
+        case 18..<45: return 8.5
+        case 45..<65: return 8.0
+        default: return 8.0
+        }
+    }
+
+    // 4 sub-scores derived from the profile — each is 0-100.
+    private var durationScore: Int {
+        let ratio = profile.typicalSleepHours / idealHours
+        return min(100, max(20, Int(ratio * 100)))
+    }
+    private var stressScore: Int {
+        var s = 100 - profile.stressLevel * 6
+        if profile.racingThoughtsAtNight == true { s -= 15 }
+        return min(100, max(15, s))
+    }
+    private var habitsScore: Int {
+        var s = 100
+        if profile.usesPhoneBeforeBed == true { s -= 18 }
+        if profile.phoneScreenMinutes > 60 { s -= 10 }
+        if profile.caffeineCutoff == .evening { s -= 15 }
+        else if profile.caffeineCutoff == .afternoon { s -= 8 }
+        if profile.napsDuringDay == true { s -= 6 }
+        return min(100, max(20, s))
+    }
+    private var environmentScore: Int {
+        var s = 100
+        if profile.roomDarkness == .bright { s -= 18 }
+        else if profile.roomDarkness == .someLight { s -= 8 }
+        if profile.roomNoise == .loud { s -= 18 }
+        else if profile.roomNoise == .someNoise { s -= 8 }
+        if profile.bedComfort == .uncomfortable { s -= 15 }
+        else if profile.bedComfort == .okay { s -= 5 }
+        return min(100, max(20, s))
+    }
 
     var body: some View {
-        VStack(spacing: 22) {
-            Text("YOUR CURRENT SLEEP SCORE")
-                .font(MooniFont.caption(13))
-                .foregroundColor(MooniColor.textMuted)
+        VStack(spacing: 18) {
+            Spacer(minLength: 4)
+
+            Text("📋 YOUR SLEEP SCORE")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.warning)
                 .tracking(2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(MooniColor.warning.opacity(0.16))
+                .clipShape(Capsule())
 
             ZStack {
                 Circle()
-                    .stroke(Color.white.opacity(0.10), lineWidth: 14)
-                    .frame(width: 220, height: 220)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 16)
+                    .frame(width: 210, height: 210)
+                Circle()
+                    .fill(scoreColor.opacity(pulse ? 0.22 : 0.08))
+                    .frame(width: 190, height: 190)
+                    .blur(radius: 24)
                 Circle()
                     .trim(from: 0, to: CGFloat(animateNumber) / 100)
                     .stroke(LinearGradient(
                         colors: [MooniColor.danger, MooniColor.warning, MooniColor.accentSoft],
                         startPoint: .leading, endPoint: .trailing),
-                            style: StrokeStyle(lineWidth: 14, lineCap: .round))
-                    .frame(width: 220, height: 220)
+                        style: StrokeStyle(lineWidth: 16, lineCap: .round))
+                    .frame(width: 210, height: 210)
                     .rotationEffect(.degrees(-90))
-                Circle()
-                    .fill(MooniColor.warning.opacity(pulse ? 0.18 : 0.05))
-                    .frame(width: 200, height: 200)
-                    .blur(radius: 20)
-                VStack(spacing: 4) {
+                    .shadow(color: scoreColor.opacity(0.4), radius: 18)
+
+                VStack(spacing: -2) {
                     Text("\(Int(animateNumber))")
-                        .font(.system(size: 78, weight: .bold, design: .rounded))
+                        .font(.system(size: 80, weight: .heavy, design: .rounded))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text("/ 100")
-                        .font(MooniFont.caption(13))
-                        .foregroundColor(MooniColor.textMuted)
+                        .contentTransition(.numericText())
+                    Text(verdictWord)
+                        .font(.system(size: 13, weight: .heavy, design: .rounded))
+                        .foregroundColor(scoreColor)
+                        .tracking(2)
                 }
             }
+            .frame(height: 210)
 
-            VStack(spacing: 8) {
-                Text(scoreVerdict)
-                    .font(MooniFont.display(22))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                Text("Don't worry, \(petName). Next we'll turn the biggest blockers into a realistic first-week plan.")
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
+            Text(scoreVerdict)
+                .font(MooniFont.display(20))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .padding(.horizontal, 8)
 
-            HStack(spacing: 12) {
-                statBubble("Sleep age", "+\(profile.sleepAgeYearsAdded) yrs", color: MooniColor.danger)
-                statBubble("Days lost / yr", "\(max(profile.daysLostPerYear, 18))", color: MooniColor.warning)
+            // 2x2 breakdown grid — uniform sizing, all 4 cards visible at once.
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                breakdownCard(emoji: "⏱️", label: "Duration", score: durationScore)
+                breakdownCard(emoji: "🧠", label: "Stress",   score: stressScore)
+                breakdownCard(emoji: "🌙", label: "Habits",   score: habitsScore)
+                breakdownCard(emoji: "🛏️", label: "Room",     score: environmentScore)
             }
-            .padding(.horizontal, 24)
+            .opacity(gridIn ? 1 : 0)
+            .offset(y: gridIn ? 0 : 10)
+
+            // "vs ideal" row — two simple comparison chips
+            HStack(spacing: 10) {
+                compareChip(emoji: "👴", value: "+\(profile.sleepAgeYearsAdded) yrs",
+                            label: "older than you", tint: MooniColor.danger)
+                compareChip(emoji: "📅", value: "\(max(profile.daysLostPerYear, 18))",
+                            label: "days lost / year", tint: MooniColor.warning)
+            }
+            .opacity(compareIn ? 1 : 0)
+            .offset(y: compareIn ? 0 : 10)
+
+            Spacer(minLength: 4)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 22)
         .onAppear {
             Haptics.medium()
             withAnimation(.easeOut(duration: 1.6)) {
                 animateNumber = Double(profile.derivedSleepScore)
             }
-            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
                 pulse = true
             }
-            // Tick on the way up, then a final warning when the score lands.
             for delay in stride(from: 0.25, through: 1.5, by: 0.25) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) { Haptics.tick() }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) { Haptics.warning() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) {
+                withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { gridIn = true }
+                Haptics.warning()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+                withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { compareIn = true }
+                Haptics.tick()
+            }
+        }
+    }
+
+    private var scoreColor: Color {
+        switch profile.derivedSleepScore {
+        case ..<45:    return MooniColor.danger
+        case 45..<60:  return MooniColor.warning
+        case 60..<70:  return MooniColor.warning
+        default:       return MooniColor.accentSoft
+        }
+    }
+
+    private var verdictWord: String {
+        switch profile.derivedSleepScore {
+        case ..<45:    return "POOR"
+        case 45..<60:  return "WEAK"
+        case 60..<70:  return "OKAY"
+        default:       return "GOOD"
         }
     }
 
     private var scoreVerdict: String {
-        // Always frame as room-to-improve. Even high scorers have a
-        // measurable gap to optimal — we surface it instead of celebrating.
         switch profile.derivedSleepScore {
-        case ..<45: return "Major upside — 4 of 7 sleep pillars are weak."
-        case 45..<60: return "Below your potential — 3 pillars need work."
-        case 60..<70: return "Closer than you think — but 2 pillars are silently costing you."
-        default: return "Above average — but you're still leaving 17.4% of recovery on the table."
+        case ..<45:    return "Big room to grow.\nLet's fix it together."
+        case 45..<60:  return "You're below your\npotential — for now."
+        case 60..<70:  return "Closer than you think.\nLet's clean up the rest."
+        default:       return "Above average. But\nstill room to peak."
         }
     }
 
-    private func statBubble(_ label: String, _ value: String, color: Color) -> some View {
+    private func breakdownCard(emoji: String, label: String, score: Int) -> some View {
+        let tint = tintFor(score)
+        return VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                Text(emoji).font(.system(size: 18))
+                Text(label)
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Spacer(minLength: 4)
+                Text("\(score)")
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundColor(tint)
+            }
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule()
+                        .fill(LinearGradient(
+                            colors: [tint.opacity(0.7), tint],
+                            startPoint: .leading, endPoint: .trailing))
+                        .frame(width: g.size.width * CGFloat(score) / 100)
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(tint.opacity(0.22), lineWidth: 1)
+        )
+    }
+
+    private func compareChip(emoji: String, value: String, label: String, tint: Color) -> some View {
         VStack(spacing: 2) {
-            Text(value)
-                .font(MooniFont.title(20))
-                .foregroundColor(color)
+            HStack(spacing: 6) {
+                Text(emoji).font(.system(size: 18))
+                Text(value)
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundColor(tint)
+            }
             Text(label)
-                .font(MooniFont.caption(11))
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.textMuted)
+                .tracking(1)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.vertical, 10)
+        .background(tint.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(tint.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    private func tintFor(_ s: Int) -> Color {
+        switch s {
+        case ..<50:   return MooniColor.danger
+        case 50..<70: return MooniColor.warning
+        case 70..<85: return MooniColor.accentSoft
+        default:      return MooniColor.success
+        }
     }
 }
 
 // MARK: - Screen: Top issues
 
+/// Top issues — emoji-led, big, simple. Drop "Issue 1 / High" chrome, replace
+/// SF Symbol icons with emojis. Each issue gets a fix-tag.
 private struct TopIssuesScreen: View {
     let profile: OnboardingProfile
 
     @State private var revealed: Int = 0
-    private let revealTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+    @State private var titleIn = false
+    private let revealTimer = Timer.publish(every: 0.45, on: .main, in: .common).autoconnect()
 
-    private var issues: [(icon: String, tint: Color, title: String, severity: String)] {
+    private var issues: [(emoji: String, tint: Color, title: String)] {
         let raw = profile.topIssues
-        let palette: [(String, Color, String)] = [
-            ("iphone.gen3.radiowaves.left.and.right", MooniColor.danger,  "High"),
-            ("brain.head.profile",                    MooniColor.warning, "High"),
-            ("moon.zzz.fill",                         MooniColor.accent,  "Medium"),
-            ("cup.and.saucer.fill",                   MooniColor.warning, "Medium"),
-            ("sunrise.fill",                          MooniColor.accentSoft, "Medium")
+        let palette: [(String, Color)] = [
+            ("📱", MooniColor.danger),
+            ("🧠", MooniColor.warning),
+            ("😴", MooniColor.accent),
+            ("☕", MooniColor.warning),
+            ("🌅", MooniColor.accentSoft)
         ]
         return raw.enumerated().map { idx, txt in
             let p = palette[min(idx, palette.count - 1)]
-            return (p.0, p.1, txt, p.2)
+            return (p.0, p.1, txt)
         }
     }
 
     var body: some View {
-        VStack(spacing: 20) {
-            VStack(spacing: 8) {
-                Image(systemName: "doc.text.magnifyingglass")
-                    .font(.system(size: 36))
-                    .foregroundStyle(LinearGradient(
-                        colors: [MooniColor.accentSoft, MooniColor.accent],
-                        startPoint: .top, endPoint: .bottom))
-                    .padding(.bottom, 4)
-                Text("Your sleep report")
-                    .font(MooniFont.display(26))
+        VStack(spacing: 26) {
+            Spacer(minLength: 4)
+
+            VStack(spacing: 10) {
+                Text("🔍 WE FOUND \(issues.count) ISSUE\(issues.count == 1 ? "" : "S")")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.warning)
+                    .tracking(2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(MooniColor.warning.opacity(0.16))
+                    .clipShape(Capsule())
+
+                Text("Here's what's hurting\nyour sleep.")
+                    .font(MooniFont.display(28))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("\(issues.count) blocker\(issues.count == 1 ? "" : "s") found in your answers")
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
             }
+            .opacity(titleIn ? 1 : 0)
+            .offset(y: titleIn ? 0 : 8)
 
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 ForEach(Array(issues.enumerated()), id: \.offset) { idx, issue in
-                    issueRow(index: idx, issue: issue, isRevealed: idx < revealed)
+                    issueCard(emoji: issue.emoji, tint: issue.tint, title: issue.title,
+                              visible: idx < revealed)
                 }
             }
-            .padding(.horizontal, 4)
 
             HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 12))
-                    .foregroundColor(MooniColor.accent)
-                Text("Each one gets a tailored fix in your plan")
-                    .font(MooniFont.caption(12))
+                Text("✨")
+                Text("Every one gets a fix in your plan.")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundColor(MooniColor.textSecondary)
             }
-            .padding(.top, 4)
+            .padding(.top, 2)
+
+            Spacer(minLength: 4)
         }
-        .padding(.horizontal, 20)
-        .onAppear { Haptics.medium() }
+        .padding(.horizontal, 22)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.45)) { titleIn = true }
+            Haptics.medium()
+        }
         .onReceive(revealTimer) { _ in
             if revealed < issues.count {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.75)) {
+                withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
                     revealed += 1
                 }
                 Haptics.tick()
@@ -2968,399 +3229,427 @@ private struct TopIssuesScreen: View {
         }
     }
 
-    private func issueRow(
-        index: Int,
-        issue: (icon: String, tint: Color, title: String, severity: String),
-        isRevealed: Bool
-    ) -> some View {
-        HStack(alignment: .center, spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(issue.tint.opacity(0.18))
-                    .frame(width: 48, height: 48)
-                Image(systemName: issue.icon)
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundColor(issue.tint)
-            }
+    private func issueCard(emoji: String, tint: Color, title: String, visible: Bool) -> some View {
+        HStack(spacing: 14) {
+            Text(emoji)
+                .font(.system(size: 28))
+                .frame(width: 54, height: 54)
+                .background(tint.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text("Issue \(index + 1)")
-                        .font(MooniFont.caption(11))
-                        .foregroundColor(MooniColor.textMuted)
-                        .tracking(1)
-                    Text(issue.severity)
-                        .font(MooniFont.caption(10))
-                        .foregroundColor(issue.tint)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(issue.tint.opacity(0.18))
-                        .clipShape(Capsule())
-                }
-                Text(issue.title)
-                    .font(MooniFont.title(14))
+                Text(title)
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 4) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 9, weight: .bold))
+                    Text("FIX INCLUDED")
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                        .tracking(1)
+                }
+                .foregroundColor(MooniColor.success)
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.05))
-        )
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(issue.tint.opacity(0.25), lineWidth: 1)
+                .stroke(tint.opacity(0.28), lineWidth: 1)
         )
-        .opacity(isRevealed ? 1 : 0)
-        .offset(y: isRevealed ? 0 : 12)
-        .scaleEffect(isRevealed ? 1 : 0.96)
+        .opacity(visible ? 1 : 0)
+        .offset(x: visible ? 0 : -16)
     }
 }
 
 // MARK: - Screen: Science credibility
 
+/// Trust block — 3 huge brand-style cards. AASM (clinical), Google (AI),
+/// Apple (privacy). No citations footer, no "Science Policy" chip stack.
 private struct ScienceCredibilityScreen: View {
     @State private var reveal = 0
-    @State private var pillPulse = false
+    @State private var titleIn = false
 
-    /// Trust signals from real, citable institutions and platforms — no
-    /// university branding (we don't have sponsorship). Each row reflects a
-    /// real published source the user can verify by name.
-    private let institutions: [(seal: String, name: String, sub: String, accent: Color)] = [
-        ("waveform.path.ecg", "AASM",   "SCORING MANUAL v3",     MooniColor.accent),
-        ("cpu.fill",          "GOOGLE", "RESEARCH · YAMNET",     MooniColor.success),
-        ("heart.text.square.fill", "APPLE", "HEALTHKIT · CORE ML", MooniColor.accentSoft)
-    ]
-
-    private let citations: [(label: String, source: String)] = [
-        ("Sleep duration consensus",        "Hirshkowitz · Sleep Health 2015"),
-        ("Audio event classification",      "Gemmeke · ICASSP 2017 (AudioSet)"),
-        ("Sleep stage scoring rules",       "Berry · AASM Manual v3 · 2023")
+    private let logos: [(emoji: String, name: String, blurb: String, tint: Color)] = [
+        ("🏥", "AASM",   "The medical sleep standard",     MooniColor.accent),
+        ("🤖", "Google", "AI that listens to your night",  MooniColor.success),
+        ("🍎", "Apple",  "Your data stays on your phone",  MooniColor.accentSoft)
     ]
 
     var body: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 8) {
-                Image(systemName: "atom")
-                    .font(.system(size: 12, weight: .bold))
+        VStack(spacing: 26) {
+            Spacer(minLength: 8)
+
+            VStack(spacing: 10) {
+                Text("🔬 BUILT ON REAL SCIENCE")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.success)
-                Text("Science Policy")
-                    .font(MooniFont.title(13))
-                    .foregroundColor(MooniColor.textPrimary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(Color.white.opacity(0.08))
-            .clipShape(Capsule())
-            .scaleEffect(pillPulse ? 1.0 : 0.92)
-            .opacity(pillPulse ? 1 : 0)
+                    .tracking(2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(MooniColor.success.opacity(0.16))
+                    .clipShape(Capsule())
 
-            VStack(spacing: 2) {
-                Text("Built on what")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                Text("We didn't make\nthis stuff up.")
+                    .font(MooniFont.display(30))
                     .foregroundColor(MooniColor.textPrimary)
-                Text("science says works")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
             }
+            .opacity(titleIn ? 1 : 0)
+            .offset(y: titleIn ? 0 : 8)
 
-            // Source-of-truth strip — facts about what we use, not vanity counts
-            HStack(spacing: 0) {
-                trustNumber("521", "audio classes\n(YAMNet)")
-                Divider().frame(height: 32).background(Color.white.opacity(0.1))
-                trustNumber("AASM", "scoring\nstandard")
-                Divider().frame(height: 32).background(Color.white.opacity(0.1))
-                trustNumber("0", "bytes leave\nyour phone")
-            }
-            .padding(.vertical, 10)
-            .background(Color.white.opacity(0.05))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(MooniColor.success.opacity(0.18), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            // Institution seals — real, citable sources
-            HStack(spacing: 10) {
-                ForEach(Array(institutions.enumerated()), id: \.offset) { idx, u in
-                    institutionSeal(u)
-                        .opacity(idx < reveal ? 1 : 0)
-                        .offset(y: idx < reveal ? 0 : 8)
+            VStack(spacing: 12) {
+                ForEach(Array(logos.enumerated()), id: \.offset) { idx, l in
+                    logoCard(emoji: l.emoji, name: l.name, blurb: l.blurb,
+                             tint: l.tint, visible: idx < reveal)
                 }
             }
 
-            // Citation strip — 3 compact rows
-            VStack(spacing: 4) {
-                ForEach(Array(citations.enumerated()), id: \.offset) { idx, c in
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.seal.fill")
-                            .foregroundColor(MooniColor.success.opacity(0.8))
-                            .font(.system(size: 10))
-                        Text(c.label)
-                            .font(MooniFont.caption(11))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Spacer()
-                        Text(c.source)
-                            .font(MooniFont.caption(10))
-                            .foregroundColor(MooniColor.textMuted)
-                            .lineLimit(1)
-                    }
-                    .opacity(idx + institutions.count < reveal ? 1 : 0)
-                }
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundColor(MooniColor.success)
+                Text("Every number you'll see is cited.")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(MooniColor.textSecondary)
             }
 
-            HStack(spacing: 6) {
-                trustPill(icon: "lock.shield.fill", text: "On-device")
-                trustPill(icon: "function", text: "Cited formula")
-                trustPill(icon: "leaf.fill", text: "Open-source AI")
-            }
+            Spacer(minLength: 8)
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 22)
         .onAppear {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.7)) { pillPulse = true }
-            reveal = 0
-            let total = institutions.count + citations.count
-            for i in 0..<total {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15 + 0.10 * Double(i)) {
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+            withAnimation(.easeOut(duration: 0.45)) { titleIn = true }
+            Haptics.medium()
+            for i in 0..<logos.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 + Double(i) * 0.18) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
                         reveal = i + 1
                     }
+                    Haptics.tick()
                 }
             }
         }
     }
 
-    private func institutionSeal(
-        _ u: (seal: String, name: String, sub: String, accent: Color)
-    ) -> some View {
-        VStack(spacing: 6) {
-            ZStack {
-                Circle()
-                    .fill(u.accent.opacity(0.18))
-                    .frame(width: 52, height: 52)
-                Circle()
-                    .stroke(u.accent.opacity(0.55), lineWidth: 1.5)
-                    .frame(width: 52, height: 52)
-                Image(systemName: u.seal)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(u.accent.opacity(0.95))
-            }
-            VStack(spacing: 1) {
-                Text(u.name)
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .foregroundColor(u.accent.opacity(0.95))
-                    .tracking(0.8)
-                    .lineLimit(1)
-                Text(u.sub)
-                    .font(.system(size: 8, weight: .semibold, design: .rounded))
-                    .foregroundColor(MooniColor.textMuted)
-                    .tracking(0.6)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
+    private func logoCard(emoji: String, name: String, blurb: String,
+                          tint: Color, visible: Bool) -> some View {
+        HStack(spacing: 16) {
+            Text(emoji)
+                .font(.system(size: 36))
+                .frame(width: 64, height: 64)
+                .background(tint.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-    private func trustNumber(_ number: String, _ caption: String) -> some View {
-        VStack(spacing: 4) {
-            Text(number)
-                .font(.system(size: 24, weight: .heavy, design: .rounded))
-                .foregroundStyle(LinearGradient(
-                    colors: [MooniColor.success, MooniColor.accentSoft],
-                    startPoint: .top, endPoint: .bottom))
-            Text(caption)
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundColor(MooniColor.textMuted)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name)
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundColor(tint)
+                Text(blurb)
+                    .font(MooniFont.body(13))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            Spacer()
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(MooniColor.success)
         }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func trustPill(icon: String, text: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(MooniColor.accentSoft)
-            Text(text)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundColor(MooniColor.textSecondary)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(MooniColor.accent.opacity(0.10))
-        .clipShape(Capsule())
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(tint.opacity(0.28), lineWidth: 1)
+        )
+        .opacity(visible ? 1 : 0)
+        .offset(x: visible ? 0 : -18)
     }
 }
 
 // MARK: - Screen: Soundscape preview
 
+/// Widget showcase. Three real widgets — Small, Medium, and Sleep Circle —
+/// each shown alone with a single headline + line. User taps Continue to
+/// step through. The footer below detects the internal page and gates the
+/// outer advance until the last widget is shown.
 private struct WidgetPreviewScreen: View {
     let petName: String
+    @Binding var page: Int
 
-    @State private var appeared = false
+    @State private var appeared: Bool = false
+
+    static let pageCount: Int = 3
 
     var body: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "rectangle.3.offgrid.fill")
-                        .foregroundColor(MooniColor.accentSoft)
-                    Text("Home screen widgets")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.accentSoft)
-                        .tracking(2)
-                        .textCase(.uppercase)
-                }
-                Text("Wake up. See your night.")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+        VStack(spacing: 20) {
+            // Header — same on every page
+            VStack(spacing: 8) {
+                Text("📱 HOME SCREEN WIDGETS")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.accentSoft)
+                    .tracking(2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(MooniColor.accent.opacity(0.14))
+                    .clipShape(Capsule())
+
+                Text(headlineForPage)
+                    .font(.system(size: 26, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("Your auto-tracked sleep score and \(petName)'s mood — waiting on your home screen every morning. No app open needed.")
+                    .lineSpacing(2)
+                    .id("widget-headline-\(page)")
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+
+                Text(blurbForPage)
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 18)
+                    .id("widget-blurb-\(page)")
+                    .transition(.opacity)
             }
 
-            // Two mock widget cards — styled like the actual iOS home-screen tiles.
-            HStack(spacing: 14) {
-                smallWidget(
-                    title: "Auto-tracked",
-                    big: "7h 24m",
-                    sub: "Last night · 11:02 PM–6:26 AM",
-                    icon: "waveform.path.ecg",
-                    tint: MooniColor.accentSoft
-                )
-                smallWidget(
-                    title: "Sleep score",
-                    big: "84",
-                    sub: "Great · on target",
-                    icon: "chart.bar.fill",
-                    tint: MooniColor.success
-                )
+            // The widget mock itself
+            ZStack {
+                if page == 0 { smallWidgetMock.transition(widgetTransition) }
+                else if page == 1 { mediumWidgetMock.transition(widgetTransition) }
+                else { sleepCircleMock.transition(widgetTransition) }
             }
-            .scaleEffect(appeared ? 1 : 0.85)
-            .opacity(appeared ? 1 : 0)
-            .animation(.spring(response: 0.55, dampingFraction: 0.7), value: appeared)
+            .frame(height: 240)
 
-            mediumWidget()
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 14)
-                .animation(.spring(response: 0.55, dampingFraction: 0.75).delay(0.12), value: appeared)
-
-            HStack(spacing: 8) {
-                Image(systemName: "lock.shield.fill")
-                    .foregroundColor(MooniColor.accentSoft)
-                    .font(.system(size: 13))
-                Text("Updates locally — your sleep data never leaves the device.")
-                    .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.textSecondary)
-                Spacer()
+            // Page dots
+            HStack(spacing: 6) {
+                ForEach(0..<Self.pageCount, id: \.self) { i in
+                    Capsule()
+                        .fill(i == page ? MooniColor.accent : Color.white.opacity(0.22))
+                        .frame(width: i == page ? 22 : 7, height: 6)
+                }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(MooniColor.accentSoft.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .opacity(appeared ? 1 : 0)
-            .animation(.easeOut(duration: 0.4).delay(0.28), value: appeared)
+            .padding(.top, 4)
+
+            // Tap hint
+            Text(page < Self.pageCount - 1
+                 ? "Tap Continue to see the next widget"
+                 : "All three. Yours tonight.")
+                .font(MooniFont.caption(11))
+                .foregroundColor(MooniColor.textMuted)
         }
         .padding(.horizontal, 20)
-        .onAppear {
-            DispatchQueue.main.async { appeared = true }
+        .onAppear { appeared = true }
+    }
+
+    private var widgetTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.85)).combined(with: .move(edge: .trailing)),
+            removal:   .opacity.combined(with: .scale(scale: 0.85)).combined(with: .move(edge: .leading))
+        )
+    }
+
+    private var headlineForPage: String {
+        switch page {
+        case 0:  return "Last night, at a glance."
+        case 1:  return "Your whole week."
+        default: return "Sleep with friends."
         }
     }
 
-    private func smallWidget(title: String, big: String, sub: String, icon: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(tint)
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer()
-                Text(title)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundColor(MooniColor.textMuted)
-                    .tracking(0.8)
-            }
-            Spacer(minLength: 0)
-            Text(big)
-                .font(.system(size: 30, weight: .heavy, design: .rounded))
-                .foregroundColor(MooniColor.textPrimary)
-                .minimumScaleFactor(0.5)
-                .lineLimit(1)
-            Text(sub)
-                .font(MooniFont.caption(11))
-                .foregroundColor(MooniColor.textSecondary)
+    private var blurbForPage: String {
+        switch page {
+        case 0:  return "One tap from your home screen — score + hours, no app needed."
+        case 1:  return "See your 7-day trend without opening anything."
+        default: return "Compare nights with your closest friends. Cheer them on."
         }
-        .padding(14)
-        .frame(maxWidth: .infinity)
-        .frame(height: 150)
-        .background(
-            LinearGradient(colors: [Color.white.opacity(0.08), Color.white.opacity(0.03)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(tint.opacity(0.25), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
-    private func mediumWidget() -> some View {
+    // MARK: Widget mocks
+
+    private var smallWidgetMock: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Image(systemName: "moon.stars.fill")
                     .foregroundColor(MooniColor.accentSoft)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 16, weight: .bold))
+                Spacer()
+                Text("SLEEPOWL")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textMuted)
+                    .tracking(1.5)
+            }
+            Spacer(minLength: 0)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("84")
+                    .font(.system(size: 56, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.success)
+                Text("score")
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            Text("7h 24m · last night")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundColor(MooniColor.textSecondary)
+        }
+        .padding(18)
+        .frame(width: 170, height: 170)
+        .background(widgetBg(tint: MooniColor.accentSoft))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(MooniColor.accentSoft.opacity(0.4), lineWidth: 1.5)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 20, y: 10)
+    }
+
+    private var mediumWidgetMock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "chart.bar.fill")
+                    .foregroundColor(MooniColor.accent)
+                    .font(.system(size: 14, weight: .bold))
                 Text("\(petName)'s week")
-                    .font(MooniFont.title(13))
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.textPrimary)
                 Spacer()
-                Text("7-DAY AVG")
-                    .font(.system(size: 9, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.textMuted)
-                    .tracking(1.2)
+                Text("+12m")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.success)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(MooniColor.success.opacity(0.15))
+                    .clipShape(Capsule())
             }
+
             HStack(alignment: .lastTextBaseline, spacing: 6) {
                 Text("7h 24m")
-                    .font(.system(size: 28, weight: .heavy, design: .rounded))
+                    .font(.system(size: 32, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.textPrimary)
-                Text("+12m")
+                Text("avg")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(MooniColor.success)
+                    .foregroundColor(MooniColor.textSecondary)
+                Spacer()
             }
-            // Mini bar chart
-            HStack(alignment: .bottom, spacing: 5) {
+
+            HStack(alignment: .bottom, spacing: 6) {
                 ForEach(0..<7, id: \.self) { i in
                     let h: CGFloat = [0.55, 0.7, 0.45, 0.85, 0.6, 0.9, 0.75][i]
-                    Capsule()
-                        .fill(LinearGradient(
-                            colors: [MooniColor.accentSoft, MooniColor.accent],
-                            startPoint: .bottom, endPoint: .top))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 30 * h)
+                    let labels = ["M","T","W","T","F","S","S"]
+                    VStack(spacing: 4) {
+                        Capsule()
+                            .fill(LinearGradient(
+                                colors: [MooniColor.accentSoft, MooniColor.accent],
+                                startPoint: .bottom, endPoint: .top))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56 * h)
+                        Text(labels[i])
+                            .font(.system(size: 9, weight: .heavy, design: .rounded))
+                            .foregroundColor(MooniColor.textMuted)
+                    }
                 }
             }
-            .frame(height: 30)
+            .frame(height: 76)
         }
-        .padding(14)
-        .frame(height: 130)
-        .frame(maxWidth: .infinity)
-        .background(
-            LinearGradient(colors: [Color.white.opacity(0.08), Color.white.opacity(0.03)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-        )
+        .padding(16)
+        .frame(width: 340, height: 170)
+        .background(widgetBg(tint: MooniColor.accent))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(MooniColor.accentSoft.opacity(0.25), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(MooniColor.accent.opacity(0.4), lineWidth: 1.5)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: .black.opacity(0.35), radius: 20, y: 10)
     }
+
+    private var sleepCircleMock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "person.2.fill")
+                    .foregroundColor(MooniColor.accentSoft)
+                    .font(.system(size: 14, weight: .bold))
+                Text("Sleep Circle")
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textPrimary)
+                Spacer()
+                Text("SLEEPOWL")
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textMuted)
+                    .tracking(1.4)
+            }
+
+            HStack(alignment: .top, spacing: 14) {
+                friendCircle(initial: "Y", name: "You",     score: 84, scoreTint: MooniColor.success, duration: "7h 24m")
+                friendCircle(initial: "A", name: "Alex",    score: 76, scoreTint: MooniColor.warning, duration: "6h 51m")
+                friendCircle(initial: "+", name: "Invite",  score: nil, scoreTint: MooniColor.accent,  duration: "—",        isInvite: true)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(16)
+        .frame(width: 340, height: 170)
+        .background(widgetBg(tint: MooniColor.accent))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(MooniColor.accent.opacity(0.4), lineWidth: 1.5)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 20, y: 10)
+    }
+
+    private func friendCircle(initial: String, name: String, score: Int?,
+                              scoreTint: Color, duration: String, isInvite: Bool = false) -> some View {
+        VStack(spacing: 4) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.10), lineWidth: 4)
+                    .frame(width: 54, height: 54)
+                Circle()
+                    .trim(from: 0, to: isInvite ? 0 : (CGFloat(score ?? 0) / 100))
+                    .stroke(scoreTint, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .frame(width: 54, height: 54)
+                    .rotationEffect(.degrees(-90))
+                if isInvite {
+                    Image(systemName: "plus")
+                        .font(.system(size: 22, weight: .heavy))
+                        .foregroundColor(MooniColor.accentSoft)
+                } else {
+                    Text(initial)
+                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .foregroundColor(MooniColor.textPrimary)
+                }
+            }
+            if let s = score {
+                Text("\(s)")
+                    .font(.system(size: 17, weight: .heavy, design: .rounded))
+                    .foregroundColor(scoreTint)
+            } else {
+                Text("invite")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.accentSoft)
+            }
+            Text(name)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textPrimary)
+                .lineLimit(1)
+            Text(duration)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func widgetBg(tint: Color) -> some View {
+        LinearGradient(
+            colors: [
+                Color(red: 0.07, green: 0.08, blue: 0.16),
+                tint.opacity(0.18),
+                Color(red: 0.07, green: 0.08, blue: 0.16)
+            ],
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        )
+    }
+
 }
 
 // Legacy soundscape screen — replaced by WidgetPreviewScreen in the flow.
@@ -3794,12 +4083,12 @@ private struct GeneratingPlanScreen: View {
 
     private var msgs: [String] {
         [
-            "Learning your sleep rhythm…",
-            "Building your first bedtime quest…",
-            "Preparing \(petName)'s dream room…",
-            "Tuning your wake-up window…",
-            "Composing wind-down breath cadence…",
-            "Locking in tonight's plan…"
+            "🌙  Learning your sleep rhythm",
+            "🎯  Building your first quest",
+            "🦉  Preparing \(petName)'s room",
+            "⏰  Tuning your wake-up window",
+            "🌬️  Setting your wind-down",
+            "✨  Locking in tonight's plan"
         ]
     }
 
@@ -3842,17 +4131,20 @@ private struct GeneratingPlanScreen: View {
             }
 
             // Big single message — fades + slides between phases.
-            VStack(spacing: 8) {
-                Text("Building your plan")
-                    .font(MooniFont.caption(12))
+            VStack(spacing: 10) {
+                Text("✨ BUILDING YOUR PLAN")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.accentSoft)
                     .tracking(2)
-                    .textCase(.uppercase)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(MooniColor.accent.opacity(0.16))
+                    .clipShape(Capsule())
                 Text(msgs[min(messageIndex, msgs.count - 1)])
-                    .font(MooniFont.display(22))
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
+                    .padding(.horizontal, 24)
                     .id(messageIndex)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                     .animation(.easeInOut(duration: 0.45), value: messageIndex)
@@ -3909,162 +4201,228 @@ private struct GeneratingPlanScreen: View {
 
 // MARK: - Screen: Social proof
 
+/// Social proof — big "4.9 ★★★★★ · 12K reviews", 3 review cards with avatar
+/// circles. Drop the redundant "what you get" feature list (it's on the
+/// paywall already).
 private struct SocialProofScreen: View {
     private struct Review {
+        let initial: String
+        let tint: Color
         let text: String
         let author: String
     }
     private let reviews: [Review] = [
-        Review(text: "I haven't woken up tired in 3 weeks. The pet thing actually worked on me.",
+        Review(initial: "S", tint: MooniColor.accentSoft,
+               text: "I haven't woken up tired in 3 weeks. The pet thing actually worked on me.",
                author: "Sarah, 28"),
-        Review(text: "Stopped scrolling in bed because I didn't want my fox to be sad.",
+        Review(initial: "M", tint: MooniColor.success,
+               text: "Stopped scrolling in bed because I didn't want my fox to be sad.",
                author: "Marco, 34"),
-        Review(text: "First app that actually fixed my schedule. Tiny daily wins compound.",
+        Review(initial: "P", tint: Color.pink,
+               text: "First app that actually fixed my schedule. Tiny wins compound.",
                author: "Priya, 41")
     ]
 
-    private let features: [(icon: String, label: String, detail: String)] = [
-        ("moon.zzz.fill",       "Nightly quests",    "Small, doable bedtime rituals"),
-        ("chart.line.uptrend.xyaxis", "Sleep score", "Track your progress night by night"),
-        ("wind",                "Personalized plan",  "Built from your answers, not generic tips")
-    ]
+    @State private var revealed = 0
+    @State private var headIn = false
 
     var body: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 4) {
-                HStack(spacing: 3) {
-                    ForEach(0..<5, id: \.self) { _ in
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(MooniColor.warning)
-                    }
-                    Text("4.9")
-                        .font(MooniFont.title(13))
-                        .foregroundColor(MooniColor.warning)
-                        .padding(.leading, 4)
-                }
-                Text("Loved by sleepers like you")
-                    .font(MooniFont.display(22))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.top, 4)
-
-            // What you get
-            VStack(spacing: 8) {
-                ForEach(features.indices, id: \.self) { i in
-                    HStack(spacing: 12) {
-                        Image(systemName: features[i].icon)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(MooniColor.accent)
-                            .frame(width: 36, height: 36)
-                            .background(MooniColor.accent.opacity(0.13))
-                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(features[i].label)
-                                .font(MooniFont.title(14))
-                                .foregroundColor(MooniColor.textPrimary)
-                            Text(features[i].detail)
-                                .font(MooniFont.caption(12))
-                                .foregroundColor(MooniColor.textSecondary)
-                        }
-                        Spacer()
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(MooniColor.success)
-                    }
-                    .padding(12)
-                    .background(Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-            }
-            .padding(.horizontal, 16)
+        VStack(spacing: 22) {
+            Spacer(minLength: 8)
 
             VStack(spacing: 10) {
-                ForEach(reviews.indices, id: \.self) { i in
-                    reviewCard(reviews[i])
+                // Huge star row + rating number
+                HStack(spacing: 4) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(MooniColor.warning)
+                    }
+                }
+                .scaleEffect(headIn ? 1 : 0.85)
+                .opacity(headIn ? 1 : 0)
+
+                HStack(alignment: .lastTextBaseline, spacing: 8) {
+                    Text("4.9")
+                        .font(.system(size: 56, weight: .heavy, design: .rounded))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text("on the App Store")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundColor(MooniColor.textSecondary)
+                }
+                .opacity(headIn ? 1 : 0)
+
+                Text("Loved by 12,000+ sleepers")
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.success)
+                    .tracking(1.2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(MooniColor.success.opacity(0.16))
+                    .clipShape(Capsule())
+                    .opacity(headIn ? 1 : 0)
+            }
+
+            VStack(spacing: 10) {
+                ForEach(Array(reviews.enumerated()), id: \.offset) { idx, r in
+                    reviewCard(r, visible: idx < revealed)
                 }
             }
-            .padding(.horizontal, 16)
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.78)) { headIn = true }
+            Haptics.medium()
+            for i in 0..<reviews.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4 + Double(i) * 0.2) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                        revealed = i + 1
+                    }
+                    Haptics.tick()
+                }
+            }
         }
     }
 
-    private func reviewCard(_ review: Review) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 3) {
-                ForEach(0..<5, id: \.self) { _ in
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(MooniColor.warning)
-                }
+    private func reviewCard(_ r: Review, visible: Bool) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(r.tint.opacity(0.22))
+                    .frame(width: 44, height: 44)
+                Text(r.initial)
+                    .font(.system(size: 20, weight: .heavy, design: .rounded))
+                    .foregroundColor(r.tint)
             }
-            Text("\u{201C}\(review.text)\u{201D}")
-                .font(MooniFont.body(14))
-                .foregroundColor(MooniColor.textPrimary)
-                .multilineTextAlignment(.leading)
-            Text("— \(review.author)")
-                .font(MooniFont.caption(12))
-                .foregroundColor(MooniColor.textSecondary)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 2) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(MooniColor.warning)
+                    }
+                    Spacer()
+                    Text(r.author)
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundColor(MooniColor.textMuted)
+                }
+                Text(r.text)
+                    .font(MooniFont.body(13))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
         )
+        .opacity(visible ? 1 : 0)
+        .offset(y: visible ? 0 : 12)
     }
 }
 
 // MARK: - Screen: Simulated result
 
+/// Three pet outcomes — big pet, big emoji label, one line of context.
+/// "Sleep well → happy pet" is the whole story.
 private struct SimulatedResultScreen: View {
     let species: PetSpecies
     let name: String
 
-    var body: some View {
-        VStack(spacing: 16) {
-            VStack(spacing: 6) {
-                Text("Tomorrow morning, \(name) will wake up like this…")
-                    .font(MooniFont.title(18))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            .padding(.top, 6)
+    @State private var revealed = 0
+    @State private var headIn = false
 
-            VStack(spacing: 12) {
-                outcomeCard(mood: .energized, label: "Great sleep",
-                            detail: "Bright room, happy pet, full energy.")
-                outcomeCard(mood: .calm, label: "Okay sleep",
-                            detail: "Steady mood. \(name) is normal.")
-                outcomeCard(mood: .groggy, label: "Poor sleep",
-                            detail: "Tired pet, dim room — easy to recover.")
-            }
-            .padding(.horizontal, 4)
-        }
-        .padding(.horizontal, 20)
+    private var outcomes: [(emoji: String, label: String, line: String, mood: Pet.Mood, tint: Color)] {
+        [
+            ("🌟", "Great sleep",  "\(name) is glowing",       .energized, MooniColor.success),
+            ("🙂", "Okay sleep",   "\(name) is doing fine",     .calm,      MooniColor.warning),
+            ("😴", "Poor sleep",   "\(name) needs your help",   .groggy,    MooniColor.danger)
+        ]
     }
 
-    private func outcomeCard(mood: Pet.Mood, label: String, detail: String) -> some View {
+    var body: some View {
+        VStack(spacing: 22) {
+            Spacer(minLength: 8)
+
+            VStack(spacing: 10) {
+                Text("🪞 TOMORROW")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.accentSoft)
+                    .tracking(2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(MooniColor.accent.opacity(0.16))
+                    .clipShape(Capsule())
+
+                Text("\(name) reflects\nyour sleep.")
+                    .font(MooniFont.display(28))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            }
+            .opacity(headIn ? 1 : 0)
+            .offset(y: headIn ? 0 : 8)
+
+            VStack(spacing: 12) {
+                ForEach(Array(outcomes.enumerated()), id: \.offset) { idx, o in
+                    outcomeCard(emoji: o.emoji, label: o.label, line: o.line,
+                                mood: o.mood, tint: o.tint, visible: idx < revealed)
+                }
+            }
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.45)) { headIn = true }
+            Haptics.medium()
+            for i in 0..<outcomes.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 + Double(i) * 0.2) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                        revealed = i + 1
+                    }
+                    Haptics.tick()
+                }
+            }
+        }
+    }
+
+    private func outcomeCard(emoji: String, label: String, line: String,
+                             mood: Pet.Mood, tint: Color, visible: Bool) -> some View {
         var p = Pet(); p.species = species; p.mood = mood; p.equippedHat = nil
         return HStack(spacing: 14) {
             DreamSpiritView(pet: p, size: 56)
-                .frame(width: 80, height: 80)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(label)
-                    .font(MooniFont.title(15))
-                    .foregroundColor(MooniColor.textPrimary)
-                Text(detail)
-                    .font(MooniFont.caption(12))
+                .frame(width: 70, height: 70)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(emoji).font(.system(size: 22))
+                    Text(label)
+                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .foregroundColor(tint)
+                }
+                Text(line)
+                    .font(MooniFont.body(13))
                     .foregroundColor(MooniColor.textSecondary)
             }
             Spacer()
         }
-        .padding(12)
-        .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(tint.opacity(0.25), lineWidth: 1)
+        )
+        .opacity(visible ? 1 : 0)
+        .offset(x: visible ? 0 : -16)
     }
 }
 
@@ -4597,118 +4955,97 @@ private struct ExpertQuoteScreen: View {
 
     let quote: Quote
 
-    @State private var labelIn = false
+    @State private var bigIn = false
     @State private var quoteIn = false
-    @State private var statIn = false
     @State private var authorIn = false
-    @State private var iconPulse = false
 
     var body: some View {
-        VStack(spacing: 22) {
-            // Top: animated icon medallion
-            ZStack {
-                Circle()
-                    .fill(quote.accent.opacity(iconPulse ? 0.35 : 0.18))
-                    .frame(width: 130, height: 130)
-                    .blur(radius: 22)
-                Circle()
-                    .stroke(quote.accent.opacity(0.4), lineWidth: 1.5)
-                    .frame(width: 92, height: 92)
-                Image(systemName: quote.icon)
-                    .font(.system(size: 36, weight: .semibold))
-                    .foregroundColor(quote.accent)
-            }
-            .scaleEffect(labelIn ? 1.0 : 0.85)
-            .opacity(labelIn ? 1 : 0)
-            .padding(.top, 12)
+        VStack(spacing: 26) {
+            Spacer(minLength: 12)
 
-            // Eyebrow
-            Text(quote.topLabel)
+            // Eyebrow chip
+            Text("💡 \(quote.topLabel)")
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(quote.accent)
-                .tracking(2.4)
-                .opacity(labelIn ? 1 : 0)
-                .offset(y: labelIn ? 0 : 6)
+                .tracking(2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(quote.accent.opacity(0.16))
+                .clipShape(Capsule())
+                .opacity(bigIn ? 1 : 0)
+                .offset(y: bigIn ? 0 : 6)
 
-            // Body quote — Kairo-style rounded bold
+            // The big stat is now THE hero — number is the headline.
             VStack(spacing: 6) {
-                Image(systemName: "quote.opening")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(quote.accent.opacity(0.7))
-                    .opacity(quoteIn ? 1 : 0)
-                Text(quote.body)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                    .padding(.horizontal, 16)
-                    .opacity(quoteIn ? 1 : 0)
-                    .offset(y: quoteIn ? 0 : 10)
-            }
-
-            // Big supporting stat
-            VStack(spacing: 2) {
                 Text(quote.supportStat.0)
-                    .font(.system(size: 54, weight: .heavy, design: .rounded))
+                    .font(.system(size: 92, weight: .heavy, design: .rounded))
                     .foregroundStyle(LinearGradient(
-                        colors: [quote.accent, quote.accent.opacity(0.7)],
+                        colors: [quote.accent, quote.accent.opacity(0.65)],
                         startPoint: .top, endPoint: .bottom))
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
                 Text(quote.supportStat.1)
-                    .font(MooniFont.caption(12))
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.textSecondary)
-                    .tracking(1.2)
+                    .tracking(1.6)
                     .textCase(.uppercase)
+                    .multilineTextAlignment(.center)
             }
-            .scaleEffect(statIn ? 1 : 0.85)
-            .opacity(statIn ? 1 : 0)
+            .scaleEffect(bigIn ? 1 : 0.78)
+            .opacity(bigIn ? 1 : 0)
+
+            // Plain-english quote
+            Text(quote.body)
+                .font(MooniFont.body(16))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .padding(.horizontal, 10)
+                .opacity(quoteIn ? 1 : 0)
+                .offset(y: quoteIn ? 0 : 10)
 
             Spacer(minLength: 0)
 
-            // Attribution card
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(quote.accent.opacity(0.18))
-                    .frame(width: 38, height: 38)
-                    .overlay(
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(quote.accent)
-                    )
+            // Author chip — simple, single line
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(MooniColor.success)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(quote.author)
-                        .font(MooniFont.title(14))
+                        .font(.system(size: 14, weight: .heavy, design: .rounded))
                         .foregroundColor(MooniColor.textPrimary)
                     Text(quote.credential)
                         .font(MooniFont.caption(11))
                         .foregroundColor(MooniColor.textMuted)
                 }
                 Spacer()
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(MooniColor.success.opacity(0.85))
             }
-            .padding(14)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
             .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.horizontal, 4)
             .opacity(authorIn ? 1 : 0)
             .offset(y: authorIn ? 0 : 10)
+
+            Spacer(minLength: 4)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 22)
         .onAppear {
-            // Cascading reveal — slow enough to be felt as an "important moment"
-            // but quick enough to not block the user.
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.75)) { labelIn = true }
-            withAnimation(.easeOut(duration: 0.55).delay(0.25)) { quoteIn = true }
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.55)) { statIn = true }
-            withAnimation(.easeOut(duration: 0.45).delay(0.85)) { authorIn = true }
-            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { iconPulse = true }
-            Haptics.soft()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { Haptics.tick() }
+            withAnimation(.spring(response: 0.65, dampingFraction: 0.72)) { bigIn = true }
+            Haptics.medium()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                withAnimation(.easeOut(duration: 0.5)) { quoteIn = true }
+                Haptics.tick()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
+                withAnimation(.easeOut(duration: 0.45)) { authorIn = true }
+                Haptics.success()
+            }
         }
     }
 }
@@ -4716,208 +5053,307 @@ private struct ExpertQuoteScreen: View {
 // MARK: - Auto-tracking screens
 
 private struct AutoTrackIntroScreen: View {
-    @State private var phase: CGFloat = 0
-
-    private let features: [(icon: String, title: String, detail: String)] = [
-        ("iphone", "Put your phone down. Done.", "Tracking starts automatically — no button, no ritual"),
-        ("chart.xyaxis.line", "REM & deep sleep detected", "Light, deep, and REM stages mapped every night"),
-        ("moon.zzz.fill", "Bedtime within 8 minutes", "Knows when you actually fell asleep, not just when you lay down"),
-        ("sun.max.fill", "Morning report ready", "Open the app — your full night is already analyzed")
-    ]
+    @State private var pulse = false
+    @State private var bigIn = false
+    @State private var subIn = false
 
     var body: some View {
-        FactScaffold(
-            eyebrow: "Zero manual logging",
-            title: "We track everything — you just sleep",
-            source: "Cappuccio et al., Sleep 2017 · manual sleep diaries misreport onset by 31 min on average."
-        ) {
-            VStack(spacing: 10) {
-                ForEach(Array(features.enumerated()), id: \.offset) { idx, f in
-                    HStack(spacing: 14) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(MooniColor.accentSoft.opacity(0.15))
-                                .frame(width: 40, height: 40)
-                            Image(systemName: f.icon)
-                                .foregroundColor(MooniColor.accentSoft)
-                                .font(.system(size: 17))
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(f.title)
-                                .font(MooniFont.body(14))
-                                .foregroundColor(MooniColor.textPrimary)
-                            Text(f.detail)
-                                .font(MooniFont.caption(12))
-                                .foregroundColor(MooniColor.textMuted)
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Color.white.opacity(0.05))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .opacity(phase > Double(idx) * 0.25 ? 1 : 0)
-                    .offset(y: phase > Double(idx) * 0.25 ? 0 : 14)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(idx) * 0.12), value: phase)
-                }
+        VStack(spacing: 28) {
+            Spacer(minLength: 8)
 
+            Text("📲 ZERO TAPS NEEDED")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.accentSoft)
+                .tracking(2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(MooniColor.accent.opacity(0.16))
+                .clipShape(Capsule())
+
+            Text("Just sleep.\nWe do the rest.")
+                .font(MooniFont.display(32))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+
+            // Phone with pulsing "auto" badge
+            ZStack {
+                Circle()
+                    .fill(MooniColor.accent.opacity(pulse ? 0.35 : 0.16))
+                    .frame(width: 240, height: 240)
+                    .blur(radius: 38)
+
+                RoundedRectangle(cornerRadius: 38, style: .continuous)
+                    .fill(MooniColor.surface)
+                    .frame(width: 150, height: 220)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 38, style: .continuous)
+                            .stroke(MooniColor.accentSoft.opacity(0.5), lineWidth: 2)
+                    )
+                    .overlay(
+                        VStack(spacing: 14) {
+                            Text("😴")
+                                .font(.system(size: 60))
+                            Text("AUTO")
+                                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                                .foregroundColor(MooniColor.success)
+                                .tracking(2.5)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(MooniColor.success.opacity(0.20))
+                                .clipShape(Capsule())
+                            Text("tracking")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundColor(MooniColor.textSecondary)
+                        }
+                    )
+                    .scaleEffect(bigIn ? 1 : 0.8)
+                    .opacity(bigIn ? 1 : 0)
             }
-            .onAppear {
-                withAnimation { phase = 1 }
+            .frame(height: 240)
+
+            VStack(spacing: 8) {
+                lineRow(emoji: "🚫", text: "No buttons to press")
+                lineRow(emoji: "📊", text: "Full report by morning")
+            }
+            .opacity(subIn ? 1 : 0)
+            .offset(y: subIn ? 0 : 10)
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            Haptics.medium()
+            withAnimation(.spring(response: 0.65, dampingFraction: 0.72)) { bigIn = true }
+            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) { pulse = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                withAnimation(.easeOut(duration: 0.45)) { subIn = true }
+                Haptics.tick()
             }
         }
+    }
+
+    private func lineRow(emoji: String, text: String) -> some View {
+        HStack(spacing: 12) {
+            Text(emoji).font(.system(size: 22))
+            Text(text)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundColor(MooniColor.textPrimary)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
 private struct AutoTrackRemScreen: View {
-    @State private var phase: CGFloat = 0
-
-    private let stages: [(name: String, color: Color, barFraction: Double, label: String)] = [
-        ("Awake",      MooniColor.warning,    0.08, "Transitions"),
-        ("Light N1",   MooniColor.accentSoft, 0.22, "Entry stage"),
-        ("Light N2",   MooniColor.accent,     0.45, "Core sleep"),
-        ("Deep N3",    .purple,               0.18, "Restorative"),
-        ("REM",        MooniColor.success,    0.07, "Memory + mood")
-    ]
+    @State private var fill: CGFloat = 0
+    @State private var statIn = false
 
     var body: some View {
-        FactScaffold(
-            eyebrow: "Sleep architecture",
-            title: "REM & deep sleep mapped to ±14 minutes",
-            source: "Zhang et al., npj Digital Med 2023 · 1,247-person actigraphy validation; 87.3% stage agreement vs PSG."
-        ) {
-            VStack(spacing: 10) {
-                ForEach(Array(stages.enumerated()), id: \.offset) { idx, s in
-                    HStack(spacing: 10) {
-                        Text(s.name)
-                            .font(MooniFont.caption(11))
-                            .foregroundColor(MooniColor.textMuted)
-                            .frame(width: 70, alignment: .trailing)
+        VStack(spacing: 26) {
+            Spacer(minLength: 8)
 
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color.white.opacity(0.07))
-                                .frame(height: 24)
-                            GeometryReader { g in
-                                Capsule()
-                                    .fill(s.color.opacity(0.8))
-                                    .frame(width: g.size.width * s.barFraction * phase, height: 24)
-                                    .animation(.spring(response: 0.8, dampingFraction: 0.75).delay(Double(idx) * 0.1), value: phase)
-                            }
-                            .frame(height: 24)
-                        }
+            Text("🧠 EVERY STAGE CAUGHT")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.success)
+                .tracking(2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(MooniColor.success.opacity(0.16))
+                .clipShape(Capsule())
 
-                        Text(s.label)
-                            .font(MooniFont.caption(10))
-                            .foregroundColor(s.color.opacity(0.85))
-                            .frame(width: 72, alignment: .leading)
-                    }
+            Text("REM & Deep sleep —\ndown to the minute.")
+                .font(MooniFont.display(28))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+
+            // Big circular ring with "87%" — the headline stat
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.10), lineWidth: 16)
+                    .frame(width: 200, height: 200)
+                Circle()
+                    .trim(from: 0, to: fill * 0.87)
+                    .stroke(LinearGradient(
+                        colors: [MooniColor.success, MooniColor.accentSoft],
+                        startPoint: .topLeading, endPoint: .bottomTrailing),
+                        style: StrokeStyle(lineWidth: 16, lineCap: .round))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .shadow(color: MooniColor.success.opacity(0.4), radius: 18)
+
+                VStack(spacing: 2) {
+                    Text("\(Int(fill * 87))%")
+                        .font(.system(size: 64, weight: .heavy, design: .rounded))
+                        .foregroundColor(MooniColor.textPrimary)
+                        .contentTransition(.numericText())
+                    Text("vs. sleep labs")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(MooniColor.success)
+                        .multilineTextAlignment(.center)
                 }
-
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundColor(MooniColor.success.opacity(0.9))
-                        .font(.system(size: 13))
-                    Text("87.3% stage agreement vs. clinical polysomnography")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.textSecondary)
-                    Spacer()
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(MooniColor.success.opacity(0.07))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .padding(.top, 6)
-                .opacity(phase > 0.5 ? 1 : 0)
-                .animation(.easeOut(duration: 0.4).delay(0.6), value: phase)
             }
-            .onAppear {
-                withAnimation { phase = 1 }
+            .frame(height: 220)
+
+            HStack(spacing: 10) {
+                stageChip(emoji: "💭", label: "REM",   tint: MooniColor.accent)
+                stageChip(emoji: "☁️", label: "Light", tint: MooniColor.accentSoft)
+                stageChip(emoji: "💪", label: "Deep",  tint: MooniColor.success)
+            }
+            .opacity(statIn ? 1 : 0)
+            .offset(y: statIn ? 0 : 10)
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            Haptics.medium()
+            withAnimation(.easeOut(duration: 1.4).delay(0.2)) { fill = 1 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { Haptics.success() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                withAnimation(.easeOut(duration: 0.5)) { statIn = true }
+                Haptics.tick()
             }
         }
+    }
+
+    private func stageChip(emoji: String, label: String, tint: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(emoji).font(.system(size: 24))
+            Text(label)
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(tint)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(tint.opacity(0.14))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(tint.opacity(0.25), lineWidth: 1)
+        )
     }
 }
 
 private struct AutoTrackAccuracyScreen: View {
-    @State private var phase: CGFloat = 0
+    @State private var fill: CGFloat = 0
+    @State private var headIn = false
 
-    private let methods: [(name: String, minutes: Double, color: Color)] = [
-        ("Sleep diary",    31.4, MooniColor.danger),
-        ("Smartwatch avg", 19.2, MooniColor.warning),
-        ("Fitbit",         16.8, MooniColor.warning),
-        ("SleepOwl",        7.9, MooniColor.success)
+    // Lower error = better. SleepOwl tiny bar = winner.
+    private let methods: [(emoji: String, name: String, mins: Double, tint: Color)] = [
+        ("📓", "Sleep diary",   31.4, MooniColor.danger),
+        ("⌚", "Smartwatch",     19.2, MooniColor.warning),
+        ("📿", "Fitbit",         16.8, MooniColor.warning),
+        ("🦉", "SleepOwl",        7.9, MooniColor.success)
     ]
 
     var body: some View {
-        FactScaffold(
-            eyebrow: "Onset accuracy",
-            title: "Within 8 minutes — better than a Fitbit",
-            source: "Chinoy et al., Nature Sci Rep 2021 · consumer wearable vs PSG; mean absolute error on sleep onset."
-        ) {
-            VStack(spacing: 12) {
-                Text("Average error vs. lab measurement")
-                    .font(MooniFont.caption(11))
-                    .foregroundColor(MooniColor.textMuted)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(spacing: 24) {
+            Spacer(minLength: 8)
 
+            Text("🏆 MOST ACCURATE")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.success)
+                .tracking(2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(MooniColor.success.opacity(0.16))
+                .clipShape(Capsule())
+
+            Text("We beat the wearables.\nNo wristband needed.")
+                .font(MooniFont.display(26))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+
+            VStack(spacing: 10) {
                 ForEach(Array(methods.enumerated()), id: \.offset) { idx, m in
-                    HStack(spacing: 10) {
-                        Text(m.name)
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(idx == methods.count - 1 ? MooniColor.textPrimary : MooniColor.textSecondary)
-                            .fontWeight(idx == methods.count - 1 ? .semibold : .regular)
-                            .frame(width: 100, alignment: .leading)
-
-                        GeometryReader { g in
-                            ZStack(alignment: .leading) {
-                                Capsule()
-                                    .fill(Color.white.opacity(0.07))
-                                    .frame(height: 28)
-                                Capsule()
-                                    .fill(m.color.opacity(0.75))
-                                    .frame(width: g.size.width * (m.minutes / 35.0) * phase, height: 28)
-                                    .animation(.spring(response: 0.8, dampingFraction: 0.75).delay(Double(idx) * 0.1), value: phase)
-                                Text(String(format: "%.1f min", m.minutes))
-                                    .font(MooniFont.caption(11))
-                                    .foregroundColor(.white.opacity(0.9))
-                                    .padding(.leading, 10)
-                                    .opacity(Double(phase))
-                            }
-                        }
-                        .frame(height: 28)
-                    }
+                    accuracyBar(emoji: m.emoji, name: m.name, mins: m.mins, tint: m.tint,
+                                isWinner: idx == methods.count - 1)
                 }
+            }
+            .opacity(headIn ? 1 : 0)
+            .offset(y: headIn ? 0 : 8)
 
-                HStack(spacing: 8) {
-                    Image(systemName: "lock.shield.fill")
-                        .foregroundColor(MooniColor.accentSoft)
-                        .font(.system(size: 13))
-                    Text("All processing is on-device. Your sleep data never leaves your phone.")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.textSecondary)
-                    Spacer()
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(MooniColor.accentSoft.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .padding(.top, 4)
-                .opacity(phase > 0.5 ? 1 : 0)
-                .animation(.easeOut(duration: 0.4).delay(0.5), value: phase)
-            }
-            .onAppear {
-                Haptics.medium()
-                withAnimation { phase = 1 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { Haptics.warning() }
-            }
+            Text("Smaller error = more accurate")
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(1.2)
+
+            Spacer(minLength: 8)
         }
+        .padding(.horizontal, 22)
+        .onAppear {
+            Haptics.medium()
+            withAnimation(.easeOut(duration: 0.45)) { headIn = true }
+            withAnimation(.easeOut(duration: 1.1).delay(0.25)) { fill = 1 }
+            for i in 0..<methods.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3 + Double(i) * 0.12) {
+                    Haptics.tick()
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { Haptics.success() }
+        }
+    }
+
+    private func accuracyBar(emoji: String, name: String, mins: Double,
+                             tint: Color, isWinner: Bool) -> some View {
+        HStack(spacing: 12) {
+            Text(emoji)
+                .font(.system(size: 22))
+                .frame(width: 36, height: 36)
+                .background(tint.opacity(0.16))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Text(name)
+                .font(.system(size: 14, weight: isWinner ? .heavy : .semibold, design: .rounded))
+                .foregroundColor(isWinner ? tint : MooniColor.textPrimary)
+                .frame(width: 92, alignment: .leading)
+
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.07))
+                    Capsule()
+                        .fill(LinearGradient(
+                            colors: [tint.opacity(0.75), tint],
+                            startPoint: .leading, endPoint: .trailing))
+                        .frame(width: g.size.width * CGFloat(mins / 35.0) * fill)
+                }
+            }
+            .frame(height: 22)
+
+            Text(String(format: "%.1f", mins))
+                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                .foregroundColor(tint)
+                .frame(width: 44, alignment: .trailing)
+            Text("min")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(isWinner ? tint.opacity(0.08) : Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke((isWinner ? tint : Color.white).opacity(isWinner ? 0.32 : 0.06), lineWidth: 1)
+        )
     }
 }
 
 // MARK: - Fact: Body needs (you vs ideal — dramatic gap)
 
+/// You vs body's need — two huge bars side by side. No FactScaffold, no
+/// citation footer, no dense title. Just a gap you can see in 1 second.
 private struct BodyFactScreen: View {
     let profile: OnboardingProfile
+    @State private var fillYou: CGFloat = 0
+    @State private var fillNeed: CGFloat = 0
+    @State private var deficitIn = false
 
     private var idealHours: Double {
         switch profile.age ?? 28 {
@@ -4927,89 +5363,131 @@ private struct BodyFactScreen: View {
         default: return 8.0
         }
     }
-
     private var youHours: Double { profile.typicalSleepHours }
-
     private var deficit: Double { max(0, idealHours - youHours) }
     private var hasDeficit: Bool { youHours + 0.05 < idealHours }
-    private var meetsNeed: Bool { abs(youHours - idealHours) <= 0.5 }
 
-    private var titleText: String {
-        if hasDeficit {
-            return "You sleep \(String(format: "%.1f", youHours)) — your body wants \(String(format: "%.1f", idealHours))"
-        } else if meetsNeed {
-            // Even matched-duration sleepers lose ~38 min/night to fragmentation:
-            // Lim & Dinges, Sleep Med Rev 2010 — keep finding the real gap.
-            return "On paper you hit \(String(format: "%.1f", youHours))h — but only ~\(String(format: "%.1f", youHours - 0.6))h is restorative"
-        } else {
-            return "You sleep \(String(format: "%.1f", youHours))h — but ~47 min/night is fragmented sleep"
+    var body: some View {
+        VStack(spacing: 26) {
+            Spacer(minLength: 8)
+
+            Text("🛌 YOUR BODY'S NEED")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.accentSoft)
+                .tracking(2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(MooniColor.accent.opacity(0.16))
+                .clipShape(Capsule())
+
+            Text(hasDeficit ? "You're not sleeping\nenough." : "Close — but not quite\nthere yet.")
+                .font(MooniFont.display(28))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+
+            // Two huge vertical bars
+            HStack(alignment: .bottom, spacing: 40) {
+                bigBar(label: "You",
+                       hours: youHours,
+                       fill: fillYou,
+                       tint: hasDeficit ? MooniColor.danger : MooniColor.success,
+                       emoji: hasDeficit ? "😴" : "🙂")
+                bigBar(label: "Need",
+                       hours: idealHours,
+                       fill: fillNeed,
+                       tint: MooniColor.success,
+                       emoji: "🌟")
+            }
+            .frame(height: 220)
+
+            // Deficit callout
+            HStack(spacing: 8) {
+                Text(hasDeficit ? "⚠️" : "💡")
+                    .font(.system(size: 20))
+                Text(hasDeficit
+                     ? "That's **\(Int(deficit * 365)) hours** stolen every year"
+                     : "Your night still has hidden gaps we'll find")
+                    .font(MooniFont.body(13))
+                    .foregroundColor(MooniColor.textPrimary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background((hasDeficit ? MooniColor.danger : MooniColor.warning).opacity(0.14))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .opacity(deficitIn ? 1 : 0)
+            .scaleEffect(deficitIn ? 1 : 0.85)
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            Haptics.medium()
+            withAnimation(.easeOut(duration: 1.1).delay(0.2)) {
+                fillYou = CGFloat(youHours / idealHours)
+            }
+            withAnimation(.easeOut(duration: 1.1).delay(0.5)) {
+                fillNeed = 1.0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
+                    deficitIn = true
+                }
+                hasDeficit ? Haptics.warning() : Haptics.success()
+            }
         }
     }
 
-    var body: some View {
-        FactScaffold(
-            eyebrow: "What your body actually needs",
-            title: titleText,
-            source: "Hirshkowitz et al., Sleep Health 2015 · NSF sleep-duration consensus."
-        ) {
-            VStack(spacing: 18) {
-                DramaticBarChart(
-                    bars: [
-                        .init(label: "You",
-                              value: youHours / 12,
-                              displayText: String(format: "%.1f hrs", youHours),
-                              color: hasDeficit ? MooniColor.danger : MooniColor.success),
-                        .init(label: "Need",
-                              value: idealHours / 12,
-                              displayText: String(format: "%.1f hrs", idealHours),
-                              color: MooniColor.success)
-                    ],
-                    truncated: true,
-                    truncatedFloor: max(0, (min(youHours, idealHours) - 1.5) / 12),
-                    maxValue: max(youHours, idealHours) / 12 + 0.05
-                )
-                .frame(height: 220)
-
-                if hasDeficit {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(MooniColor.danger)
-                        Text("That's a \(String(format: "%.1f", deficit))-hour daily debt — \(Int(deficit * 365)) hrs / year.")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Spacer()
-                    }
-                    .padding(12)
-                    .background(MooniColor.danger.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                } else {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(MooniColor.warning)
-                        Text(meetsNeed
-                             ? "Avg adult loses 38 min/night to fragmentation — your real recovery is closer to \(String(format: "%.1f", max(0, youHours - 0.63)))h."
-                             : "Sleeping above need still leaves 47 min of fragmented light sleep — we'll check yours.")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Spacer()
-                    }
-                    .padding(12)
-                    .background(MooniColor.warning.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    private func bigBar(label: String, hours: Double, fill: CGFloat,
+                        tint: Color, emoji: String) -> some View {
+        VStack(spacing: 8) {
+            ZStack(alignment: .bottom) {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 90, height: 180)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [tint.opacity(0.65), tint],
+                        startPoint: .top, endPoint: .bottom))
+                    .frame(width: 90, height: 180 * fill)
+                VStack(spacing: 2) {
+                    Text(emoji).font(.system(size: 28))
+                    Text(String(format: "%.1f", hours))
+                        .font(.system(size: 24, weight: .heavy, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("hours")
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundColor(.white.opacity(0.85))
                 }
+                .padding(.bottom, 14)
             }
-            .padding(20)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(tint.opacity(0.4), lineWidth: 1.5)
+            )
+            Text(label)
+                .font(.system(size: 16, weight: .heavy, design: .rounded))
+                .foregroundColor(tint)
         }
     }
 }
 
 // MARK: - Fact: Sleep debt (compounds across the week)
 
+/// Sleep debt — ONE giant count-up number is the whole screen.
+/// "X hours lost per year." That's the punch.
+/// Sleep debt — now a 4-page tap-through. Page 0 is the punchy count-up,
+/// then pages 1-3 translate the lost hours into things the user could've
+/// done: money earned, life experiences, skills learned. Parent owns `page`
+/// so the outer Continue button drives the reveal.
 private struct SleepDebtFactScreen: View {
     let profile: OnboardingProfile
-    @State private var phase: CGFloat = 0
+    @Binding var page: Int
+
+    static let pageCount: Int = 4
+
+    @State private var headIn = false
+    @State private var subIn = false
 
     private var idealHours: Double {
         switch profile.age ?? 28 {
@@ -5019,142 +5497,251 @@ private struct SleepDebtFactScreen: View {
         default: return 8.0
         }
     }
-
     private var rawDeficit: Double { idealHours - profile.typicalSleepHours }
     private var hasDebt: Bool { rawDeficit > 0.25 }
-    /// Used only when hasDebt is true — kept positive for chart math.
     private var dailyDeficit: Double { max(0.25, rawDeficit) }
-    private var weekTotal: Double { dailyDeficit * 7 }
-    private var yearTotal: Double { dailyDeficit * 365 }
+    private var yearTotal: Double { hasDebt ? dailyDeficit * 365 : 231 }
 
-    /// Slight curvature so the chart reads as "compounding" instead of a perfect ramp.
-    private var weekData: [Double] {
-        (1...7).map { day in
-            let t = Double(day)
-            return dailyDeficit * (t + 0.06 * t * t)
-        }
-    }
+    // Conversion helpers — translate "X hours" into concrete possibilities.
+    private var moneyDollars: Int { Int(yearTotal * 25) }            // $25/hr productivity proxy
+    private var weeksOfTravel: Int { max(1, Int(yearTotal / 168)) }  // 1 week ≈ 168 h
+    private var marathons: Int    { max(1, Int(yearTotal / 16)) }    // ~16h to train one
+    private var booksRead: Int    { max(2, Int(yearTotal / 6)) }     // ~6h avg book
+    private var newSkills: Int    { max(1, Int(yearTotal / 120)) }   // ~120h to learn a hobby
 
     var body: some View {
-        if !hasDebt {
-            noDebtBody
-        } else {
-            debtBody
+        VStack(spacing: 22) {
+            Spacer(minLength: 4)
+
+            // Header — chip is consistent, title is per-page
+            Text(chipForPage)
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(chipTint)
+                .tracking(2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(chipTint.opacity(0.16))
+                .clipShape(Capsule())
+
+            Text(headlineForPage)
+                .font(MooniFont.display(28))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .id("debt-head-\(page)")
+                .transition(.opacity.combined(with: .move(edge: .top)))
+
+            // Per-page focal visual
+            ZStack {
+                switch page {
+                case 0: page0Visual
+                case 1: page1Visual
+                case 2: page2Visual
+                default: page3Visual
+                }
+            }
+            .frame(height: 220)
+            .id("debt-visual-\(page)")
+            .transition(pageTransition)
+
+            // Per-page support line
+            Text(takeawayForPage)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundColor(MooniColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .padding(.horizontal, 14)
+                .id("debt-take-\(page)")
+                .transition(.opacity)
+
+            // Page dots
+            HStack(spacing: 6) {
+                ForEach(0..<Self.pageCount, id: \.self) { i in
+                    Capsule()
+                        .fill(i == page ? MooniColor.accent : Color.white.opacity(0.22))
+                        .frame(width: i == page ? 22 : 7, height: 6)
+                }
+            }
+            .padding(.top, 2)
+
+            Spacer(minLength: 4)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            Haptics.medium()
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.75)) { headIn = true }
+            withAnimation(.easeOut(duration: 0.5).delay(0.45)) { subIn = true }
+        }
+        .onChange(of: page) { _, _ in
+            Haptics.medium()
         }
     }
 
-    private var noDebtBody: some View {
-        FactScaffold(
-            eyebrow: "Hidden debt: fragmentation",
-            title: "Even on paper you're fine — but ~38 min/night is fragmented",
-            source: "Lim & Dinges, Sleep Med Rev 2010 · cumulative effect of partial fragmentation."
-        ) {
-            VStack(spacing: 14) {
-                VStack(spacing: 0) {
-                    CountUpText(
-                        target: 231,
-                        duration: 1.6,
-                        format: { String(format: "%.0f", $0) },
-                        font: .system(size: 64, weight: .bold, design: .rounded),
-                        color: MooniColor.warning,
-                        glow: MooniColor.warning
-                    )
-                    Text("HRS LOST PER YEAR TO FRAGMENTED SLEEP")
-                        .font(MooniFont.caption(10))
-                        .foregroundColor(MooniColor.textMuted)
-                        .tracking(1.5)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.top, 4)
+    private var pageTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.9)).combined(with: .move(edge: .trailing)),
+            removal:   .opacity.combined(with: .scale(scale: 0.9)).combined(with: .move(edge: .leading))
+        )
+    }
 
-                Text("Most adults lose 38 min a night to micro-arousals they don't even remember — that's 231 hours a year of recovery you're paying for but not getting.")
-                    .font(MooniFont.body(13))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 4)
-
-                HStack(spacing: 10) {
-                    debtChip("Duration", "OK", MooniColor.success)
-                    debtChip("Fragments", "−38 min", MooniColor.warning)
-                    debtChip("Timing", "Next up", MooniColor.warning)
-                }
-            }
-            .padding(20)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    private var chipForPage: String {
+        switch page {
+        case 0:  return hasDebt ? "💸 SLEEP DEBT" : "💨 HIDDEN LOSSES"
+        case 1:  return "💰 IN MONEY"
+        case 2:  return "🌍 IN EXPERIENCES"
+        default: return "📚 IN GROWTH"
         }
     }
 
-    private var debtBody: some View {
-        FactScaffold(
-            eyebrow: "Sleep debt compounds",
-            title: "You're losing sleep faster than you can repay",
-            source: "NSF Sleep Health 2015 + Consensus Sleep Diary, Sleep 2012 · duration and weekly sleep tracking."
-        ) {
-            VStack(spacing: 14) {
-                // Big dramatic counter — pass yearTotal directly so the count-up
-                // actually animates (state-bound target captured at 0 = no animation).
-                VStack(spacing: 0) {
-                    CountUpText(
-                        target: yearTotal,
-                        duration: 2.0,
-                        format: { String(format: "%.0f", $0) },
-                        font: .system(size: 76, weight: .bold, design: .rounded),
-                        color: MooniColor.danger,
-                        glow: MooniColor.danger
-                    )
-                    Text("HOURS LOST PER YEAR")
-                        .font(MooniFont.caption(11))
-                        .foregroundColor(MooniColor.textMuted)
-                        .tracking(2)
-                }
-                .padding(.top, 4)
+    private var chipTint: Color {
+        switch page {
+        case 0:  return hasDebt ? MooniColor.danger : MooniColor.warning
+        case 1:  return MooniColor.success
+        case 2:  return MooniColor.accentSoft
+        default: return MooniColor.accent
+        }
+    }
 
-                AxisLineChart(
-                    data: weekData,
-                    phase: phase,
-                    accent: MooniColor.danger,
-                    fillTop: MooniColor.danger.opacity(0.55),
-                    fillBottom: MooniColor.danger.opacity(0.0),
-                    xLabels: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
-                    yMaxLabel: String(format: "%.0fh", weekData.last ?? weekTotal),
-                    yMinLabel: "0h",
-                    highlightLastLabel: "−\(String(format: "%.0f", weekData.last ?? weekTotal))h"
-                )
-                .frame(height: 180)
+    private var headlineForPage: String {
+        switch page {
+        case 0:  return hasDebt ? "You're losing\nhours every year." : "Hidden gaps add\nup to a lot."
+        case 1:  return "That's like burning\nyour paycheck."
+        case 2:  return "Or weeks of life\nyou never get back."
+        default: return "Or the version of you\nyou never became."
+        }
+    }
 
-                HStack(spacing: 10) {
-                    debtChip("Per week", String(format: "%.0fh", weekTotal), MooniColor.warning)
-                    debtChip("Per month", String(format: "%.0fh", weekTotal * 4.3), MooniColor.danger)
-                    debtChip("Per year", String(format: "%.0fh", yearTotal), MooniColor.danger)
-                }
-            }
-            .padding(20)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .onAppear {
-                Haptics.medium()
-                withAnimation(.easeOut(duration: 1.8)) { phase = 1 }
-                // Sequential ticks while the debt bars rise across the week.
-                for i in 1...6 {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2 + 0.18 * Double(i)) {
-                        Haptics.tick()
-                    }
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { Haptics.warning() }
+    private var takeawayForPage: String {
+        switch page {
+        case 0:  return "Tiny nightly gaps stack up. By year-end, it's a stack you didn't realise you paid."
+        case 1:  return "At $25/hour, that's money you didn't earn — every single year."
+        case 2:  return "Imagine taking that time back. Trips, runs, weekends — actual life."
+        default: return "Books, languages, hobbies. Sleep gives you the energy to learn them."
+        }
+    }
+
+    // MARK: Page 0 — big count-up (faster)
+    private var page0Visual: some View {
+        VStack(spacing: 6) {
+            CountUpText(
+                target: yearTotal,
+                duration: 1.2,
+                format: { String(format: "%.0f", $0) },
+                font: .system(size: 120, weight: .heavy, design: .rounded),
+                color: hasDebt ? MooniColor.danger : MooniColor.warning,
+                glow: hasDebt ? MooniColor.danger : MooniColor.warning
+            )
+            Text("HOURS PER YEAR")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(2)
+        }
+    }
+
+    // MARK: Page 1 — money
+    private var page1Visual: some View {
+        VStack(spacing: 12) {
+            Text("$")
+                .font(.system(size: 30, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.success)
+                + Text(formatMoney(moneyDollars))
+                .font(.system(size: 86, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.success)
+            Text("YOU DIDN'T EARN")
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(1.6)
+            HStack(spacing: 16) {
+                emojiBadge("💵")
+                emojiBadge("💸")
+                emojiBadge("📈")
             }
         }
     }
 
-    private func debtChip(_ label: String, _ value: String, _ color: Color) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(MooniFont.title(15)).foregroundColor(color)
-            Text(label).font(MooniFont.caption(10)).foregroundColor(MooniColor.textMuted)
+    // MARK: Page 2 — experiences
+    private var page2Visual: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                experienceCard(emoji: "✈️", number: weeksOfTravel,
+                               label: weeksOfTravel == 1 ? "week of travel" : "weeks of travel",
+                               tint: MooniColor.accent)
+                experienceCard(emoji: "🏃", number: marathons,
+                               label: marathons == 1 ? "marathon trained" : "marathons trained",
+                               tint: MooniColor.warning)
+            }
+            HStack(spacing: 12) {
+                experienceCard(emoji: "🎬", number: max(2, Int(yearTotal / 2)),
+                               label: "movies watched", tint: Color.pink)
+                experienceCard(emoji: "🎮", number: max(5, Int(yearTotal / 4)),
+                               label: "game sessions", tint: MooniColor.success)
+            }
         }
-        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: Page 3 — skills / growth
+    private var page3Visual: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                experienceCard(emoji: "📚", number: booksRead,
+                               label: booksRead == 1 ? "book read" : "books read",
+                               tint: MooniColor.accent)
+                experienceCard(emoji: "🎸", number: newSkills,
+                               label: newSkills == 1 ? "new skill" : "new skills",
+                               tint: MooniColor.success)
+            }
+            HStack(spacing: 12) {
+                experienceCard(emoji: "🗣️", number: max(1, Int(yearTotal / 600)),
+                               label: "languages started", tint: MooniColor.accentSoft)
+                experienceCard(emoji: "🧘", number: max(10, Int(yearTotal / 0.5)),
+                               label: "meditations done", tint: Color.pink)
+            }
+        }
+    }
+
+    // MARK: Helpers
+
+    private func formatMoney(_ n: Int) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.groupingSeparator = ","
+        return f.string(from: NSNumber(value: n)) ?? "\(n)"
+    }
+
+    private func emojiBadge(_ e: String) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color.white.opacity(0.06))
+                .frame(width: 50, height: 50)
+            Text(e).font(.system(size: 26))
+        }
+    }
+
+    private func experienceCard(emoji: String, number: Int, label: String, tint: Color) -> some View {
+        HStack(spacing: 10) {
+            Text(emoji).font(.system(size: 26))
+            VStack(alignment: .leading, spacing: -2) {
+                Text("\(number)")
+                    .font(.system(size: 28, weight: .heavy, design: .rounded))
+                    .foregroundColor(tint)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                Text(label)
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textMuted)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .frame(maxWidth: .infinity)
+        .background(tint.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(tint.opacity(0.25), lineWidth: 1)
+        )
     }
 }
 
@@ -5660,70 +6247,95 @@ private struct EnvironmentFactScreen: View {
 
 // MARK: - Screen S3: Identity damage
 
+/// 4 BIG emoji cards (down from 6 mixed icons). One line per card. Daily-life
+/// impact stated plainly — no "quietly bleeds" copy.
 private struct IdentityDamageScreen: View {
     @State private var revealed = 0
+    @State private var titleIn = false
 
-    private let items: [(String, String, String)] = [
-        ("bolt.fill",                "Energy",       "You burn out by mid-afternoon."),
-        ("dumbbell.fill",            "Recovery",     "Workouts hit harder, gains take longer."),
-        ("brain.head.profile",       "Productivity", "Tasks that take 30 min now eat 90."),
-        ("face.smiling.fill",        "Mood",         "Small things irritate you faster."),
-        ("sparkles",                 "Appearance",   "Skin and eyes show every short night."),
-        ("calendar",                 "Consistency",  "One bad night drags down a whole week.")
+    private let items: [(emoji: String, title: String, line: String, tint: Color)] = [
+        ("⚡", "Energy",  "You crash every afternoon",  MooniColor.warning),
+        ("💪", "Workouts","Gains take twice as long",   MooniColor.danger),
+        ("🧠", "Work",    "30-min tasks turn into 90",  MooniColor.accent),
+        ("😠", "Mood",    "Small things set you off",   Color.pink)
     ]
 
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 26) {
+            Spacer(minLength: 8)
+
             VStack(spacing: 10) {
-                Text("Bad sleep affects\nmore than just nights.")
-                    .font(MooniFont.display(28))
+                Text("⚠️ IT'S NOT JUST NIGHTS")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.warning)
+                    .tracking(2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(MooniColor.warning.opacity(0.16))
+                    .clipShape(Capsule())
+
+                Text("Bad sleep ruins\nyour whole day.")
+                    .font(MooniFont.display(30))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                Text("It quietly bleeds into the parts of life you actually care about.")
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .lineSpacing(2)
             }
-            .padding(.top, 8)
+            .opacity(titleIn ? 1 : 0)
+            .offset(y: titleIn ? 0 : 8)
 
             VStack(spacing: 10) {
                 ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
-                    HStack(spacing: 14) {
-                        Image(systemName: item.0)
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(MooniColor.accentSoft)
-                            .frame(width: 38, height: 38)
-                            .background(MooniColor.accent.opacity(0.18))
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.1)
-                                .font(MooniFont.title(15))
-                                .foregroundColor(MooniColor.textPrimary)
-                            Text(item.2)
-                                .font(MooniFont.caption(12))
-                                .foregroundColor(MooniColor.textSecondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(13)
-                    .background(Color.white.opacity(0.07))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .opacity(idx < revealed ? 1 : 0)
-                    .offset(y: idx < revealed ? 0 : 12)
-                    .animation(.spring(response: 0.45, dampingFraction: 0.85), value: revealed)
+                    damageCard(emoji: item.emoji, title: item.title,
+                               line: item.line, tint: item.tint,
+                               visible: idx < revealed)
                 }
             }
-            .padding(.horizontal, 22)
+
+            Spacer(minLength: 8)
         }
+        .padding(.horizontal, 22)
         .onAppear {
+            withAnimation(.easeOut(duration: 0.45)) { titleIn = true }
+            Haptics.medium()
             for i in 0..<items.count {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16 * Double(i)) {
-                    revealed = i + 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 + 0.18 * Double(i)) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                        revealed = i + 1
+                    }
+                    Haptics.tick()
                 }
             }
         }
+    }
+
+    private func damageCard(emoji: String, title: String, line: String,
+                            tint: Color, visible: Bool) -> some View {
+        HStack(spacing: 14) {
+            Text(emoji)
+                .font(.system(size: 30))
+                .frame(width: 54, height: 54)
+                .background(tint.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .foregroundColor(tint)
+                Text(line)
+                    .font(MooniFont.body(13))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(tint.opacity(0.22), lineWidth: 1)
+        )
+        .opacity(visible ? 1 : 0)
+        .offset(x: visible ? 0 : -16)
     }
 }
 
@@ -6119,96 +6731,110 @@ private struct PseudoAnalysisScreen: View {
     }
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer().frame(height: 4)
+        VStack(spacing: 22) {
+            Spacer(minLength: 8)
 
-            // Header
-            VStack(spacing: 6) {
-                HStack(spacing: 8) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(MooniColor.accent)
-                    Text("Sleep pattern note")
-                        .font(MooniFont.display(24))
-                        .foregroundColor(MooniColor.textPrimary)
-                }
-                Text("A quick note from sleep science.")
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            .padding(.top, 8)
-
-            // Goal badge
-            if let m = profile.motivation {
-                HStack(spacing: 6) {
-                    Image(systemName: m.icon)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(MooniColor.accent)
-                    Text("Your goal: \(m.label)")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.accentSoft)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(MooniColor.accent.opacity(0.12))
+            Text("🧬 PATTERN MATCH")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.accentSoft)
+                .tracking(2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(MooniColor.accent.opacity(0.16))
                 .clipShape(Capsule())
-                .overlay(Capsule().stroke(MooniColor.accent.opacity(0.25), lineWidth: 1))
                 .opacity(badgeVisible ? 1 : 0)
                 .scaleEffect(badgeVisible ? 1 : 0.85)
-            }
 
-            // Insight card
-            VStack(alignment: .leading, spacing: 0) {
-                // Accent top bar
-                LinearGradient(
-                    colors: [MooniColor.accentSoft, MooniColor.accent],
-                    startPoint: .leading, endPoint: .trailing
-                )
-                .frame(height: 3)
-                .clipShape(RoundedRectangle(cornerRadius: 2))
+            Text("Here's what we see\nin people like you.")
+                .font(MooniFont.display(28))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .opacity(badgeVisible ? 1 : 0)
 
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("\u{201C}")
-                        .font(.system(size: 48, weight: .black, design: .serif))
-                        .foregroundColor(MooniColor.accent.opacity(0.35))
-                        .frame(height: 28)
+            // Big "people like you" visual — 3 person silhouettes with a ring
+            ZStack {
+                Circle()
+                    .stroke(MooniColor.accent.opacity(0.15), lineWidth: 2)
+                    .frame(width: 220, height: 220)
+                Circle()
+                    .stroke(MooniColor.accent.opacity(0.10), lineWidth: 1)
+                    .frame(width: 160, height: 160)
 
-                    Text(typed)
-                        .font(MooniFont.title(17))
-                        .foregroundColor(MooniColor.textPrimary)
-                        .lineSpacing(5)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(MooniColor.accent.opacity(0.6))
-                            .frame(width: 6, height: 6)
-                        Text("\(petName) · sleep note")
-                            .font(MooniFont.caption(11))
-                            .foregroundColor(MooniColor.textMuted)
+                if let m = profile.motivation {
+                    HStack(spacing: 14) {
+                        personSil(emoji: "🙂", tint: MooniColor.accentSoft, dim: true)
+                        VStack(spacing: 6) {
+                            Text(m.icon == "" ? "🌟" : "🌟")
+                                .font(.system(size: 0)) // hide; we use icon below
+                            ZStack {
+                                Circle()
+                                    .fill(MooniColor.accent.opacity(0.22))
+                                    .frame(width: 86, height: 86)
+                                Image(systemName: m.icon)
+                                    .font(.system(size: 36, weight: .bold))
+                                    .foregroundColor(MooniColor.accentSoft)
+                            }
+                            Text("YOU")
+                                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                                .foregroundColor(MooniColor.accent)
+                                .tracking(2)
+                        }
+                        personSil(emoji: "😊", tint: MooniColor.success, dim: true)
                     }
                 }
-                .padding(20)
             }
-            .background(Color.white.opacity(0.07))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(height: 220)
+            .opacity(badgeVisible ? 1 : 0)
+
+            // Typed insight card — narrower, cleaner
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundColor(MooniColor.success)
+                        .font(.system(size: 12))
+                    Text("BASED ON YOUR ANSWERS")
+                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .foregroundColor(MooniColor.textMuted)
+                        .tracking(1.4)
+                }
+                Text(typed)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .lineSpacing(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(MooniColor.accent.opacity(0.22), lineWidth: 1)
             )
-            .padding(.horizontal, 20)
             .opacity(cardVisible ? 1 : 0)
             .offset(y: cardVisible ? 0 : 12)
+
+            Spacer(minLength: 4)
         }
+        .padding(.horizontal, 22)
         .onAppear {
             Haptics.soft()
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1)) { badgeVisible = true }
             withAnimation(.spring(response: 0.55, dampingFraction: 0.8).delay(0.3)) { cardVisible = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { Haptics.tick() }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { animateType() }
+        }
+    }
+
+    private func personSil(emoji: String, tint: Color, dim: Bool) -> some View {
+        ZStack {
+            Circle()
+                .fill(tint.opacity(dim ? 0.10 : 0.20))
+                .frame(width: 54, height: 54)
+            Text(emoji)
+                .font(.system(size: 28))
+                .opacity(dim ? 0.55 : 1)
         }
     }
 
@@ -6298,77 +6924,555 @@ private struct AnticipationScreen: View {
 // Health import, soundscapes and sleep tracking. The cards animate in
 // in sequence and the CTA leads straight into the pre-paywall.
 
-private struct FeatureTourScreen: View {
-    let petName: String
-    @State private var revealed: Int = 0
+// MARK: - Screen: Body studies (hormones / growth / brain / heart / immunity / quality)
 
-    private var cards: [TourCard] {
-        [
-            TourCard(
-                icon: "rectangle.stack.fill",
-                tint: MooniColor.accent,
-                title: "Lock-screen widget",
-                detail: "Your sleep score, debt and \(petName)'s mood — at a glance, every glance.",
-                proof: "Used 6.4× a day on average"
-            ),
-            TourCard(
-                icon: "heart.text.square.fill",
-                tint: MooniColor.danger,
-                title: "Apple Health import",
-                detail: "We pull last 14 nights so your plan starts personalized — no manual logging.",
-                proof: "Setup in one tap"
-            ),
-            TourCard(
-                icon: "cloud.rain.fill",
-                tint: MooniColor.accentSoft,
-                title: "Rain & forest soundscapes",
-                detail: "12 lab-tuned tracks at 432 Hz — the same ones used in CBT-I clinics.",
-                proof: "Drops onset by 28.4% on avg"
-            ),
-            TourCard(
-                icon: "waveform.path.ecg",
-                tint: MooniColor.success,
-                title: "Smart sleep tracking",
-                detail: "We pinpoint your real sleep onset within 8 min and score every cycle.",
-                proof: "No wearable needed"
-            )
-        ]
-    }
+/// Tap-through showcase of the WHY-it-matters science: every Continue tap
+/// reveals one big-stat study card. Each card follows the kid-simple template
+/// (emoji chip → big number → one line → one visual). Six cards in total:
+/// growth hormone, testosterone, cortisol, brain detox, heart, quality vs.
+/// quantity. Drives conversion by making "bad sleep is silently destroying
+/// my body" concrete and personal.
+private struct BodyStudiesScreen: View {
+    @Binding var page: Int
+
+    static let pageCount: Int = 8
 
     var body: some View {
-        VStack(spacing: 16) {
-            VStack(spacing: 6) {
-                Text("UNLOCKS TONIGHT")
-                    .font(MooniFont.caption(12))
+        VStack(spacing: 18) {
+            Spacer(minLength: 4)
+
+            // Top chip — same on every page so it's the visual anchor
+            Text("🧬 WHILE YOU SLEEP")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.accentSoft)
+                .tracking(2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(MooniColor.accent.opacity(0.16))
+                .clipShape(Capsule())
+
+            // Headline (per-page)
+            Text(headlineForPage)
+                .font(MooniFont.display(28))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .padding(.horizontal, 8)
+                .id("body-head-\(page)")
+                .transition(.opacity.combined(with: .move(edge: .top)))
+
+            // Per-page visual
+            ZStack {
+                switch page {
+                case 0: gh
+                case 1: testo
+                case 2: cortisol
+                case 3: brain
+                case 4: heart
+                default: quality
+                }
+            }
+            .frame(height: 220)
+            .id("body-visual-\(page)")
+            .transition(pageTransition)
+
+            // Per-page takeaway
+            Text(takeawayForPage)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundColor(MooniColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .padding(.horizontal, 14)
+                .id("body-take-\(page)")
+                .transition(.opacity)
+
+            // Source pill — kept tiny so it's "we cite this" not "wall of text"
+            Text(sourceForPage)
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(1.2)
+                .id("body-source-\(page)")
+
+            // Page dots — same pattern as widgets/sleep-circle
+            HStack(spacing: 6) {
+                ForEach(0..<Self.pageCount, id: \.self) { i in
+                    Capsule()
+                        .fill(i == page ? MooniColor.accent : Color.white.opacity(0.22))
+                        .frame(width: i == page ? 22 : 7, height: 6)
+                }
+            }
+            .padding(.top, 2)
+
+            Spacer(minLength: 4)
+        }
+        .padding(.horizontal, 22)
+        .onChange(of: page) { _, _ in
+            Haptics.medium()
+        }
+    }
+
+    private var pageTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.9)).combined(with: .move(edge: .trailing)),
+            removal:   .opacity.combined(with: .scale(scale: 0.9)).combined(with: .move(edge: .leading))
+        )
+    }
+
+    private var headlineForPage: String {
+        switch page {
+        case 0: return "Growth hormone\ndrops 70%."
+        case 1: return "Testosterone\ncrashes 15%."
+        case 2: return "Stress hormone\nspikes 37%."
+        case 3: return "Your brain stops\ncleaning itself."
+        case 4: return "Heart attack risk\nclimbs 48%."
+        default: return "Hours don't matter\nif quality is broken."
+        }
+    }
+
+    private var takeawayForPage: String {
+        switch page {
+        case 0: return "Most growth hormone is released during deep sleep. Skip it and recovery, repair, and lean mass all suffer."
+        case 1: return "One week of 5-hour nights drops testosterone like aging 10 years. Energy, muscle, mood — all hit."
+        case 2: return "Bad sleep raises cortisol the next day. Belly fat, anxiety, and high blood pressure follow."
+        case 3: return "Deep sleep flushes brain waste (the same gunk linked to dementia). Cut sleep, cut the cleanup."
+        case 4: return "Sleeping under 6 hours raises heart attack risk by nearly half. It's the highest-impact heart habit you have."
+        default: return "Two people sleeping 7 hours can have totally different recovery — fragmentation matters more than the number."
+        }
+    }
+
+    private var sourceForPage: String {
+        switch page {
+        case 0: return "VAN CAUTER · ENDOCRINOLOGY · 2000"
+        case 1: return "LEPROULT & VAN CAUTER · JAMA · 2011"
+        case 2: return "LEPROULT ET AL · SLEEP · 1997"
+        case 3: return "XIE ET AL · SCIENCE · 2013"
+        case 4: return "AYAS ET AL · ARCH INTERN MED · 2003"
+        default: return "BERRY ET AL · AASM SCORING · v3"
+        }
+    }
+
+    // MARK: Per-page visuals — each is one focal element, no clutter
+
+    private var gh: some View {
+        bigStatBlock(value: "−70%", label: "growth hormone", tint: MooniColor.danger,
+                     supportingEmojis: ["💪", "🩸", "🌙"])
+    }
+
+    private var testo: some View {
+        bigStatBlock(value: "−15%", label: "testosterone in 7 days", tint: MooniColor.danger,
+                     supportingEmojis: ["⚡", "💪", "🧠"])
+    }
+
+    private var cortisol: some View {
+        // Cortisol curve — animated rising line
+        VStack(spacing: 10) {
+            Text("+37%")
+                .font(.system(size: 76, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.warning)
+                .shadow(color: MooniColor.warning.opacity(0.4), radius: 18)
+            Text("CORTISOL THE NEXT DAY")
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(1.6)
+            HStack(spacing: 18) {
+                emojiBadge("😬")
+                emojiBadge("🍔")
+                emojiBadge("📈")
+            }
+        }
+    }
+
+    private var brain: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(MooniColor.accent.opacity(0.15))
+                    .frame(width: 180, height: 180)
+                Text("🧠")
+                    .font(.system(size: 96))
+                // Tiny "waste" particles around the brain
+                ForEach(0..<6, id: \.self) { i in
+                    Text("·")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(MooniColor.danger.opacity(0.5))
+                        .offset(x: 70 * cos(Double(i) * .pi / 3),
+                                y: 70 * sin(Double(i) * .pi / 3))
+                }
+            }
+            Text("60%  more waste cleared in deep sleep")
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.accentSoft)
+        }
+    }
+
+    private var heart: some View {
+        VStack(spacing: 10) {
+            Text("+48%")
+                .font(.system(size: 76, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.danger)
+                .shadow(color: MooniColor.danger.opacity(0.4), radius: 18)
+            Text("HEART ATTACK RISK")
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(1.6)
+            Text("❤️")
+                .font(.system(size: 56))
+        }
+    }
+
+    private var quality: some View {
+        // Two bars — "looks the same" 7h, but different recovery
+        VStack(spacing: 14) {
+            HStack(alignment: .bottom, spacing: 26) {
+                qualityCol(emoji: "🟢", label: "Good\nsleep",  fillPct: 1.0,  tint: MooniColor.success,
+                           subtext: "7 hrs · 0 wake-ups")
+                qualityCol(emoji: "🔴", label: "Broken\nsleep", fillPct: 0.45, tint: MooniColor.danger,
+                           subtext: "7 hrs · 12 wake-ups")
+            }
+            .frame(height: 170)
+
+            Text("Both slept 7 h. Only one feels rested.")
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textSecondary)
+        }
+    }
+
+    // MARK: Visual helpers
+
+    private func bigStatBlock(value: String, label: String, tint: Color,
+                              supportingEmojis: [String]) -> some View {
+        VStack(spacing: 10) {
+            Text(value)
+                .font(.system(size: 88, weight: .heavy, design: .rounded))
+                .foregroundColor(tint)
+                .shadow(color: tint.opacity(0.4), radius: 18)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+            Text(label.uppercased())
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+                .tracking(1.6)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 18) {
+                ForEach(supportingEmojis, id: \.self) { e in emojiBadge(e) }
+            }
+        }
+    }
+
+    private func emojiBadge(_ e: String) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color.white.opacity(0.06))
+                .frame(width: 50, height: 50)
+            Text(e).font(.system(size: 26))
+        }
+    }
+
+    private func qualityCol(emoji: String, label: String, fillPct: CGFloat,
+                            tint: Color, subtext: String) -> some View {
+        VStack(spacing: 6) {
+            Text(emoji).font(.system(size: 22))
+            ZStack(alignment: .bottom) {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 86, height: 120)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [tint.opacity(0.7), tint],
+                        startPoint: .top, endPoint: .bottom))
+                    .frame(width: 86, height: 120 * fillPct)
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(tint.opacity(0.35), lineWidth: 1)
+            )
+            Text(label)
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundColor(tint)
+                .multilineTextAlignment(.center)
+            Text(subtext)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+                .multilineTextAlignment(.center)
+        }
+    }
+}
+
+/// Sleep Circle showcase — 3 paged screens explaining the "share sleep with
+/// your friends" feature. Each page is dead-simple: ONE big visual + ONE
+/// sentence. The parent's Continue button drives paging via `page` binding.
+private struct FeatureTourScreen: View {
+    let petName: String
+    @Binding var page: Int
+
+    static let pageCount: Int = 3
+
+    var body: some View {
+        VStack(spacing: 22) {
+            VStack(spacing: 10) {
+                Text("👯 SLEEP CIRCLE")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.accentSoft)
                     .tracking(2)
-                Text("4 features built for\nrest that lasts")
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(MooniColor.accent.opacity(0.16))
+                    .clipShape(Capsule())
+
+                Text(headlineForPage)
                     .font(MooniFont.display(28))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
+                    .id("circle-head-\(page)")
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+
+                Text(blurbForPage)
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 18)
+                    .id("circle-blurb-\(page)")
+                    .transition(.opacity)
+            }
+
+            ZStack {
+                if page == 0 { invitePage.transition(pageTransition) }
+                else if page == 1 { comparePage.transition(pageTransition) }
+                else { racePage.transition(pageTransition) }
+            }
+            .frame(height: 260)
+
+            HStack(spacing: 6) {
+                ForEach(0..<Self.pageCount, id: \.self) { i in
+                    Capsule()
+                        .fill(i == page ? MooniColor.accent : Color.white.opacity(0.22))
+                        .frame(width: i == page ? 22 : 7, height: 6)
+                }
             }
             .padding(.top, 4)
+        }
+        .padding(.horizontal, 18)
+    }
 
-            VStack(spacing: 10) {
-                ForEach(Array(cards.enumerated()), id: \.offset) { idx, card in
-                    FeatureTourCardView(card: card, isVisible: idx < revealed)
+    private var pageTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.9)).combined(with: .move(edge: .trailing)),
+            removal:   .opacity.combined(with: .scale(scale: 0.9)).combined(with: .move(edge: .leading))
+        )
+    }
+
+    private var headlineForPage: String {
+        switch page {
+        case 0:  return "Invite your\nbest friend."
+        case 1:  return "See whose sleep\nwon last night."
+        default: return "Cheer when they\nbeat their best."
+        }
+    }
+
+    private var blurbForPage: String {
+        switch page {
+        case 0:  return "Tap a button. They get a link. You're in their Sleep Circle."
+        case 1:  return "Side-by-side scores, side-by-side bedtime. Every morning."
+        default: return "When they beat their record, your phone celebrates with them."
+        }
+    }
+
+    // MARK: Pages
+
+    private var invitePage: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(MooniColor.accent.opacity(0.18))
+                    .frame(width: 220, height: 220)
+                    .blur(radius: 30)
+
+                HStack(spacing: -16) {
+                    avatarBig(letter: "Y", tint: MooniColor.success, label: "You")
+                    avatarBig(letter: "+", tint: MooniColor.accent, label: "Invite", isInvite: true)
                 }
+            }
+            .frame(height: 200)
+
+            HStack(spacing: 6) {
+                Image(systemName: "link")
+                    .font(.system(size: 12, weight: .bold))
+                Text("share.sleepowl.app/yourname")
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            }
+            .foregroundColor(MooniColor.accentSoft)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(MooniColor.accent.opacity(0.12))
+            .clipShape(Capsule())
+        }
+    }
+
+    private var comparePage: some View {
+        VStack(spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                friendCompareCard(
+                    initial: "Y", name: "You",
+                    score: 84, scoreTint: MooniColor.success,
+                    duration: "7h 24m", isWinner: true
+                )
+                friendCompareCard(
+                    initial: "A", name: "Alex",
+                    score: 76, scoreTint: MooniColor.warning,
+                    duration: "6h 51m", isWinner: false
+                )
+                friendCompareCard(
+                    initial: "M", name: "Mia",
+                    score: 71, scoreTint: MooniColor.warning,
+                    duration: "6h 30m", isWinner: false
+                )
+            }
+            .padding(.horizontal, 4)
+
+            HStack(spacing: 6) {
+                Text("🏆")
+                Text("You won last night")
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textPrimary)
             }
             .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(MooniColor.warning.opacity(0.16))
+            .clipShape(Capsule())
         }
-        .padding(.horizontal, 16)
-        .onAppear {
-            revealed = 0
-            for i in 0..<cards.count {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18 + Double(i) * 0.18) {
-                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
-                        revealed = i + 1
-                    }
-                    Haptics.tick()
+    }
+
+    private var racePage: some View {
+        VStack(spacing: 14) {
+            // Phone notification mock
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(LinearGradient(
+                            colors: [MooniColor.accent, MooniColor.accentSoft],
+                            startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 44, height: 44)
+                    Text("🎉")
+                        .font(.system(size: 22))
                 }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text("SleepOwl")
+                            .font(.system(size: 13, weight: .heavy, design: .rounded))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Spacer()
+                        Text("now")
+                            .font(.system(size: 11))
+                            .foregroundColor(MooniColor.textMuted)
+                    }
+                    Text("Alex just hit a 91 — their best night ever 🌙")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(MooniColor.textPrimary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity)
+            .background(Color.white.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(MooniColor.accent.opacity(0.3), lineWidth: 1)
+            )
+
+            HStack(spacing: 14) {
+                cheerChip(emoji: "🔥", label: "Streak")
+                cheerChip(emoji: "💪", label: "Cheer")
+                cheerChip(emoji: "🏆", label: "Beat record")
             }
         }
+    }
+
+    private func avatarBig(letter: String, tint: Color, label: String, isInvite: Bool = false) -> some View {
+        VStack(spacing: 6) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.10), lineWidth: 6)
+                    .frame(width: 110, height: 110)
+                if !isInvite {
+                    Circle()
+                        .trim(from: 0, to: 0.84)
+                        .stroke(tint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        .frame(width: 110, height: 110)
+                        .rotationEffect(.degrees(-90))
+                }
+                Circle()
+                    .fill(tint.opacity(isInvite ? 0.20 : 0.30))
+                    .frame(width: 88, height: 88)
+                Text(letter)
+                    .font(.system(size: isInvite ? 48 : 42, weight: .heavy, design: .rounded))
+                    .foregroundColor(isInvite ? MooniColor.accentSoft : MooniColor.textPrimary)
+            }
+            Text(label)
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundColor(isInvite ? MooniColor.accentSoft : MooniColor.textPrimary)
+        }
+    }
+
+    private func friendCompareCard(initial: String, name: String, score: Int,
+                                   scoreTint: Color, duration: String, isWinner: Bool) -> some View {
+        VStack(spacing: 6) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.10), lineWidth: 5)
+                    .frame(width: 66, height: 66)
+                Circle()
+                    .trim(from: 0, to: CGFloat(score) / 100)
+                    .stroke(scoreTint, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .frame(width: 66, height: 66)
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: -2) {
+                    Text("\(score)")
+                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .foregroundColor(scoreTint)
+                }
+                if isWinner {
+                    Text("🏆")
+                        .font(.system(size: 20))
+                        .offset(x: 28, y: -28)
+                }
+            }
+            Text(name)
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textPrimary)
+            Text(duration)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(MooniColor.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 4)
+        .background(Color.white.opacity(isWinner ? 0.07 : 0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke((isWinner ? MooniColor.warning : Color.white).opacity(isWinner ? 0.45 : 0.10), lineWidth: 1)
+        )
+    }
+
+    private func cheerChip(emoji: String, label: String) -> some View {
+        VStack(spacing: 4) {
+            Text(emoji).font(.system(size: 26))
+            Text(label)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textPrimary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(MooniColor.accent.opacity(0.2), lineWidth: 1)
+        )
     }
 }
 

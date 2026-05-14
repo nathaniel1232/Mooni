@@ -87,6 +87,14 @@ struct PrePaywallView: View {
     @State private var typedCommitment: String = ""
     @State private var rating: Int = 0
 
+    // Tap-driven reveal beat for the "Bad sleep burns muscle, not fat" study
+    // (studies substage 1). Each Continue tap reveals the next animation step
+    // (0 → 1 → 2 → 3 = fully revealed) instead of letting the chart auto-play
+    // and overflow itself. Resets when the user leaves substage 1.
+    @State private var dietBeat: Int = 0
+    private static let dietBeatMax: Int = 3
+    private var isDietStudy: Bool { phase == .studies && subStage == 1 }
+
     private enum Phase: Int, CaseIterable {
         case studies      // 4 substages — peer-reviewed findings
         case pipeline     // 3 substages — Listen → Stage → Score with visuals
@@ -114,7 +122,13 @@ struct PrePaywallView: View {
                 Group {
                     switch phase {
                     case .studies:
-                        StudiesStage(subStage: subStage, total: Self.studiesCount, petName: petName)
+                        StudiesStage(
+                            subStage: subStage,
+                            total: Self.studiesCount,
+                            petName: petName,
+                            dietBeat: $dietBeat,
+                            dietBeatMax: Self.dietBeatMax
+                        )
                     case .pipeline:
                         PipelineStage(subStage: subStage, total: Self.pipelineCount, petName: petName)
                     case .hear:
@@ -146,9 +160,13 @@ struct PrePaywallView: View {
 
     // MARK: Progress bar — segments per phase
 
+    /// Phases shown in the progress bar — drop `.rate` since the review prompt
+    /// was removed; keep the rest in order so existing transitions stay valid.
+    private static let visiblePhases: [Phase] = [.studies, .pipeline, .hear, .commit]
+
     private var phaseProgressBar: some View {
         HStack(spacing: 6) {
-            ForEach(Phase.allCases, id: \.rawValue) { p in
+            ForEach(Self.visiblePhases, id: \.rawValue) { p in
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.white.opacity(0.22))
@@ -170,7 +188,16 @@ struct PrePaywallView: View {
         if p.rawValue < phase.rawValue { return 1 }
         if p.rawValue > phase.rawValue { return 0 }
         switch phase {
-        case .studies:  return CGFloat(subStage + 1) / CGFloat(Self.studiesCount)
+        case .studies:
+            // While the diet study is mid-reveal, blend the beat progress into
+            // the substage segment so the progress bar feels alive on each tap.
+            if isDietStudy {
+                let beatShare = CGFloat(dietBeat) / CGFloat(Self.dietBeatMax)
+                let base = CGFloat(subStage) / CGFloat(Self.studiesCount)
+                let span = 1.0 / CGFloat(Self.studiesCount)
+                return base + span * beatShare
+            }
+            return CGFloat(subStage + 1) / CGFloat(Self.studiesCount)
         case .pipeline: return CGFloat(subStage + 1) / CGFloat(Self.pipelineCount)
         case .hear:     return 1
         case .rate:     return rating > 0 ? 1 : 0.5
@@ -188,7 +215,11 @@ struct PrePaywallView: View {
 
     private var primaryTitle: String {
         switch phase {
-        case .studies:  return subStage < Self.studiesCount - 1 ? "Next finding" : "How it works"
+        case .studies:
+            if isDietStudy && dietBeat < Self.dietBeatMax {
+                return "Continue"
+            }
+            return subStage < Self.studiesCount - 1 ? "Next finding" : "How it works"
         case .pipeline: return subStage < Self.pipelineCount - 1 ? "Next step" : "Hear it yourself"
         case .hear:     return "Continue"
         case .rate:     return rating > 0 ? "Continue" : "Skip for now"
@@ -207,41 +238,45 @@ struct PrePaywallView: View {
 
     @ViewBuilder
     private var footer: some View {
-        VStack(spacing: 8) {
-            PrimaryButton(title: primaryTitle, icon: phase == .commit ? "sparkles" : nil) {
-                if canAdvanceFromCurrent { advance() }
-            }
-            .disabled(!canAdvanceFromCurrent)
-            .opacity(canAdvanceFromCurrent ? 1 : 0.45)
-
-            if phase == .commit {
-                Text("Your plan unlocks immediately.")
-                    .font(MooniFont.caption(11))
-                    .foregroundColor(MooniColor.textMuted)
-            } else if phase == .hear || phase == .rate {
-                Text("Cancel anytime · 7-day Pro trial")
-                    .font(MooniFont.caption(11))
-                    .foregroundColor(MooniColor.textMuted)
-            }
+        // Stripped: previously rendered "Your plan unlocks…" hints under the
+        // Continue button. Anything that resembles a paid-plan tease before
+        // the paywall itself burns conversion, so the disclaimer is gone.
+        PrimaryButton(title: primaryTitle, icon: phase == .commit ? "sparkles" : nil) {
+            if canAdvanceFromCurrent { advance() }
         }
+        .disabled(!canAdvanceFromCurrent)
+        .opacity(canAdvanceFromCurrent ? 1 : 0.45)
     }
 
     // MARK: Navigation
 
     private func advance() {
         Haptics.medium()
+        // Diet-study reveal: each Continue tap reveals the next beat. Only
+        // after all beats are visible does Continue advance to the next finding.
+        if isDietStudy && dietBeat < Self.dietBeatMax {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                dietBeat += 1
+            }
+            Haptics.tick()
+            return
+        }
         withAnimation(.easeInOut(duration: 0.45)) {
             switch phase {
             case .studies:
-                if subStage < Self.studiesCount - 1 { subStage += 1 }
-                else { Haptics.success(); phase = .pipeline; subStage = 0 }
+                if subStage < Self.studiesCount - 1 {
+                    subStage += 1
+                    dietBeat = 0
+                }
+                else { Haptics.success(); phase = .pipeline; subStage = 0; dietBeat = 0 }
             case .pipeline:
                 if subStage < Self.pipelineCount - 1 { subStage += 1 }
                 else { Haptics.success(); phase = .hear; subStage = 0 }
             case .hear:
                 SamplePlayer.shared.stop()
                 Haptics.success()
-                phase = .rate
+                // Rate stage is skipped entirely — review prompt moved post-purchase.
+                phase = .commit
                 subStage = 0
             case .rate:
                 Haptics.success()
@@ -310,6 +345,10 @@ private struct StudiesStage: View {
     let subStage: Int
     let total: Int
     let petName: String
+    /// Tap-driven reveal for the diet study (substage 1). Other studies still
+    /// auto-play their visuals on appear.
+    @Binding var dietBeat: Int
+    let dietBeatMax: Int
 
     @State private var visible = false
 
@@ -341,7 +380,7 @@ private struct StudiesStage: View {
             badgeIcon: "figure.strengthtraining.traditional",
             badgeTint: MooniColor.danger,
             headline: "Bad sleep burns muscle,\nnot fat.",
-            visual: AnyView(DietingFatLossChart()),
+            visual: AnyView(DietingFatLossChart(beat: $dietBeat, maxBeat: dietBeatMax)),
             takeaway: "Same diet, same calories. Sleep-restricted dieters lost **55% less fat** and **60% more lean muscle**. *If sleep were a pill, they'd ban it for being a performance-enhancer.*",
             citation: "Nedeltcheva et al., Annals of Internal Medicine, 2010 · 8.5h vs 5.5h sleep · matched calorie deficit",
             isWarning: true
@@ -369,77 +408,69 @@ private struct StudiesStage: View {
         }
     }
 
-    var body: some View {
-        VStack(spacing: 14) {
-            // Top stack: peer-reviewed pill + study type badge
-            VStack(spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 9, weight: .bold))
-                    Text("PEER-REVIEWED · STUDY \(subStage + 1)/\(total)")
-                        .font(MooniFont.caption(9))
-                        .tracking(1.6)
-                }
-                .foregroundColor(MooniColor.accentSoft)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(Color.white.opacity(0.06))
-                .clipShape(Capsule())
+    private var studyEmoji: String {
+        switch subStage {
+        case 0:  return "⚠️"
+        case 1:  return "💪"
+        case 2:  return "🌙"
+        default: return "🎧"
+        }
+    }
 
-                HStack(spacing: 6) {
-                    Image(systemName: study.badgeIcon)
-                        .font(.system(size: 11, weight: .bold))
-                    Text(study.badge)
-                        .font(MooniFont.caption(10))
-                        .tracking(1.6)
-                }
+    private var simpleTakeaway: String {
+        switch subStage {
+        case 0:  return "Under 6 hours of sleep means +12% higher risk of early death."
+        case 1:  return "Same diet — but bad sleep burned 55% less fat and 60% more muscle."
+        case 2:  return "Your night isn't one block. It's 4–6 cycles. Miss any and you wake worse."
+        default: return "We use the same audio standard as 1,000+ research papers."
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 4)
+
+            // One emoji chip — no peer-reviewed pill + badge stack
+            Text("\(studyEmoji) STUDY \(subStage + 1) OF \(total)")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(study.badgeTint)
-                .padding(.horizontal, 10)
+                .tracking(2)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 5)
-                .background(study.badgeTint.opacity(0.14))
+                .background(study.badgeTint.opacity(0.16))
                 .clipShape(Capsule())
-            }
 
             Text(study.headline)
-                .font(MooniFont.display(26))
+                .font(MooniFont.display(28))
                 .foregroundColor(MooniColor.textPrimary)
                 .multilineTextAlignment(.center)
+                .lineSpacing(2)
                 .padding(.horizontal, 14)
                 .fixedSize(horizontal: false, vertical: true)
 
             study.visual
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: 200, maxHeight: 230)
-                .padding(.horizontal, 14)
+                .frame(minHeight: 200, maxHeight: 300)
+                .padding(.horizontal, 8)
 
-            Text(study.takeaway)
+            Text(simpleTakeaway)
                 .font(MooniFont.body(14))
                 .foregroundColor(MooniColor.textSecondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 22)
+                .padding(.horizontal, 14)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 6) {
-                Image(systemName: "doc.text.fill")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(MooniColor.accentSoft)
-                Text(study.citation)
-                    .font(MooniFont.caption(9))
-                    .foregroundColor(MooniColor.textMuted)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, 14)
-
-            // Sub-stage dots
+            // Sub-stage dots — same pattern as the widgets/sleep-circle screens
             HStack(spacing: 6) {
                 ForEach(0..<total, id: \.self) { i in
                     Capsule()
-                        .fill(i <= subStage ? MooniColor.accent : Color.white.opacity(0.18))
-                        .frame(width: i == subStage ? 18 : 6, height: 6)
+                        .fill(i == subStage ? MooniColor.accent : Color.white.opacity(0.22))
+                        .frame(width: i == subStage ? 22 : 7, height: 6)
                 }
             }
             .padding(.top, 2)
+
+            Spacer(minLength: 4)
         }
         .opacity(visible ? 1 : 0)
         .offset(y: visible ? 0 : 12)
@@ -543,41 +574,48 @@ private struct MortalityChart: View {
 // through 4 beats while the user reads — each beat is one piece of the
 // "two people, same diet, only sleep differs" narrative. Haptic on every
 // beat advance so the storytelling feels physical.
-private struct DietingFatLossChart: View {
-    @State private var beat: Int = 0
-    @State private var goodFatFill: CGFloat = 0
-    @State private var badFatFill: CGFloat = 0
-    @State private var goodLeanFill: CGFloat = 0
-    @State private var badLeanFill: CGFloat = 0
-    @State private var totalScale: CGFloat = 0
-
-    private let beatDelays: [Double] = [0.6, 1.6, 2.7, 3.7]
+/// Tap-driven reveal of the Nedeltcheva 2010 muscle/fat finding.
+/// The parent owns `beat` so each Continue tap drives one reveal step:
+///   0 — figures only (same calories, same workouts)
+///   1 — sleep duration tags (8.5h vs 5.5h)
+///   2 — bars rise to equal total weight loss
+///   3 — callouts: fat-loss vs muscle-loss split
+struct DietingFatLossChart: View {
+    @Binding var beat: Int
+    let maxBeat: Int
 
     // Real values (kg, Nedeltcheva 2010, ~14-day matched calorie deficit):
     //   8.5h: 1.4 kg fat lost, 1.5 kg lean lost   (~3 kg total)
     //   5.5h: 0.6 kg fat lost, 2.4 kg lean lost   (~3 kg total)
-    private let goodFatHeight: CGFloat  = 78
-    private let goodLeanHeight: CGFloat = 36
-    private let badFatHeight: CGFloat   = 33
-    private let badLeanHeight: CGFloat  = 92
+    private let goodFatHeight: CGFloat  = 62
+    private let goodLeanHeight: CGFloat = 28
+    private let badFatHeight: CGFloat   = 26
+    private let badLeanHeight: CGFloat  = 74
+
+    private var goodFatFill: CGFloat  { beat >= 2 ? 1 : 0 }
+    private var goodLeanFill: CGFloat { beat >= 2 ? 1 : 0 }
+    private var badFatFill: CGFloat   { beat >= 2 ? 1 : 0 }
+    private var badLeanFill: CGFloat  { beat >= 2 ? 1 : 0 }
+    private var showCallouts: Bool    { beat >= 3 }
 
     var body: some View {
-        VStack(spacing: 8) {
-            // Caption ribbon — rotates through narrative beats
+        VStack(spacing: 10) {
             Text(captionText)
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundColor(captionColor)
                 .tracking(0.6)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
                 .background(captionColor.opacity(0.14))
                 .clipShape(Capsule())
+                .frame(height: 32)
                 .id("caption-\(beat)")
                 .transition(.opacity.combined(with: .move(edge: .top)))
 
-            // Two side-by-side "people" with their stats stacked underneath
-            HStack(alignment: .bottom, spacing: 18) {
+            HStack(alignment: .bottom, spacing: 22) {
                 personColumn(
                     figureColor: MooniColor.success,
                     sleepLabel: "8.5h sleep",
@@ -586,15 +624,15 @@ private struct DietingFatLossChart: View {
                     leanHeight: goodLeanHeight,
                     fatFill: goodFatFill,
                     leanFill: goodLeanFill,
-                    showCallout: beat >= 3,
+                    showCallout: showCallouts,
                     callout: "1.4 kg fat ↓",
                     calloutTint: MooniColor.success
                 )
 
                 Image(systemName: "arrow.left.and.right")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundColor(MooniColor.textMuted)
-                    .padding(.bottom, 64)
+                    .padding(.bottom, 52)
 
                 personColumn(
                     figureColor: MooniColor.danger,
@@ -604,38 +642,39 @@ private struct DietingFatLossChart: View {
                     leanHeight: badLeanHeight,
                     fatFill: badFatFill,
                     leanFill: badLeanFill,
-                    showCallout: beat >= 3,
+                    showCallout: showCallouts,
                     callout: "2.4 kg muscle ↓",
                     calloutTint: MooniColor.danger
                 )
             }
             .frame(maxWidth: .infinity)
 
-            // Total-weight scale indicator — shows during beat 2 ("same total")
             HStack(spacing: 6) {
                 Image(systemName: "scalemass.fill")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundColor(MooniColor.accentSoft)
                 Text("Both lost ~3 kg total")
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundColor(MooniColor.textSecondary)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 3)
             .background(MooniColor.accent.opacity(0.10))
             .clipShape(Capsule())
-            .scaleEffect(totalScale)
+            .frame(height: 18)
             .opacity(beat >= 2 ? 1 : 0)
+            .scaleEffect(beat >= 2 ? 1 : 0.6)
 
-            // Legend
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
                 legendDot(color: MooniColor.success, label: "fat lost")
                 legendDot(color: MooniColor.danger, label: "muscle lost")
+                Spacer(minLength: 8)
+                progressDots
             }
             .padding(.top, 2)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
         .background(Color.white.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -643,7 +682,20 @@ private struct DietingFatLossChart: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
-        .onAppear { runStory() }
+        .animation(.spring(response: 0.55, dampingFraction: 0.82), value: beat)
+        .onAppear {
+            // Reset reveal whenever the diet study reappears.
+            if beat > maxBeat { beat = 0 }
+            Haptics.tick()
+        }
+        .onChange(of: beat) { _, newBeat in
+            switch newBeat {
+            case 1: Haptics.tick()
+            case 2: Haptics.medium()
+            case 3: Haptics.warning()
+            default: break
+            }
+        }
     }
 
     private var captionText: String {
@@ -664,41 +716,16 @@ private struct DietingFatLossChart: View {
         }
     }
 
-    private func runStory() {
-        beat = 0
-        goodFatFill = 0; badFatFill = 0
-        goodLeanFill = 0; badLeanFill = 0
-        totalScale = 0
-        Haptics.tick()
-        // Beat 1 — "only difference: sleep"
-        DispatchQueue.main.asyncAfter(deadline: .now() + beatDelays[0]) {
-            withAnimation(.easeOut(duration: 0.4)) { beat = 1 }
-            Haptics.tick()
-        }
-        // Beat 2 — show same total scale + start fat fill (equal-ish)
-        DispatchQueue.main.asyncAfter(deadline: .now() + beatDelays[1]) {
-            withAnimation(.easeOut(duration: 0.4)) { beat = 2 }
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.78)) {
-                totalScale = 1
+    /// Tiny reveal-progress indicator (4 dots) inside the chart so the user
+    /// knows there's more to see before Continue advances to the next study.
+    private var progressDots: some View {
+        HStack(spacing: 4) {
+            ForEach(0...maxBeat, id: \.self) { i in
+                Capsule()
+                    .fill(i <= beat ? MooniColor.accent : Color.white.opacity(0.22))
+                    .frame(width: i == beat ? 12 : 5, height: 4)
+                    .animation(.spring(response: 0.4), value: beat)
             }
-            Haptics.medium()
-        }
-        // Beat 3 — bars rise: dramatic split between fat (good) and muscle (bad)
-        DispatchQueue.main.asyncAfter(deadline: .now() + beatDelays[2]) {
-            withAnimation(.easeOut(duration: 0.4)) { beat = 3 }
-            withAnimation(.spring(response: 0.85, dampingFraction: 0.85)) {
-                goodFatFill = 1
-                badFatFill = 1
-            }
-            Haptics.tick()
-        }
-        // Slight delay then muscle (lean) bars — that's the punch
-        DispatchQueue.main.asyncAfter(deadline: .now() + beatDelays[3]) {
-            withAnimation(.spring(response: 0.95, dampingFraction: 0.85)) {
-                goodLeanFill = 1
-                badLeanFill = 1
-            }
-            Haptics.warning()
         }
     }
 
@@ -715,54 +742,54 @@ private struct DietingFatLossChart: View {
         calloutTint: Color
     ) -> some View {
         VStack(spacing: 6) {
-            // Figure icon — appears beat 0
             Image(systemName: "figure.stand")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(figureColor.opacity(0.85))
-                .frame(width: 44, height: 36)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(figureColor.opacity(0.9))
+                .frame(width: 40, height: 32)
                 .background(figureColor.opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-            // Sleep duration label — appears beat 1
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 Image(systemName: "moon.fill")
                     .font(.system(size: 8, weight: .bold))
                 Text(sleepLabel)
                     .font(.system(size: 10, weight: .heavy, design: .rounded))
             }
             .foregroundColor(sleepLabelColor)
-            .padding(.horizontal, 7)
+            .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(sleepLabelColor.opacity(0.16))
             .clipShape(Capsule())
+            .frame(height: 18)
             .opacity(beat >= 1 ? 1 : 0)
+            .scaleEffect(beat >= 1 ? 1 : 0.7)
 
-            // Bar stack — appears beat 3
             ZStack(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(Color.white.opacity(0.04))
-                    .frame(width: 50, height: 130)
+                    .frame(width: 46, height: 110)
                 VStack(spacing: 0) {
                     Rectangle()
                         .fill(LinearGradient(
                             colors: [MooniColor.danger.opacity(0.7), MooniColor.danger],
                             startPoint: .top, endPoint: .bottom))
-                        .frame(width: 50, height: leanHeight * leanFill)
+                        .frame(width: 46, height: leanHeight * leanFill)
                     Rectangle()
                         .fill(LinearGradient(
                             colors: [MooniColor.success.opacity(0.7), MooniColor.success],
                             startPoint: .top, endPoint: .bottom))
-                        .frame(width: 50, height: fatHeight * fatFill)
+                        .frame(width: 46, height: fatHeight * fatFill)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
             }
-            .opacity(beat >= 2 ? 1 : 0)
+            .frame(width: 46, height: 110)
 
-            // Callout
             Text(callout)
                 .font(.system(size: 10, weight: .heavy, design: .rounded))
                 .foregroundColor(calloutTint)
+                .frame(height: 14)
                 .opacity(showCallout ? 1 : 0)
+                .scaleEffect(showCallout ? 1 : 0.7)
         }
     }
 
@@ -1422,7 +1449,7 @@ private struct HearItYourselfStage: View {
             .background(MooniColor.success.opacity(0.14))
             .clipShape(Capsule())
 
-            Text("Hear what Mooni\ncatches at night.")
+            Text("Hear what SleepOwl\ncatches at night.")
                 .font(MooniFont.display(28))
                 .foregroundColor(MooniColor.textPrimary)
                 .multilineTextAlignment(.center)
@@ -1434,7 +1461,7 @@ private struct HearItYourselfStage: View {
             }
             .padding(.horizontal, 4)
 
-            Text("These are just three of **521** sound classes Mooni recognizes — automatically, every night, on your phone.")
+            Text("These are just three of **521** sound classes SleepOwl recognizes — automatically, every night, on your phone.")
                 .font(MooniFont.body(14))
                 .foregroundColor(MooniColor.textSecondary)
                 .multilineTextAlignment(.center)
