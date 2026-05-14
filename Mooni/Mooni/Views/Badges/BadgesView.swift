@@ -21,7 +21,7 @@ struct BadgesView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MooniGradient.adaptive.ignoresSafeArea()
+                MooniGradient.night.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         header

@@ -28,13 +28,12 @@ struct BedtimeQuestView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MooniGradient.adaptive.ignoresSafeArea()
-                if !isDayTime {
-                    StarsBackground(count: 32)
-                }
+                MooniGradient.night.ignoresSafeArea()
+                StarsBackground(count: 32)
 
                 ScrollView {
                     VStack(spacing: 18) {
+                        comingSoonBanner
                         header
                         questCard
                         rewardCard
@@ -70,6 +69,46 @@ struct BedtimeQuestView: View {
                 .foregroundColor(MooniColor.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var comingSoonBanner: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(MooniColor.warning.opacity(0.18))
+                    .frame(width: 36, height: 36)
+                Image(systemName: "hammer.fill")
+                    .foregroundColor(MooniColor.warning)
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("COMING SOON")
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(MooniColor.warning)
+                        .tracking(1.4)
+                    Circle()
+                        .fill(MooniColor.warning)
+                        .frame(width: 4, height: 4)
+                    Text("PREVIEW")
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(MooniColor.warning.opacity(0.85))
+                        .tracking(1.4)
+                }
+                Text("Quests are still in development — feel free to peek around.")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(MooniColor.warning.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(MooniColor.warning.opacity(0.30), lineWidth: 1)
+        )
     }
 
     private var questCard: some View {

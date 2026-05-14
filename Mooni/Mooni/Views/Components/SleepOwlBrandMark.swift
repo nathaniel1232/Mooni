@@ -7,33 +7,73 @@ struct SleepOwlBrandMark: View {
     enum Size {
         case compact   // toolbar / inline
         case standard  // top of a screen
+        case prominent // main home header — reads as the app's wordmark
     }
 
     var size: Size = .standard
 
-    private var logoSide: CGFloat { size == .compact ? 16 : 20 }
-    private var fontSize: CGFloat { size == .compact ? 12 : 13 }
-    private var horizontalPadding: CGFloat { size == .compact ? 8 : 10 }
-    private var verticalPadding: CGFloat { size == .compact ? 4 : 5 }
+    private var logoSide: CGFloat {
+        switch size {
+        case .compact:   return 16
+        case .standard:  return 20
+        case .prominent: return 32
+        }
+    }
+    private var fontSize: CGFloat {
+        switch size {
+        case .compact:   return 12
+        case .standard:  return 13
+        case .prominent: return 22
+        }
+    }
+    private var horizontalPadding: CGFloat {
+        switch size {
+        case .compact:   return 8
+        case .standard:  return 10
+        case .prominent: return 0
+        }
+    }
+    private var verticalPadding: CGFloat {
+        switch size {
+        case .compact:   return 4
+        case .standard:  return 5
+        case .prominent: return 0
+        }
+    }
+    private var spacing: CGFloat { size == .prominent ? 10 : 6 }
+    private var tracking: CGFloat { size == .prominent ? -0.4 : 0.5 }
+    private var hasCapsule: Bool { size != .prominent }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: spacing) {
             Image("owl_base")
                 .resizable()
                 .scaledToFit()
                 .frame(width: logoSide, height: logoSide)
-                .shadow(color: MooniColor.accent.opacity(0.4), radius: 4)
+                .shadow(color: MooniColor.accent.opacity(size == .prominent ? 0.6 : 0.4),
+                        radius: size == .prominent ? 8 : 4)
             Text("SleepOwl")
-                .font(MooniFont.title(fontSize))
-                .foregroundColor(MooniColor.textPrimary.opacity(0.92))
-                .tracking(0.5)
+                .font(.system(size: fontSize,
+                              weight: size == .prominent ? .heavy : .semibold,
+                              design: .rounded))
+                .foregroundStyle(size == .prominent
+                                 ? AnyShapeStyle(LinearGradient(
+                                     colors: [MooniColor.textPrimary, MooniColor.accentSoft],
+                                     startPoint: .leading,
+                                     endPoint: .trailing))
+                                 : AnyShapeStyle(MooniColor.textPrimary.opacity(0.92)))
+                .tracking(tracking)
         }
         .padding(.horizontal, horizontalPadding)
         .padding(.vertical, verticalPadding)
         .background(
-            Capsule()
-                .fill(Color.white.opacity(0.06))
-                .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 0.5))
+            Group {
+                if hasCapsule {
+                    Capsule()
+                        .fill(Color.white.opacity(0.06))
+                        .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 0.5))
+                }
+            }
         )
         .accessibilityLabel("SleepOwl")
     }

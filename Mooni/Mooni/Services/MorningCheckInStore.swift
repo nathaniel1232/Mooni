@@ -26,4 +26,12 @@ enum MorningCheckInStore {
         }
         return decoded
     }
+
+    static func clear(for dayKey: String) {
+        var values = all()
+        guard values.removeValue(forKey: dayKey) != nil else { return }
+        if let data = try? JSONEncoder().encode(values) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
 }

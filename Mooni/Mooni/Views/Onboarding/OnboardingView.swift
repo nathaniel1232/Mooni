@@ -140,6 +140,7 @@ struct OnboardingView: View {
         case rateApp                  // ask for App Store rating after social proof
         case simulatedResult
         case firstQuest
+        case soundsDemo               // interactive ambient-sound preview — mirrors the Sounds tab
         case soundscapePreview        // interactive rainforest/rain sound demo
         case featureTour              // Quick "what unlocks tonight" tour
         // ── Pre-paywall science sequence (6 screens) ──────────────────────
@@ -205,10 +206,11 @@ struct OnboardingView: View {
                     GeometryReader { geo in
                         ScrollView(showsIndicators: false) {
                             content
-                                .padding(.top, 8)
+                                .padding(.top, 16)
                                 .padding(.bottom, 28)
                                 .frame(maxWidth: .infinity)
-                                .frame(minHeight: geo.size.height * 0.86, alignment: .center)
+                                .frame(minHeight: geo.size.height * 0.92,
+                                       alignment: .top)
                                 .id(step)
                                 .transition(transition)
                         }
@@ -350,6 +352,7 @@ struct OnboardingView: View {
         step == .welcome
     }
 
+
     // MARK: - Content
 
     @ViewBuilder
@@ -431,6 +434,7 @@ struct OnboardingView: View {
         case .socialProof:         SocialProofScreen()
         case .simulatedResult:     SimulatedResultScreen(species: species, name: petName)
         case .firstQuest:          FirstQuestScreen(petName: petName, bedtime: bedtime, wakeTime: wakeTime)
+        case .soundsDemo:          SoundscapePreviewScreen(petName: petName)
         case .soundscapePreview:   WidgetPreviewScreen(petName: petName, page: $widgetPage)
         case .featureTour:         FeatureTourScreen(petName: petName, page: $sleepCirclePage)
         case .scienceAudioHook:    AudioInsightScreen()
@@ -629,6 +633,7 @@ struct OnboardingView: View {
         case .socialProof:        return "Continue"
         case .simulatedResult:    return "See how it works"
         case .firstQuest:         return "Accept tonight's quest"
+        case .soundsDemo:         return "I like these sounds"
         case .soundscapePreview:
             return widgetPage < WidgetPreviewScreen.pageCount - 1 ? "See next widget" : "I want these"
         case .featureTour:
@@ -3422,6 +3427,15 @@ private struct WidgetPreviewScreen: View {
             }
             .frame(height: 240)
 
+            // On the friends-widget page, give the user a real way to invite
+            // their friends from inside onboarding. Even if they don't
+            // convert to Pro, every invite is a potential new install.
+            if page == Self.pageCount - 1 {
+                inviteFriendsButton
+                    .padding(.horizontal, 4)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
             // Page dots
             HStack(spacing: 6) {
                 ForEach(0..<Self.pageCount, id: \.self) { i in
@@ -3441,6 +3455,40 @@ private struct WidgetPreviewScreen: View {
         }
         .padding(.horizontal, 20)
         .onAppear { appeared = true }
+    }
+
+    /// Native iOS share sheet, pre-filled with a friendly invite. Shows up
+    /// directly under the friends widget mock so the user can spin up their
+    /// Sleep Circle before they even leave onboarding.
+    private var inviteFriendsButton: some View {
+        ShareLink(
+            item: URL(string: "https://apps.apple.com/app/sleepowl/id6740000000")!,
+            subject: Text("Sleep better with me on SleepOwl"),
+            message: Text("I'm using SleepOwl to track my sleep and beat sleep debt — join my Sleep Circle so we can compare nights. \(petName) is waiting 🦉")
+        ) {
+            HStack(spacing: 8) {
+                Image(systemName: "person.crop.circle.badge.plus")
+                    .font(.system(size: 14, weight: .bold))
+                Text("Invite a friend")
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 11)
+            .background(
+                Capsule().fill(
+                    LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+            )
+            .shadow(color: MooniColor.accent.opacity(0.45), radius: 12, y: 4)
+        }
+        .simultaneousGesture(TapGesture().onEnded { Haptics.medium() })
     }
 
     private var widgetTransition: AnyTransition {
@@ -6940,64 +6988,42 @@ private struct PseudoAnalysisScreen: View {
     }
 
     var body: some View {
-        VStack(spacing: 22) {
-            Spacer(minLength: 8)
-
+        VStack(spacing: 14) {
             Text("🧬 PATTERN MATCH")
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.accentSoft)
                 .tracking(2)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
                 .background(MooniColor.accent.opacity(0.16))
                 .clipShape(Capsule())
                 .opacity(badgeVisible ? 1 : 0)
                 .scaleEffect(badgeVisible ? 1 : 0.85)
 
             Text("Here's what we see\nin people like you.")
-                .font(MooniFont.display(28))
+                .font(MooniFont.display(24))
                 .foregroundColor(MooniColor.textPrimary)
                 .multilineTextAlignment(.center)
-                .lineSpacing(2)
+                .lineSpacing(0)
                 .opacity(badgeVisible ? 1 : 0)
 
-            // Big "people like you" visual — 3 person silhouettes with a ring
-            ZStack {
-                Circle()
-                    .stroke(MooniColor.accent.opacity(0.15), lineWidth: 2)
-                    .frame(width: 220, height: 220)
-                Circle()
-                    .stroke(MooniColor.accent.opacity(0.10), lineWidth: 1)
-                    .frame(width: 160, height: 160)
-
-                if let m = profile.motivation {
-                    HStack(spacing: 14) {
-                        personSil(emoji: "🙂", tint: MooniColor.accentSoft, dim: true)
-                        VStack(spacing: 6) {
-                            Text(m.icon == "" ? "🌟" : "🌟")
-                                .font(.system(size: 0)) // hide; we use icon below
-                            ZStack {
-                                Circle()
-                                    .fill(MooniColor.accent.opacity(0.22))
-                                    .frame(width: 86, height: 86)
-                                Image(systemName: m.icon)
-                                    .font(.system(size: 36, weight: .bold))
-                                    .foregroundColor(MooniColor.accentSoft)
-                            }
-                            Text("YOU")
-                                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                                .foregroundColor(MooniColor.accent)
-                                .tracking(2)
-                        }
-                        personSil(emoji: "😊", tint: MooniColor.success, dim: true)
-                    }
+            // Single horizontal row — dim peers framing YOU. No rings, nothing
+            // overlapping, nothing fighting for space. Reads instantly.
+            if let m = profile.motivation {
+                HStack(spacing: 14) {
+                    peerAvatar(emoji: "🙂", tint: MooniColor.accentSoft)
+                    peerAvatar(emoji: "😴", tint: MooniColor.accent)
+                    youBadge(icon: m.icon)
+                    peerAvatar(emoji: "😊", tint: MooniColor.success)
+                    peerAvatar(emoji: "🌙", tint: MooniColor.warning)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .opacity(badgeVisible ? 1 : 0)
             }
-            .frame(height: 220)
-            .opacity(badgeVisible ? 1 : 0)
 
             // Typed insight card — narrower, cleaner
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.seal.fill")
                         .foregroundColor(MooniColor.success)
@@ -7008,13 +7034,13 @@ private struct PseudoAnalysisScreen: View {
                         .tracking(1.4)
                 }
                 Text(typed)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundColor(MooniColor.textPrimary)
-                    .lineSpacing(3)
+                    .lineSpacing(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(16)
+            .padding(14)
             .background(Color.white.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
@@ -7023,8 +7049,6 @@ private struct PseudoAnalysisScreen: View {
             )
             .opacity(cardVisible ? 1 : 0)
             .offset(y: cardVisible ? 0 : 12)
-
-            Spacer(minLength: 4)
         }
         .padding(.horizontal, 22)
         .onAppear {
@@ -7036,14 +7060,34 @@ private struct PseudoAnalysisScreen: View {
         }
     }
 
-    private func personSil(emoji: String, tint: Color, dim: Bool) -> some View {
+    private func peerAvatar(emoji: String, tint: Color) -> some View {
         ZStack {
             Circle()
-                .fill(tint.opacity(dim ? 0.10 : 0.20))
-                .frame(width: 54, height: 54)
+                .fill(tint.opacity(0.10))
+                .frame(width: 40, height: 40)
             Text(emoji)
-                .font(.system(size: 28))
-                .opacity(dim ? 0.55 : 1)
+                .font(.system(size: 20))
+                .opacity(0.55)
+        }
+    }
+
+    private func youBadge(icon: String) -> some View {
+        VStack(spacing: 4) {
+            ZStack {
+                Circle()
+                    .fill(MooniColor.accent.opacity(0.24))
+                    .frame(width: 64, height: 64)
+                Circle()
+                    .stroke(MooniColor.accent, lineWidth: 1.5)
+                    .frame(width: 64, height: 64)
+                Image(systemName: icon)
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundColor(MooniColor.accentSoft)
+            }
+            Text("YOU")
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.accent)
+                .tracking(2)
         }
     }
 
@@ -7147,30 +7191,31 @@ private struct BodyStudiesScreen: View {
     static let pageCount: Int = 8
 
     var body: some View {
-        VStack(spacing: 18) {
-            Spacer(minLength: 4)
-
+        VStack(spacing: 10) {
             // Top chip — same on every page so it's the visual anchor
             Text("🧬 WHILE YOU SLEEP")
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.accentSoft)
                 .tracking(2)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
                 .background(MooniColor.accent.opacity(0.16))
                 .clipShape(Capsule())
 
             // Headline (per-page)
             Text(headlineForPage)
-                .font(MooniFont.display(28))
+                .font(MooniFont.display(24))
                 .foregroundColor(MooniColor.textPrimary)
                 .multilineTextAlignment(.center)
-                .lineSpacing(2)
-                .padding(.horizontal, 8)
+                .lineSpacing(0)
+                .minimumScaleFactor(0.8)
+                .lineLimit(2)
+                .padding(.horizontal, 4)
                 .id("body-head-\(page)")
                 .transition(.opacity.combined(with: .move(edge: .top)))
 
-            // Per-page visual
+            // Per-page visual — give it a fixed band so transitions don't
+            // jump the headline up/down between pages.
             ZStack {
                 switch page {
                 case 0: gh
@@ -7189,17 +7234,17 @@ private struct BodyStudiesScreen: View {
 
             // Per-page takeaway
             Text(takeawayForPage)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundColor(MooniColor.textSecondary)
                 .multilineTextAlignment(.center)
-                .lineSpacing(2)
+                .lineSpacing(1)
                 .padding(.horizontal, 14)
                 .id("body-take-\(page)")
                 .transition(.opacity)
 
             // Source pill — kept tiny so it's "we cite this" not "wall of text"
             Text(sourceForPage)
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.textMuted)
                 .tracking(1.2)
                 .id("body-source-\(page)")
@@ -7213,8 +7258,6 @@ private struct BodyStudiesScreen: View {
                 }
             }
             .padding(.top, 2)
-
-            Spacer(minLength: 4)
         }
         .padding(.horizontal, 22)
         .onChange(of: page) { _, _ in
@@ -7231,14 +7274,14 @@ private struct BodyStudiesScreen: View {
 
     private var headlineForPage: String {
         switch page {
-        case 0: return "Growth hormone\ndrops 70%."
-        case 1: return "Short sleepers\nare 2 cm shorter."
-        case 2: return "You shrink 1.5 cm\nevery day."
-        case 3: return "Testosterone\ncrashes 15%."
-        case 4: return "Stress hormone\nspikes 37%."
-        case 5: return "Your brain stops\ncleaning itself."
-        case 6: return "Heart attack risk\nclimbs 48%."
-        default: return "Hours don't matter\nif quality is broken."
+        case 0: return "Growth hormone drops 70%."
+        case 1: return "Short sleepers stay 2 cm shorter."
+        case 2: return "You shrink 1.5 cm every day."
+        case 3: return "Testosterone crashes 15%."
+        case 4: return "Stress hormone spikes 37%."
+        case 5: return "Your brain stops cleaning itself."
+        case 6: return "Heart attack risk climbs 48%."
+        default: return "Hours don't matter if quality is broken."
         }
     }
 
@@ -7279,102 +7322,81 @@ private struct BodyStudiesScreen: View {
     /// vs "short sleeper", with the latter visibly shorter. The 2 cm gap is
     /// the real-world average from the Jenni et al. pediatric cohort.
     private var teenHeight: some View {
-        VStack(spacing: 12) {
-            HStack(alignment: .bottom, spacing: 36) {
-                heightFigure(emoji: "🧑", barHeight: 168,
-                             label: "8+ hrs",
-                             stat: "Avg height",
-                             tint: MooniColor.success)
-                heightFigure(emoji: "🧑", barHeight: 148,
-                             label: "<6 hrs",
-                             stat: "−2 cm shorter",
-                             tint: MooniColor.danger)
-            }
-            .frame(height: 170)
-
-            HStack(spacing: 6) {
-                Text("📏")
-                Text("Same age. Same diet. Different sleep.")
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.textSecondary)
-            }
+        HStack(alignment: .bottom, spacing: 40) {
+            heightFigure(emoji: "🧑", barFillHeight: 130,
+                         label: "8+ hrs",
+                         stat: "Avg",
+                         tint: MooniColor.success)
+            heightFigure(emoji: "🧑", barFillHeight: 110,
+                         label: "<6 hrs",
+                         stat: "−2 cm",
+                         tint: MooniColor.danger)
         }
+        .frame(maxWidth: .infinity)
     }
 
     /// Adult-spine visual — a stylised spine that compresses through the day
     /// and decompresses overnight, with the 1.5 cm daily figure called out.
     private var adultSpine: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 14) {
-                spineColumn(label: "Morning", height: 150, tint: MooniColor.success,
-                            sub: "Discs rehydrated", emoji: "☀️")
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(MooniColor.textMuted)
-                    .padding(.bottom, 36)
-                spineColumn(label: "Evening", height: 130, tint: MooniColor.warning,
-                            sub: "Discs compressed", emoji: "🌆")
-            }
-            .frame(height: 170)
-
-            HStack(spacing: 6) {
-                Text("🛏️")
-                Text("Deep sleep rebuilds those 1.5 cm overnight.")
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.textSecondary)
-            }
+        HStack(alignment: .bottom, spacing: 18) {
+            spineColumn(label: "Morning", height: 130, tint: MooniColor.success, emoji: "☀️")
+            Image(systemName: "arrow.right")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(MooniColor.textMuted)
+                .padding(.bottom, 50)
+            spineColumn(label: "Evening", height: 108, tint: MooniColor.warning, emoji: "🌆")
         }
+        .frame(maxWidth: .infinity)
     }
 
-    private func heightFigure(emoji: String, barHeight: CGFloat, label: String,
+    private func heightFigure(emoji: String, barFillHeight: CGFloat, label: String,
                               stat: String, tint: Color) -> some View {
-        VStack(spacing: 4) {
-            Text(emoji).font(.system(size: 22))
+        // Fixed total height of 180 so neither column drifts. Stat ABOVE
+        // emoji ABOVE bar, label below — strict order, no overlap.
+        VStack(spacing: 6) {
             Text(stat)
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundColor(tint)
+            Text(emoji).font(.system(size: 20))
             ZStack(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color.white.opacity(0.06))
-                    .frame(width: 56, height: 170)
+                    .frame(width: 52, height: 130)
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(LinearGradient(
                         colors: [tint.opacity(0.65), tint],
                         startPoint: .top, endPoint: .bottom))
-                    .frame(width: 56, height: barHeight - 24)
+                    .frame(width: 52, height: barFillHeight)
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(tint.opacity(0.35), lineWidth: 1)
             )
             Text(label)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.textPrimary)
         }
     }
 
     private func spineColumn(label: String, height: CGFloat, tint: Color,
-                             sub: String, emoji: String) -> some View {
-        VStack(spacing: 4) {
-            Text(emoji).font(.system(size: 20))
+                             emoji: String) -> some View {
+        VStack(spacing: 6) {
+            Text(emoji).font(.system(size: 18))
             ZStack {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Color.white.opacity(0.05))
                     .frame(width: 28, height: height)
                 VStack(spacing: 2) {
-                    ForEach(0..<7, id: \.self) { _ in
+                    ForEach(0..<6, id: \.self) { _ in
                         Capsule()
                             .fill(tint.opacity(0.85))
-                            .frame(width: 22, height: max(8, (height - 28) / 7 - 2))
+                            .frame(width: 22, height: max(8, (height - 18) / 6 - 2))
                     }
                 }
             }
             Text(label)
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundColor(tint)
-            Text(sub)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .foregroundColor(MooniColor.textMuted)
         }
     }
 

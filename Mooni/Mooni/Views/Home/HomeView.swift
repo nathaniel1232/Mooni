@@ -30,11 +30,8 @@ struct HomeView: View {
 
     var body: some View {
         ZStack {
-            MooniGradient.adaptive.ignoresSafeArea()
-            // Stars are quieter in daylight.
-            if !isDayTime {
-                StarsBackground(count: 48)
-            }
+            MooniGradient.night.ignoresSafeArea()
+            StarsBackground(count: 48)
 
             ScrollView {
                 LazyVStack(spacing: 22) {
@@ -148,9 +145,9 @@ struct HomeView: View {
     }
 
     private var headerBar: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 10) {
-                SleepOwlBrandMark(size: .standard)
+                SleepOwlBrandMark(size: .prominent)
                 Spacer(minLength: 8)
                 StreakFlameChip(current: streak.current, freezes: streak.freezesRemaining)
                 if !subscriptionManager.isPro {
@@ -158,18 +155,17 @@ struct HomeView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(greeting.uppercased())
-                    .font(MooniFont.caption(11))
-                    .foregroundColor(MooniColor.accentSoft.opacity(0.85))
-                    .tracking(1.4)
+            HStack(alignment: .center, spacing: 4) {
+                Text(greeting + ",")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textSecondary)
                 Text(appState.pet.name)
-                    .font(MooniFont.display(28))
-                    .foregroundColor(MooniColor.textPrimary)
+                    .font(MooniFont.title(16))
+                    .foregroundColor(MooniColor.accentSoft)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.top, 6)
     }
@@ -258,12 +254,12 @@ struct HomeView: View {
 
     private func morningHero(_ entry: SleepEntry, isRecovery: Bool) -> some View {
         let scoreTint = scoreColor(entry.score)
+        let mood = Pet.Mood.from(score: entry.score)
 
         return MooniCard(padding: 26, cornerRadius: 32) {
-            VStack(spacing: 20) {
-                // Pet glow + score ring
+            VStack(spacing: 18) {
+                // Score ring — clean, no pet overlay.
                 ZStack {
-                    // Aura halo
                     Circle()
                         .fill(
                             RadialGradient(
@@ -273,31 +269,20 @@ struct HomeView: View {
                                 endRadius: 160
                             )
                         )
-                        .frame(width: 320, height: 320)
+                        .frame(width: 300, height: 300)
                         .blur(radius: 4)
-
-                    // Tiny pet badge floating above the ring
-                    DreamSpiritView(pet: petForMood(Pet.Mood.from(score: entry.score)), size: 64)
-                        .offset(y: -120)
-                        .shadow(color: MooniColor.petGlow.opacity(0.35), radius: 18, y: 8)
 
                     SleepScoreRing(score: entry.score, size: 200, lineWidth: 14)
                 }
-                .frame(height: 230)
+                .frame(height: 210)
 
-                // Headline
-                VStack(spacing: 6) {
-                    Text(entry.formattedDuration)
-                        .font(MooniFont.display(36))
-                        .foregroundColor(MooniColor.textPrimary)
+                // Pet greeting row — relocated below the ring so it's clearly
+                // narration, not part of the score visual.
+                petGreetingRow(mood: mood, headline: heroHeadline(entry, isRecovery: isRecovery))
 
-                    Text(heroHeadline(entry, isRecovery: isRecovery))
-                        .font(MooniFont.body(14))
-                        .foregroundColor(MooniColor.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 8)
-                }
+                Text(entry.formattedDuration)
+                    .font(MooniFont.display(36))
+                    .foregroundColor(MooniColor.textPrimary)
 
                 // Stat chips
                 HStack(spacing: 8) {
@@ -947,6 +932,31 @@ struct HomeView: View {
         var p = appState.pet
         p.mood = mood
         return p
+    }
+
+    /// Pet sits beside its own speech bubble, narrating tonight's score.
+    /// Replaces the old setup where the pet floated on top of the ring and
+    /// fought it for attention.
+    private func petGreetingRow(mood: Pet.Mood, headline: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            DreamSpiritView(pet: petForMood(mood), size: 56)
+                .shadow(color: MooniColor.petGlow.opacity(0.35), radius: 14, y: 6)
+
+            Text(headline)
+                .font(MooniFont.body(13))
+                .foregroundColor(MooniColor.textSecondary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     // MARK: - Copy

@@ -24,7 +24,8 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MooniGradient.adaptive.ignoresSafeArea()
+                MooniGradient.night.ignoresSafeArea()
+                StarsBackground(count: 28)
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -564,7 +565,8 @@ struct ProfileView: View {
                 appState.enterSleepMode()
             }
 
-            devButton("Show morning check-in", icon: "sun.max.fill") {
+            devButton("Preview morning check-in", icon: "sun.max.fill") {
+                seedDevEntryIfNeeded()
                 appState.showMorningCheckIn = true
             }
         }
@@ -575,6 +577,46 @@ struct ProfileView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(MooniColor.danger.opacity(0.3), lineWidth: 1)
         )
+    }
+
+    /// Seed a synthetic last-night entry so the morning check-in flow has
+    /// something to display — bypasses the "still settling in" wait so we
+    /// can preview the full check-in any time during development.
+    private func seedDevEntryIfNeeded() {
+        guard appState.entryNeedingMorningCheckIn == nil else { return }
+
+        let cal = Calendar.current
+        let now = Date()
+        let wake = cal.date(bySettingHour: 7, minute: 12, second: 0, of: now) ?? now
+        let bed = cal.date(byAdding: .hour, value: -7, to: wake) ?? now.addingTimeInterval(-7 * 3600)
+
+        // Replace any existing same-day entry so the preview always shows
+        // fresh "needs check-in" state.
+        if let idx = appState.entries.firstIndex(where: { $0.dayKey == wake.dayKey }) {
+            appState.entries.remove(at: idx)
+        }
+        MorningCheckInStore.clear(for: wake.dayKey)
+
+        var entry = SleepEntry(
+            bedtime: bed,
+            wakeTime: wake,
+            quality: .good,
+            mood: .okay,
+            notes: "[DEV preview]",
+            routineCompleted: false,
+            isEstimated: false,
+            timeInBed: wake.timeIntervalSince(bed),
+            source: .appActivityEstimate
+        )
+        SleepScoringManager.update(
+            entry: &entry,
+            goalHours: appState.goalHours,
+            targetBedtime: appState.targetBedtime,
+            consistencyDays: appState.bedtimeConsistencyDays,
+            checkIn: nil,
+            age: appState.profile.age
+        )
+        appState.entries.append(entry)
     }
 
     private func devButton(
