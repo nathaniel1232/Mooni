@@ -7,47 +7,87 @@ import SwiftUI
 /// Light mode is a soft moonlit cream variant — same color DNA, less contrast.
 struct SleepWidgetBackground: View {
     @Environment(\.colorScheme) private var scheme
+    /// Score tint piped in by each widget — used to colour the corner glow so
+    /// the whole widget reads as "good night" / "rough night" at a glance.
+    /// nil falls back to the brand accent.
+    var tint: Color? = nil
 
     var body: some View {
         ZStack {
+            // Base gradient — slightly richer than the previous flat-navy
+            // version. Bottom is a deep midnight, top picks up a hint of the
+            // tint so the widget feels lit from above by the score.
             LinearGradient(
                 colors: scheme == .dark ? darkColors : lightColors,
-                startPoint: .top,
-                endPoint: .bottom
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
 
-            // Soft accent glow from the top — matches the in-app card halo.
+            // Tinted halo from the top-left corner — replaces the old fixed
+            // accent glow with a per-widget colour so the score visually owns
+            // the surface.
             RadialGradient(
                 colors: [
-                    accentGlow.opacity(scheme == .dark ? 0.30 : 0.20),
+                    haloColor.opacity(scheme == .dark ? 0.42 : 0.22),
                     .clear
                 ],
                 center: .topLeading,
+                startRadius: 0,
+                endRadius: 260
+            )
+            .blendMode(.plusLighter)
+
+            // Faint bottom-right counter-glow keeps the surface from feeling
+            // one-sided. Cool indigo to balance the warmer top corner.
+            RadialGradient(
+                colors: [
+                    accentGlow.opacity(scheme == .dark ? 0.22 : 0.10),
+                    .clear
+                ],
+                center: .bottomTrailing,
                 startRadius: 0,
                 endRadius: 220
             )
             .blendMode(.plusLighter)
 
             if scheme == .dark {
-                StarSpeckles().opacity(0.45)
+                StarSpeckles().opacity(0.55)
             }
+
+            // Subtle inner border so the widget reads as a single piece of
+            // glass rather than a flat coloured tile.
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(scheme == .dark ? 0.18 : 0.5),
+                            Color.white.opacity(0.02)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.6
+                )
         }
     }
 
-    /// In-app `MooniColor.background` is a near-black deep navy. Use the same
-    /// base + a touch of accent for depth.
+    private var haloColor: Color { tint ?? accentGlow }
+
+    /// In-app `MooniColor.background` is a near-black deep navy. New gradient
+    /// has a slightly bluer mid-tone for more depth.
     private var darkColors: [Color] {
         [
-            Color(red: 0.04, green: 0.04, blue: 0.10),
-            Color(red: 0.07, green: 0.06, blue: 0.16),
-            Color(red: 0.10, green: 0.08, blue: 0.22)
+            Color(red: 0.05, green: 0.05, blue: 0.13),
+            Color(red: 0.08, green: 0.07, blue: 0.20),
+            Color(red: 0.04, green: 0.04, blue: 0.10)
         ]
     }
 
     private var lightColors: [Color] {
         [
-            Color(red: 0.97, green: 0.95, blue: 1.00),
-            Color(red: 0.92, green: 0.90, blue: 1.00)
+            Color(red: 0.98, green: 0.96, blue: 1.00),
+            Color(red: 0.93, green: 0.91, blue: 1.00),
+            Color(red: 0.88, green: 0.86, blue: 0.99)
         ]
     }
 
@@ -57,26 +97,47 @@ struct SleepWidgetBackground: View {
 }
 
 private struct StarSpeckles: View {
+    // Hand-placed for hierarchy: a few "anchor" bright stars + many faint
+    // background pinpricks. Read like a real sky, not a regular pattern.
+    private let bright: [(CGPoint, CGFloat)] = [
+        (CGPoint(x: 0.18, y: 0.22), 2.4),
+        (CGPoint(x: 0.88, y: 0.14), 1.8),
+        (CGPoint(x: 0.74, y: 0.82), 2.6),
+        (CGPoint(x: 0.92, y: 0.55), 2.0)
+    ]
+    private let faint: [(CGPoint, CGFloat)] = [
+        (CGPoint(x: 0.30, y: 0.78), 1.2),
+        (CGPoint(x: 0.55, y: 0.10), 1.0),
+        (CGPoint(x: 0.10, y: 0.55), 1.0),
+        (CGPoint(x: 0.42, y: 0.34), 0.9),
+        (CGPoint(x: 0.66, y: 0.46), 1.1),
+        (CGPoint(x: 0.22, y: 0.92), 0.8),
+        (CGPoint(x: 0.50, y: 0.68), 0.9),
+        (CGPoint(x: 0.80, y: 0.30), 1.0)
+    ]
+
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                star(at: CGPoint(x: 0.18, y: 0.22), size: 2,   in: proxy.size)
-                star(at: CGPoint(x: 0.88, y: 0.14), size: 1.5, in: proxy.size)
-                star(at: CGPoint(x: 0.74, y: 0.82), size: 2.5, in: proxy.size)
-                star(at: CGPoint(x: 0.30, y: 0.78), size: 1.5, in: proxy.size)
-                star(at: CGPoint(x: 0.55, y: 0.10), size: 1.2, in: proxy.size)
-                star(at: CGPoint(x: 0.10, y: 0.55), size: 1.2, in: proxy.size)
-                star(at: CGPoint(x: 0.92, y: 0.55), size: 1.8, in: proxy.size)
+                ForEach(0..<bright.count, id: \.self) { i in
+                    star(at: bright[i].0, size: bright[i].1, bright: true, in: proxy.size)
+                }
+                ForEach(0..<faint.count, id: \.self) { i in
+                    star(at: faint[i].0, size: faint[i].1, bright: false, in: proxy.size)
+                }
             }
         }
     }
 
-    private func star(at point: CGPoint, size: CGFloat, in container: CGSize) -> some View {
+    private func star(at point: CGPoint, size: CGFloat, bright: Bool, in container: CGSize) -> some View {
         Circle()
-            .fill(Color.white.opacity(0.85))
+            .fill(Color.white.opacity(bright ? 0.92 : 0.55))
             .frame(width: size, height: size)
             .position(x: point.x * container.width, y: point.y * container.height)
-            .shadow(color: Color(red: 0.78, green: 0.74, blue: 1.0).opacity(0.7), radius: 3)
+            .shadow(
+                color: Color(red: 0.78, green: 0.74, blue: 1.0).opacity(bright ? 0.85 : 0.4),
+                radius: bright ? 3 : 1.5
+            )
     }
 }
 

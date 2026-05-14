@@ -1647,6 +1647,20 @@ private struct AutoWakeUpSheet: View {
     let petName: String
     @Binding var showPaywall: Bool
 
+    // Phase: accuracy gate → summary. The gate is the first thing the user
+    // sees on waking — it asks "did we get this right?" and offers a quick
+    // edit. Only after they confirm (or save edits) does the rich morning
+    // summary play its animations.
+    private enum WakePhase { case accuracy, summary }
+    @State private var phase: WakePhase = .accuracy
+
+    // Editable copies of the tracked times, surfaced when the user taps Edit.
+    @State private var editing: Bool = false
+    @State private var editedBedtime: Date = .now
+    @State private var editedWakeTime: Date = .now
+    @State private var accuracyChipsIn: Bool = false
+    @State private var accuracyHeroIn: Bool = false
+
     @State private var heroVisible = false
     @State private var ringVisible = false
     @State private var rowVisible = false
@@ -1682,85 +1696,389 @@ private struct AutoWakeUpSheet: View {
                 MooniGradient.night.ignoresSafeArea()
                 StarsBackground(count: 60)
 
-                ScrollView {
-                    VStack(spacing: 18) {
-                        heroSection
-                            .opacity(heroVisible ? 1 : 0)
-
-                        highlightRow
-                            .opacity(rowVisible ? 1 : 0)
-                            .offset(y: rowVisible ? 0 : 10)
-
-                        if let level = stats.leveledUpTo {
-                            levelUpCard(level: level)
-                                .opacity(cardsVisible ? 1 : 0)
-                                .offset(y: cardsVisible ? 0 : 12)
-                        }
-
-                        if stats.currentStreak > 0 || stats.newLongestStreak {
-                            streakCard
-                                .opacity(cardsVisible ? 1 : 0)
-                                .offset(y: cardsVisible ? 0 : 12)
-                        }
-
-                        xpCard
-                            .opacity(cardsVisible ? 1 : 0)
-                            .offset(y: cardsVisible ? 0 : 12)
-
-                        if let s = entry.stages, s.totalSleep > 0 {
-                            stagesCard(s)
-                                .opacity(cardsVisible ? 1 : 0)
-                                .offset(y: cardsVisible ? 0 : 12)
-                        }
-
-                        coreStatsCard
-                            .opacity(cardsVisible ? 1 : 0)
-                            .offset(y: cardsVisible ? 0 : 12)
-
-                        sparklineCard
-                            .opacity(cardsVisible ? 1 : 0)
-                            .offset(y: cardsVisible ? 0 : 12)
-
-                        petMessageCard
-                            .opacity(cardsVisible ? 1 : 0)
-                            .offset(y: cardsVisible ? 0 : 12)
-
-                        ctaButton
-                            .opacity(cardsVisible ? 1 : 0)
-                            .padding(.top, 4)
+                Group {
+                    if phase == .accuracy {
+                        accuracyGateView
+                            .transition(.opacity.combined(with: .move(edge: .leading)))
+                    } else {
+                        summaryScrollView
+                            .transition(.opacity.combined(with: .move(edge: .trailing)))
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 4)
-                    .padding(.bottom, 32)
                 }
+                .animation(.easeInOut(duration: 0.4), value: phase)
             }
-            .navigationTitle("This morning")
+            .navigationTitle(phase == .accuracy ? "Good morning" : "This morning")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .foregroundColor(MooniColor.accent)
+                    // Only show Done once the user is past the accuracy gate.
+                    if phase == .summary {
+                        Button("Done") { dismiss() }
+                            .foregroundColor(MooniColor.accent)
+                    }
                 }
             }
-            .onAppear { runEntryAnimation() }
+            .onAppear {
+                editedBedtime = entry.bedtime
+                editedWakeTime = entry.wakeTime
+                runAccuracyAnimation()
+            }
         }
+    }
+
+    // MARK: - Accuracy gate
+
+    private var accuracyGateView: some View {
+        ScrollView {
+            VStack(spacing: 22) {
+                // Chip + headline
+                VStack(spacing: 10) {
+                    Text("🦉 WE TRACKED YOUR NIGHT")
+                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .foregroundColor(MooniColor.accentSoft)
+                        .tracking(2)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(MooniColor.accent.opacity(0.16))
+                        .clipShape(Capsule())
+
+                    Text(editing ? "Adjust the times\nbelow." : "Did we get\nthis right?")
+                        .font(.system(size: 28, weight: .heavy, design: .rounded))
+                        .foregroundColor(MooniColor.textPrimary)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(2)
+                }
+                .opacity(accuracyHeroIn ? 1 : 0)
+                .offset(y: accuracyHeroIn ? 0 : 8)
+
+                // Bedtime / Wake big time cards
+                HStack(spacing: 12) {
+                    accuracyTimeCard(
+                        emoji: "🌙",
+                        label: "BEDTIME",
+                        tint: MooniColor.accent,
+                        date: editing ? $editedBedtime : .constant(entry.bedtime),
+                        editing: editing
+                    )
+                    accuracyTimeCard(
+                        emoji: "☀️",
+                        label: "WAKE",
+                        tint: MooniColor.warning,
+                        date: editing ? $editedWakeTime : .constant(entry.wakeTime),
+                        editing: editing
+                    )
+                }
+                .opacity(accuracyHeroIn ? 1 : 0)
+                .offset(y: accuracyHeroIn ? 0 : 10)
+
+                // Duration callout (recomputed live when editing)
+                let durationHours = (editing ? editedWakeTime : entry.wakeTime)
+                    .timeIntervalSince(editing ? editedBedtime : entry.bedtime) / 3600.0
+                HStack(spacing: 8) {
+                    Text("⏱️")
+                    Text(durationLabel(durationHours))
+                        .font(.system(size: 14, weight: .heavy, design: .rounded))
+                        .foregroundColor(MooniColor.textPrimary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.06))
+                .clipShape(Capsule())
+                .opacity(accuracyHeroIn ? 1 : 0)
+
+                if editing {
+                    // Save / Cancel pair
+                    VStack(spacing: 10) {
+                        Button(action: saveEdits) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark")
+                                Text("Save my times")
+                            }
+                            .font(.system(size: 15, weight: .heavy, design: .rounded))
+                            .foregroundColor(MooniColor.background)
+                            .padding(.vertical, 14)
+                            .frame(maxWidth: .infinity)
+                            .background(MooniColor.success)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .disabled(editedWakeTime <= editedBedtime)
+                        .opacity(editedWakeTime <= editedBedtime ? 0.5 : 1)
+
+                        Button(action: cancelEdits) {
+                            Text("Cancel")
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundColor(MooniColor.textSecondary)
+                                .padding(.vertical, 6)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .opacity(accuracyChipsIn ? 1 : 0)
+                    .offset(y: accuracyChipsIn ? 0 : 10)
+                } else {
+                    // Feedback question + 3 big buttons
+                    Text("How close did we get?")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .padding(.top, 4)
+                        .opacity(accuracyChipsIn ? 1 : 0)
+
+                    VStack(spacing: 10) {
+                        accuracyChoice(emoji: "👍", label: "Accurate",
+                                       sub: "Times match what I remember",
+                                       tint: MooniColor.success,
+                                       action: { record("accurate"); advanceToSummary() })
+                        accuracyChoice(emoji: "🤏", label: "Somewhat accurate",
+                                       sub: "Close but off by a few minutes",
+                                       tint: MooniColor.warning,
+                                       action: { record("somewhat"); advanceToSummary() })
+                        accuracyChoice(emoji: "👎", label: "Not accurate",
+                                       sub: "Pretty off — let me edit",
+                                       tint: MooniColor.danger,
+                                       action: { record("inaccurate"); startEditing() })
+                    }
+                    .opacity(accuracyChipsIn ? 1 : 0)
+                    .offset(y: accuracyChipsIn ? 0 : 10)
+
+                    Button(action: startEditing) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Edit times")
+                                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                        }
+                        .foregroundColor(MooniColor.accentSoft)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(MooniColor.accent.opacity(0.14))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(MooniColor.accent.opacity(0.3), lineWidth: 1))
+                    }
+                    .opacity(accuracyChipsIn ? 1 : 0)
+                    .padding(.top, 4)
+
+                    Button(action: { record("skipped"); advanceToSummary() }) {
+                        Text("Skip — show my morning")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundColor(MooniColor.textMuted.opacity(0.7))
+                            .padding(.top, 6)
+                    }
+                    .opacity(accuracyChipsIn ? 1 : 0)
+                }
+
+                Spacer(minLength: 24)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+        }
+    }
+
+    private var summaryScrollView: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                heroSection
+                    .opacity(heroVisible ? 1 : 0)
+
+                highlightRow
+                    .opacity(rowVisible ? 1 : 0)
+                    .offset(y: rowVisible ? 0 : 10)
+
+                if let level = stats.leveledUpTo {
+                    levelUpCard(level: level)
+                        .opacity(cardsVisible ? 1 : 0)
+                        .offset(y: cardsVisible ? 0 : 12)
+                }
+
+                if stats.currentStreak > 0 || stats.newLongestStreak {
+                    streakCard
+                        .opacity(cardsVisible ? 1 : 0)
+                        .offset(y: cardsVisible ? 0 : 12)
+                }
+
+                xpCard
+                    .opacity(cardsVisible ? 1 : 0)
+                    .offset(y: cardsVisible ? 0 : 12)
+
+                if let s = entry.stages, s.totalSleep > 0 {
+                    stagesCard(s)
+                        .opacity(cardsVisible ? 1 : 0)
+                        .offset(y: cardsVisible ? 0 : 12)
+                }
+
+                coreStatsCard
+                    .opacity(cardsVisible ? 1 : 0)
+                    .offset(y: cardsVisible ? 0 : 12)
+
+                sparklineCard
+                    .opacity(cardsVisible ? 1 : 0)
+                    .offset(y: cardsVisible ? 0 : 12)
+
+                petMessageCard
+                    .opacity(cardsVisible ? 1 : 0)
+                    .offset(y: cardsVisible ? 0 : 12)
+
+                ctaButton
+                    .opacity(cardsVisible ? 1 : 0)
+                    .padding(.top, 4)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 4)
+            .padding(.bottom, 32)
+        }
+        .onAppear { runEntryAnimation() }
+    }
+
+    // MARK: Accuracy helpers
+
+    private func accuracyTimeCard(emoji: String, label: String, tint: Color,
+                                  date: Binding<Date>, editing: Bool) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Text(emoji).font(.system(size: 16))
+                Text(label)
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundColor(tint)
+                    .tracking(1.4)
+            }
+
+            if editing {
+                DatePicker("", selection: date, displayedComponents: .hourAndMinute)
+                    .datePickerStyle(.wheel)
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 110)
+                    .clipped()
+                    .colorScheme(.dark)
+            } else {
+                Text(date.wrappedValue.hourMinuteString)
+                    .font(.system(size: 32, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .frame(height: 60)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 10)
+        .background(tint.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(tint.opacity(0.32), lineWidth: 1)
+        )
+    }
+
+    private func accuracyChoice(emoji: String, label: String, sub: String,
+                                tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Text(emoji).font(.system(size: 28))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text(sub)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundColor(MooniColor.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(tint)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(tint.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(tint.opacity(0.32), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func durationLabel(_ hours: Double) -> String {
+        guard hours.isFinite, hours > 0 else { return "—" }
+        let h = Int(hours)
+        let m = Int((hours - Double(h)) * 60)
+        return "\(h)h \(m)m of sleep"
+    }
+
+    // MARK: Animations / actions
+
+    private func runAccuracyAnimation() {
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        withAnimation(.easeOut(duration: 0.45).delay(0.08)) { accuracyHeroIn = true }
+        withAnimation(.easeOut(duration: 0.45).delay(0.28)) { accuracyChipsIn = true }
+    }
+
+    private func record(_ rating: String) {
+        // Lightweight telemetry — survives app launches but never blocks user.
+        let key = "wakeAccuracyFeedback"
+        var log = (UserDefaults.standard.array(forKey: key) as? [[String: String]]) ?? []
+        log.append([
+            "date": ISO8601DateFormatter().string(from: Date()),
+            "rating": rating,
+            "bed": ISO8601DateFormatter().string(from: entry.bedtime),
+            "wake": ISO8601DateFormatter().string(from: entry.wakeTime)
+        ])
+        // Cap to last 60 entries — no need for unbounded growth.
+        if log.count > 60 { log = Array(log.suffix(60)) }
+        UserDefaults.standard.set(log, forKey: key)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func startEditing() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        editedBedtime = entry.bedtime
+        editedWakeTime = entry.wakeTime
+        withAnimation(.easeInOut(duration: 0.3)) { editing = true }
+    }
+
+    private func cancelEdits() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        editedBedtime = entry.bedtime
+        editedWakeTime = entry.wakeTime
+        withAnimation(.easeInOut(duration: 0.3)) { editing = false }
+    }
+
+    private func saveEdits() {
+        guard editedWakeTime > editedBedtime else { return }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        _ = appState.logSleep(
+            bedtime: editedBedtime,
+            wakeTime: editedWakeTime,
+            quality: entry.quality,
+            mood: entry.mood,
+            notes: entry.notes,
+            routineCompleted: entry.routineCompleted
+        )
+        record("edited")
+        advanceToSummary()
+    }
+
+    private func advanceToSummary() {
+        withAnimation(.easeInOut(duration: 0.4)) { phase = .summary }
     }
 
     private func runEntryAnimation() {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         withAnimation(.easeOut(duration: 0.4)) { heroVisible = true }
-        withAnimation(.spring(response: 1.15, dampingFraction: 0.72).delay(0.2)) {
+        withAnimation(.spring(response: 1.0, dampingFraction: 0.78).delay(0.15)) {
             ringVisible = true
         }
-        withAnimation(.easeOut(duration: 0.45).delay(0.35)) { rowVisible = true }
-        withAnimation(.easeOut(duration: 0.5).delay(0.55)) { cardsVisible = true }
+        withAnimation(.easeOut(duration: 0.45).delay(0.30)) { rowVisible = true }
+        withAnimation(.easeOut(duration: 0.5).delay(0.50)) { cardsVisible = true }
+
+        // Always start the halo + spirit pulse — it's a gentle ambient breath,
+        // not just a level-up celebration. Bigger wins still get the success
+        // haptic on top.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            levelUpPulse = true
+        }
         if stats.leveledUpTo != nil || stats.newLongestStreak || (stats.bestInDays ?? 0) >= 7 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-            }
-            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
-                levelUpPulse = true
             }
         }
     }
@@ -1768,7 +2086,8 @@ private struct AutoWakeUpSheet: View {
     // MARK: Hero
 
     private var heroSection: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
+            // Auto-tracked chip — kept; this is the user's first proof we measured.
             HStack(spacing: 6) {
                 Image(systemName: "waveform.path.ecg")
                     .font(.system(size: 10, weight: .bold))
@@ -1783,10 +2102,17 @@ private struct AutoWakeUpSheet: View {
             .clipShape(Capsule())
             .overlay(Capsule().stroke(MooniColor.success.opacity(0.3), lineWidth: 1))
 
-            Text("GOOD MORNING")
-                .font(MooniFont.caption(11))
-                .foregroundColor(MooniColor.accentSoft)
-                .tracking(2)
+            // ☀️ + GOOD MORNING — small emoji adds warmth without bloating the
+            // header. The eyebrow is uppercased on purpose so the headline beneath
+            // gets the eye.
+            HStack(spacing: 6) {
+                Text("☀️")
+                    .font(.system(size: 14))
+                Text("GOOD MORNING")
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.accentSoft)
+                    .tracking(2)
+            }
 
             Text(stats.heroHeadline(petName: petName))
                 .font(MooniFont.display(26))
@@ -1796,17 +2122,27 @@ private struct AutoWakeUpSheet: View {
                 .padding(.horizontal, 8)
 
             ZStack {
+                // Soft sunrise halo — pulses gently so the screen feels alive
+                // without being distracting. Tint follows the score colour so
+                // good nights glow warm/green and rough nights glow cool/red.
                 Circle()
                     .fill(RadialGradient(
-                        colors: [scoreTint.opacity(0.32), .clear],
-                        center: .center, startRadius: 4, endRadius: 160))
-                    .frame(width: 320, height: 320)
-                    .blur(radius: 6)
+                        colors: [scoreTint.opacity(levelUpPulse ? 0.42 : 0.30), .clear],
+                        center: .center, startRadius: 4, endRadius: 170))
+                    .frame(width: 340, height: 340)
+                    .blur(radius: 10)
+                    .animation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true),
+                               value: levelUpPulse)
+
                 DreamSpiritView(pet: appState.pet, size: 64)
                     .offset(y: -112)
-                    .scaleEffect(levelUpPulse ? 1.04 : 1.0)
+                    .scaleEffect(levelUpPulse ? 1.05 : 1.0)
+                    .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true),
+                               value: levelUpPulse)
+
                 SleepScoreRing(score: ringVisible ? entry.score : 0, size: 188, lineWidth: 14)
-                    .animation(.spring(response: 1.2, dampingFraction: 0.72).delay(0.25), value: ringVisible)
+                    .animation(.spring(response: 1.0, dampingFraction: 0.78).delay(0.15),
+                               value: ringVisible)
             }
             .frame(height: 220)
         }

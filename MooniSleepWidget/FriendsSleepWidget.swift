@@ -37,7 +37,7 @@ struct FriendsSleepWidgetEntryView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .containerBackground(for: .widget) {
-                SleepWidgetBackground()
+                SleepWidgetBackground(tint: entry.data.me.scoreTint)
             }
     }
 }

@@ -757,17 +757,27 @@ final class AppState: ObservableObject {
         var entry = entries[idx]
         let previousEnergy = entry.energyEarned
 
-        // Refine bedtime / wake based on the user's self-reported timing:
-        //   real bedtime    = sleepStartedAt + "minutes to fall asleep"
-        //   real wake time  = wake-tap time − "minutes from waking to opening app"
-        // Both bound to keep duration sane.
-        if let asleepMins = checkIn.minutesToFallAsleep, asleepMins > 0 {
-            let shifted = entry.bedtime.addingTimeInterval(TimeInterval(asleepMins) * 60)
-            if shifted < entry.wakeTime { entry.bedtime = shifted }
-        }
-        if let openDelay = checkIn.minutesFromWakeToAppOpen, openDelay > 0 {
-            let shifted = entry.wakeTime.addingTimeInterval(-TimeInterval(openDelay) * 60)
-            if shifted > entry.bedtime { entry.wakeTime = shifted }
+        // User-corrected times win outright — they just told us the
+        // auto-detected window was wrong. Mark the entry as user-adjusted
+        // so the UI shows it.
+        if let bed = checkIn.correctedBedtime, let wake = checkIn.correctedWakeTime, wake > bed {
+            entry.bedtime = bed
+            entry.wakeTime = wake
+            entry.source = .userAdjusted
+            entry.isEstimated = false
+        } else {
+            // Refine bedtime / wake based on the user's self-reported timing:
+            //   real bedtime    = sleepStartedAt + "minutes to fall asleep"
+            //   real wake time  = wake-tap time − "minutes from waking to opening app"
+            // Both bound to keep duration sane.
+            if let asleepMins = checkIn.minutesToFallAsleep, asleepMins > 0 {
+                let shifted = entry.bedtime.addingTimeInterval(TimeInterval(asleepMins) * 60)
+                if shifted < entry.wakeTime { entry.bedtime = shifted }
+            }
+            if let openDelay = checkIn.minutesFromWakeToAppOpen, openDelay > 0 {
+                let shifted = entry.wakeTime.addingTimeInterval(-TimeInterval(openDelay) * 60)
+                if shifted > entry.bedtime { entry.wakeTime = shifted }
+            }
         }
         entry.timeInBed = max(0, entry.wakeTime.timeIntervalSince(entry.bedtime))
         entry.totalSleep = entry.timeInBed

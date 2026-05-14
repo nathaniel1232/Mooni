@@ -24,6 +24,36 @@ struct MorningCheckIn: Codable, Hashable {
     /// Minutes between SleepOwl's wake-tap and the user actually opening
     /// the morning check-in. Used to refine wake-time accuracy.
     var minutesFromWakeToAppOpen: Int?
+    /// If the user corrected the auto-detected bedtime in the check-in.
+    var correctedBedtime: Date?
+    /// If the user corrected the auto-detected wake time in the check-in.
+    var correctedWakeTime: Date?
+    /// How accurate the user judged the auto-detected sleep window to be.
+    var accuracyRating: SleepAccuracyRating?
+}
+
+enum SleepAccuracyRating: String, Codable, CaseIterable, Identifiable {
+    case spotOn
+    case mostlyRight
+    case wayOff
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .spotOn:      return "Spot on"
+        case .mostlyRight: return "Mostly right"
+        case .wayOff:      return "Way off"
+        }
+    }
+
+    var emoji: String {
+        switch self {
+        case .spotOn:      return "🎯"
+        case .mostlyRight: return "👍"
+        case .wayOff:      return "🤔"
+        }
+    }
 }
 
 enum MorningFeeling: String, Codable, CaseIterable, Identifiable {

@@ -55,7 +55,7 @@ struct MooniSleepWidgetEntryView: View {
             }
         }
         .containerBackground(for: .widget) {
-            SleepWidgetBackground()
+            SleepWidgetBackground(tint: entry.data.scoreTint)
         }
     }
 }

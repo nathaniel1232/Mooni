@@ -1,16 +1,15 @@
 import SwiftUI
 
-/// Small widget — tight, balanced layout. SleepOwl brand top, mascot+ring
-/// in the middle, time range across the bottom so you always see when
-/// you slept at a glance.
+/// Small widget — hero-score layout. The score number is the focal point:
+/// massive, tinted glow, paired with a gradient ring on the right. Brand mark
+/// sits at the top, a single elegant chip at the bottom shows duration +
+/// window in one line. Way more visual hierarchy than the previous design.
 struct SmallSleepWidgetView: View {
     let data: SleepWidgetData
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Brand row gets the priority — discoverability is half the
-            // point of a widget on someone else's home screen. Quality
-            // chip drops to a dot if there isn't room.
+        VStack(alignment: .leading, spacing: 0) {
+            // Top: brand mark + quality pill
             HStack(alignment: .center, spacing: 6) {
                 brandMark
                     .layoutPriority(2)
@@ -19,56 +18,40 @@ struct SmallSleepWidgetView: View {
                     .layoutPriority(1)
             }
 
-            HStack(alignment: .center, spacing: 10) {
-                SleepScoreRing(
-                    progress: data.ringProgress,
-                    tint: data.scoreTint,
-                    lineWidth: 6
-                ) {
-                    MooniMascotView()
-                }
-                .frame(width: 64, height: 64)
+            Spacer(minLength: 0)
 
-                VStack(alignment: .leading, spacing: 0) {
+            // Hero row — massive score number + glowing ring with mascot
+            HStack(alignment: .center, spacing: 8) {
+                VStack(alignment: .leading, spacing: -4) {
                     Text("\(data.score)")
-                        .font(.system(size: 36, weight: .heavy, design: .rounded))
-                        .foregroundStyle(SleepWidgetPalette.textPrimary)
-                        .minimumScaleFactor(0.7)
+                        .font(.system(size: 56, weight: .heavy, design: .rounded))
+                        .foregroundStyle(scoreGradient)
+                        .shadow(color: data.scoreTint.opacity(0.55), radius: 12, y: 0)
+                        .minimumScaleFactor(0.6)
                         .lineLimit(1)
                     Text(scoreCaption)
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
                         .foregroundStyle(SleepWidgetPalette.textTertiary)
-                        .lineLimit(1)
+                        .tracking(1.4)
+                        .textCase(.uppercase)
                 }
                 Spacer(minLength: 0)
+                ringHero
             }
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 8) {
-                footerMetric(
-                    icon: "bed.double.fill",
-                    value: data.sleepDuration,
-                    label: "Asleep",
-                    color: data.scoreTint
-                )
-                footerMetric(
-                    icon: "alarm.fill",
-                    value: "\(data.sleepStart)→\(data.wakeTime)",
-                    label: "Window",
-                    color: SleepWidgetPalette.textSecondary
-                )
-            }
+            // Footer — one elegant glassy chip: duration + window
+            footerChip
         }
     }
 
-    /// Made deliberately bold + slightly bigger than before so the app
-    /// name reads at a glance. Anyone glancing at a friend's lock screen
-    /// can identify the source app — that's the whole growth loop.
+    // MARK: Brand
+
     private var brandMark: some View {
         HStack(spacing: 4) {
             Image(systemName: "moon.stars.fill")
-                .font(.system(size: 12, weight: .black))
+                .font(.system(size: 11, weight: .black))
                 .foregroundStyle(
                     LinearGradient(
                         colors: [SleepWidgetPalette.textPrimary, data.scoreTint],
@@ -77,18 +60,15 @@ struct SmallSleepWidgetView: View {
                     )
                 )
             Text("SleepOwl")
-                .font(.system(size: 13, weight: .black, design: .rounded))
+                .font(.system(size: 12, weight: .black, design: .rounded))
                 .tracking(0.1)
                 .foregroundStyle(SleepWidgetPalette.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
-                .allowsTightening(true)
         }
     }
 
     private var qualityChip: some View {
-        // Tightened width (was 58) so the brand mark always wins room when
-        // the system pads the small widget tighter than expected.
         Text(data.quality)
             .font(.system(size: 8, weight: .heavy, design: .rounded))
             .tracking(0.15)
@@ -96,41 +76,100 @@ struct SmallSleepWidgetView: View {
             .foregroundStyle(data.scoreTint)
             .lineLimit(1)
             .minimumScaleFactor(0.55)
-            .allowsTightening(true)
-            .frame(maxWidth: 50)
+            .frame(maxWidth: 52)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(Capsule().fill(data.scoreTint.opacity(0.18)))
-            .overlay(Capsule().stroke(data.scoreTint.opacity(0.35), lineWidth: 0.5))
+            .background(
+                Capsule()
+                    .fill(data.scoreTint.opacity(0.22))
+            )
+            .overlay(
+                Capsule().stroke(data.scoreTint.opacity(0.45), lineWidth: 0.6)
+            )
+    }
+
+    // MARK: Ring hero
+
+    private var ringHero: some View {
+        ZStack {
+            // Outer soft glow — gives the ring depth
+            Circle()
+                .fill(data.scoreTint.opacity(0.18))
+                .frame(width: 70, height: 70)
+                .blur(radius: 8)
+
+            // Track
+            Circle()
+                .stroke(SleepWidgetPalette.ringTrack, lineWidth: 7)
+                .frame(width: 58, height: 58)
+
+            // Progress — gradient stroke, rotated so it starts at 12 o'clock
+            Circle()
+                .trim(from: 0, to: data.ringProgress)
+                .stroke(
+                    AngularGradient(
+                        colors: [
+                            data.scoreTint.opacity(0.6),
+                            data.scoreTint,
+                            data.scoreTint.opacity(0.9)
+                        ],
+                        center: .center
+                    ),
+                    style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                )
+                .frame(width: 58, height: 58)
+                .rotationEffect(.degrees(-90))
+                .shadow(color: data.scoreTint.opacity(0.55), radius: 6)
+
+            MooniMascotView()
+                .frame(width: 32, height: 32)
+        }
+        .frame(width: 70, height: 70)
     }
 
     private var scoreCaption: String {
-        data.score >= 85 ? "sleep score" : "recovery score"
+        data.score >= 85 ? "sleep score" : "tonight"
     }
 
-    private func footerMetric(icon: String, value: String, label: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(color)
-                Text(value)
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .foregroundStyle(SleepWidgetPalette.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.58)
-                    .allowsTightening(true)
-            }
-            Text(label)
-                .font(.system(size: 8, weight: .semibold, design: .rounded))
-                .foregroundStyle(SleepWidgetPalette.textTertiary)
-                .textCase(.uppercase)
+    private var scoreGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                SleepWidgetPalette.textPrimary,
+                data.scoreTint
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    // MARK: Footer
+
+    private var footerChip: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "bed.double.fill")
+                .font(.system(size: 9, weight: .heavy))
+                .foregroundStyle(data.scoreTint)
+            Text(data.sleepDuration)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundStyle(SleepWidgetPalette.textPrimary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Spacer(minLength: 4)
+            Text("\(data.sleepStart) → \(data.wakeTime)")
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(SleepWidgetPalette.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .background(SleepWidgetPalette.chipBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(SleepWidgetPalette.chipBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(data.scoreTint.opacity(0.18), lineWidth: 0.6)
+        )
     }
 }

@@ -3468,186 +3468,395 @@ private struct WidgetPreviewScreen: View {
 
     // MARK: Widget mocks
 
+    // MARK: - Onboarding widget mocks
+    //
+    // These mocks mirror the real shipping widgets (SmallSleepWidgetView,
+    // MediumSleepWidgetView, FriendsSleepWidgetView). The visual design is
+    // kept in lock-step so the user sees in onboarding *exactly* what they'll
+    // get on their home screen — premium ring with glow, gradient score
+    // number, glass chips, tinted halo background, star speckles.
+
     private var smallWidgetMock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "moon.stars.fill")
-                    .foregroundColor(MooniColor.accentSoft)
-                    .font(.system(size: 16, weight: .bold))
+        let tint = MooniColor.success
+        return VStack(alignment: .leading, spacing: 0) {
+            // Top: brand + quality
+            HStack(alignment: .center, spacing: 6) {
+                HStack(spacing: 3) {
+                    Image(systemName: "moon.stars.fill")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(LinearGradient(
+                            colors: [.white, tint],
+                            startPoint: .topLeading, endPoint: .bottomTrailing))
+                    Text("SleepOwl")
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                }
                 Spacer()
-                Text("SLEEPOWL")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.textMuted)
-                    .tracking(1.5)
+                Text("GOOD")
+                    .font(.system(size: 8, weight: .heavy, design: .rounded))
+                    .tracking(0.15)
+                    .foregroundColor(tint)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(Capsule().fill(tint.opacity(0.22)))
+                    .overlay(Capsule().stroke(tint.opacity(0.45), lineWidth: 0.6))
             }
+
             Spacer(minLength: 0)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("84")
-                    .font(.system(size: 56, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.success)
-                Text("score")
-                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+
+            // Hero row
+            HStack(alignment: .center, spacing: 8) {
+                VStack(alignment: .leading, spacing: -4) {
+                    Text("84")
+                        .font(.system(size: 56, weight: .heavy, design: .rounded))
+                        .foregroundStyle(LinearGradient(
+                            colors: [.white, tint],
+                            startPoint: .top, endPoint: .bottom))
+                        .shadow(color: tint.opacity(0.55), radius: 12)
+                    Text("TONIGHT")
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                        .tracking(1.4)
+                        .foregroundColor(MooniColor.textMuted)
+                }
+                Spacer()
+                mockRing(progress: 0.84, tint: tint, size: 70, lineWidth: 7)
+            }
+
+            Spacer(minLength: 0)
+
+            // Footer chip
+            HStack(spacing: 6) {
+                Image(systemName: "bed.double.fill")
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundColor(tint)
+                Text("7h 24m")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                Spacer(minLength: 4)
+                Text("11:42p → 7:18a")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
                     .foregroundColor(MooniColor.textSecondary)
             }
-            Text("7h 24m · last night")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundColor(MooniColor.textSecondary)
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Color.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(tint.opacity(0.18), lineWidth: 0.6))
         }
-        .padding(18)
-        .frame(width: 170, height: 170)
-        .background(widgetBg(tint: MooniColor.accentSoft))
+        .padding(14)
+        .frame(width: 178, height: 178)
+        .background(mockWidgetBg(tint: tint))
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(MooniColor.accentSoft.opacity(0.4), lineWidth: 1.5)
-        )
-        .shadow(color: .black.opacity(0.35), radius: 20, y: 10)
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous)
+            .stroke(LinearGradient(
+                colors: [Color.white.opacity(0.25), Color.white.opacity(0.03)],
+                startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.8))
+        .shadow(color: .black.opacity(0.45), radius: 24, y: 12)
     }
 
     private var mediumWidgetMock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "chart.bar.fill")
-                    .foregroundColor(MooniColor.accent)
-                    .font(.system(size: 14, weight: .bold))
-                Text("\(petName)'s week")
-                    .font(.system(size: 14, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.textPrimary)
-                Spacer()
-                Text("+12m")
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.success)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(MooniColor.success.opacity(0.15))
-                    .clipShape(Capsule())
+        let tint = MooniColor.accent
+        let trend: [CGFloat] = [0.55, 0.7, 0.45, 0.85, 0.6, 0.9, 0.78]
+        return HStack(alignment: .top, spacing: 14) {
+            VStack(spacing: 8) {
+                mockRing(progress: 0.78, tint: tint, size: 112, lineWidth: 9)
+                HStack(spacing: 5) {
+                    Image(systemName: "moon.zzz.fill")
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundColor(tint)
+                    Text("11:42p → 7:18a")
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Capsule().fill(Color.white.opacity(0.08)))
+                .overlay(Capsule().stroke(tint.opacity(0.18), lineWidth: 0.6))
             }
+            .frame(width: 124)
 
-            HStack(alignment: .lastTextBaseline, spacing: 6) {
-                Text("7h 24m")
-                    .font(.system(size: 32, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.textPrimary)
-                Text("avg")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(MooniColor.textSecondary)
-                Spacer()
-            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 4) {
+                    Image(systemName: "moon.stars.fill")
+                        .font(.system(size: 9, weight: .black))
+                    Text("SleepOwl")
+                        .font(.system(size: 10, weight: .black, design: .rounded))
+                }
+                .foregroundColor(MooniColor.textSecondary)
 
-            HStack(alignment: .bottom, spacing: 6) {
-                ForEach(0..<7, id: \.self) { i in
-                    let h: CGFloat = [0.55, 0.7, 0.45, 0.85, 0.6, 0.9, 0.75][i]
-                    let labels = ["M","T","W","T","F","S","S"]
-                    VStack(spacing: 4) {
-                        Capsule()
-                            .fill(LinearGradient(
-                                colors: [MooniColor.accentSoft, MooniColor.accent],
-                                startPoint: .bottom, endPoint: .top))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56 * h)
-                        Text(labels[i])
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("78")
+                        .font(.system(size: 52, weight: .heavy, design: .rounded))
+                        .foregroundStyle(LinearGradient(
+                            colors: [.white, tint],
+                            startPoint: .top, endPoint: .bottom))
+                        .shadow(color: tint.opacity(0.55), radius: 14)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("GOOD")
                             .font(.system(size: 9, weight: .heavy, design: .rounded))
+                            .tracking(0.3)
+                            .foregroundColor(tint)
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(Capsule().fill(tint.opacity(0.22)))
+                            .overlay(Capsule().stroke(tint.opacity(0.45), lineWidth: 0.6))
+                        Text("TONIGHT")
+                            .font(.system(size: 9, weight: .heavy, design: .rounded))
+                            .tracking(1.2)
                             .foregroundColor(MooniColor.textMuted)
                     }
                 }
+
+                HStack(spacing: 6) {
+                    mockMiniChip(icon: "bed.double.fill", value: "7h 24m", tint: tint)
+                    mockMiniChip(icon: "bolt.fill", value: "72%",
+                                 tint: Color(red: 0.72, green: 0.62, blue: 1.00))
+                }
+
+                // Sparkline
+                GeometryReader { geo in
+                    let dx = geo.size.width / CGFloat(trend.count - 1)
+                    ZStack {
+                        Path { p in
+                            p.move(to: CGPoint(x: 0, y: geo.size.height))
+                            for (i, v) in trend.enumerated() {
+                                p.addLine(to: CGPoint(x: CGFloat(i) * dx,
+                                                       y: geo.size.height * (1 - v)))
+                            }
+                            p.addLine(to: CGPoint(x: geo.size.width, y: geo.size.height))
+                            p.closeSubpath()
+                        }
+                        .fill(LinearGradient(
+                            colors: [tint.opacity(0.35), tint.opacity(0.02)],
+                            startPoint: .top, endPoint: .bottom))
+                        Path { p in
+                            for (i, v) in trend.enumerated() {
+                                let x = CGFloat(i) * dx
+                                let y = geo.size.height * (1 - v)
+                                if i == 0 { p.move(to: CGPoint(x: x, y: y)) }
+                                else { p.addLine(to: CGPoint(x: x, y: y)) }
+                            }
+                        }
+                        .stroke(LinearGradient(
+                            colors: [tint.opacity(0.7), tint],
+                            startPoint: .leading, endPoint: .trailing),
+                                style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                        if let last = trend.last {
+                            Circle()
+                                .fill(tint)
+                                .frame(width: 5, height: 5)
+                                .shadow(color: tint.opacity(0.7), radius: 3)
+                                .position(x: geo.size.width - 2,
+                                          y: geo.size.height * (1 - last))
+                        }
+                    }
+                }
+                .frame(height: 22)
             }
-            .frame(height: 76)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(16)
-        .frame(width: 340, height: 170)
-        .background(widgetBg(tint: MooniColor.accent))
+        .padding(14)
+        .frame(width: 340, height: 178)
+        .background(mockWidgetBg(tint: tint))
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(MooniColor.accent.opacity(0.4), lineWidth: 1.5)
-        )
-        .shadow(color: .black.opacity(0.35), radius: 20, y: 10)
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous)
+            .stroke(LinearGradient(
+                colors: [Color.white.opacity(0.25), Color.white.opacity(0.03)],
+                startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.8))
+        .shadow(color: .black.opacity(0.45), radius: 24, y: 12)
     }
 
     private var sleepCircleMock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
+        let tint = MooniColor.accent
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: "person.2.fill")
-                    .foregroundColor(MooniColor.accentSoft)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundStyle(LinearGradient(
+                        colors: [.white, tint],
+                        startPoint: .topLeading, endPoint: .bottomTrailing))
                 Text("Sleep Circle")
-                    .font(.system(size: 14, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.textPrimary)
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
                 Spacer()
-                Text("SLEEPOWL")
-                    .font(.system(size: 9, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.textMuted)
-                    .tracking(1.4)
+                HStack(spacing: 3) {
+                    Image(systemName: "moon.stars.fill")
+                        .font(.system(size: 9, weight: .heavy))
+                    Text("SleepOwl")
+                        .font(.system(size: 10, weight: .black, design: .rounded))
+                }
+                .foregroundColor(MooniColor.textSecondary)
             }
 
-            HStack(alignment: .top, spacing: 14) {
-                friendCircle(initial: "Y", name: "You",     score: 84, scoreTint: MooniColor.success, duration: "7h 24m")
-                friendCircle(initial: "A", name: "Alex",    score: 76, scoreTint: MooniColor.warning, duration: "6h 51m")
-                friendCircle(initial: "+", name: "Invite",  score: nil, scoreTint: MooniColor.accent,  duration: "—",        isInvite: true)
+            HStack(alignment: .top, spacing: 8) {
+                mockFriendCard(initial: "Y", name: "You",   score: 84,
+                               tint: MooniColor.success, duration: "7h 24m",
+                               window: "11:42p → 7:18a", isWinner: true)
+                mockFriendCard(initial: "A", name: "Alex",  score: 76,
+                               tint: MooniColor.warning, duration: "6h 51m",
+                               window: "12:08a → 6:59a", isWinner: false)
+                mockFriendCard(initial: "+", name: "Invite", score: nil,
+                               tint: tint, duration: "—",
+                               window: "—", isWinner: false, isInvite: true)
             }
             .frame(maxWidth: .infinity)
         }
-        .padding(16)
-        .frame(width: 340, height: 170)
-        .background(widgetBg(tint: MooniColor.accent))
+        .padding(14)
+        .frame(width: 340, height: 178)
+        .background(mockWidgetBg(tint: MooniColor.success))
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(MooniColor.accent.opacity(0.4), lineWidth: 1.5)
-        )
-        .shadow(color: .black.opacity(0.35), radius: 20, y: 10)
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous)
+            .stroke(LinearGradient(
+                colors: [Color.white.opacity(0.25), Color.white.opacity(0.03)],
+                startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.8))
+        .shadow(color: .black.opacity(0.45), radius: 24, y: 12)
     }
 
-    private func friendCircle(initial: String, name: String, score: Int?,
-                              scoreTint: Color, duration: String, isInvite: Bool = false) -> some View {
+    // MARK: Mock helpers
+
+    /// Gradient ring with halo + mascot center — visual twin of the real
+    /// widget's ring (ZStack of glow + track + angular gradient stroke +
+    /// pet mascot). Used by both small and medium mocks.
+    private func mockRing(progress: CGFloat, tint: Color,
+                          size: CGFloat, lineWidth: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .fill(tint.opacity(0.20))
+                .frame(width: size + 10, height: size + 10)
+                .blur(radius: size * 0.12)
+            Circle()
+                .stroke(Color.white.opacity(0.10), lineWidth: lineWidth)
+                .frame(width: size - lineWidth, height: size - lineWidth)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(AngularGradient(
+                    colors: [tint.opacity(0.55), tint, tint.opacity(0.9)],
+                    center: .center),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .frame(width: size - lineWidth, height: size - lineWidth)
+                .rotationEffect(.degrees(-90))
+                .shadow(color: tint.opacity(0.55), radius: 6)
+            Image("owl_base")
+                .resizable()
+                .scaledToFit()
+                .frame(width: size * 0.48, height: size * 0.48)
+        }
+        .frame(width: size, height: size)
+    }
+
+    private func mockMiniChip(icon: String, value: String, tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .heavy))
+                .foregroundColor(tint)
+            Text(value)
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(.white)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Color.white.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .stroke(tint.opacity(0.20), lineWidth: 0.6))
+    }
+
+    private func mockFriendCard(initial: String, name: String, score: Int?,
+                                tint: Color, duration: String, window: String,
+                                isWinner: Bool, isInvite: Bool = false) -> some View {
         VStack(spacing: 4) {
             ZStack {
                 Circle()
-                    .stroke(Color.white.opacity(0.10), lineWidth: 4)
-                    .frame(width: 54, height: 54)
+                    .fill(tint.opacity(isInvite ? 0.10 : 0.22))
+                    .frame(width: 60, height: 60)
+                    .blur(radius: 8)
                 Circle()
-                    .trim(from: 0, to: isInvite ? 0 : (CGFloat(score ?? 0) / 100))
-                    .stroke(scoreTint, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .frame(width: 54, height: 54)
-                    .rotationEffect(.degrees(-90))
+                    .stroke(Color.white.opacity(0.10), lineWidth: 4)
+                    .frame(width: 50, height: 50)
+                if !isInvite {
+                    Circle()
+                        .trim(from: 0, to: CGFloat(score ?? 0) / 100)
+                        .stroke(AngularGradient(
+                            colors: [tint.opacity(0.55), tint, tint.opacity(0.85)],
+                            center: .center),
+                                style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .frame(width: 50, height: 50)
+                        .rotationEffect(.degrees(-90))
+                        .shadow(color: tint.opacity(0.5), radius: 4)
+                } else {
+                    Circle()
+                        .strokeBorder(MooniColor.textMuted.opacity(0.55),
+                                      style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                        .frame(width: 50, height: 50)
+                }
                 if isInvite {
                     Image(systemName: "plus")
-                        .font(.system(size: 22, weight: .heavy))
-                        .foregroundColor(MooniColor.accentSoft)
+                        .font(.system(size: 20, weight: .heavy))
+                        .foregroundColor(.white.opacity(0.7))
                 } else {
                     Text(initial)
                         .font(.system(size: 22, weight: .heavy, design: .rounded))
-                        .foregroundColor(MooniColor.textPrimary)
+                        .foregroundColor(.white)
+                }
+                if isWinner {
+                    Text("👑")
+                        .font(.system(size: 14))
+                        .offset(x: 22, y: -22)
+                        .shadow(color: Color(red: 1.0, green: 0.85, blue: 0.3).opacity(0.7), radius: 4)
                 }
             }
+            .frame(width: 60, height: 60)
+
             if let s = score {
                 Text("\(s)")
-                    .font(.system(size: 17, weight: .heavy, design: .rounded))
-                    .foregroundColor(scoreTint)
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundColor(tint)
+                    .shadow(color: tint.opacity(0.45), radius: 4)
             } else {
-                Text("invite")
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.accentSoft)
+                Text("—")
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textMuted)
             }
             Text(name)
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundColor(MooniColor.textPrimary)
+                .foregroundColor(.white)
                 .lineLimit(1)
             Text(duration)
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(MooniColor.textSecondary)
+            Text(window)
+                .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundColor(MooniColor.textMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, 6).padding(.horizontal, 4)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(LinearGradient(
+                colors: [tint.opacity(isWinner ? 0.20 : 0.10), tint.opacity(0.02)],
+                startPoint: .top, endPoint: .bottom)))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .stroke(tint.opacity(isWinner ? 0.45 : 0.20),
+                    lineWidth: isWinner ? 1.0 : 0.6))
     }
 
-    private func widgetBg(tint: Color) -> some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.07, green: 0.08, blue: 0.16),
-                tint.opacity(0.18),
-                Color(red: 0.07, green: 0.08, blue: 0.16)
-            ],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
+    /// Mirrors the real `SleepWidgetBackground` — gradient base + tinted
+    /// corner halo. Drawn at preview-card scale so the mock looks like the
+    /// home-screen widget the user will actually get.
+    private func mockWidgetBg(tint: Color) -> some View {
+        ZStack {
+            LinearGradient(colors: [
+                Color(red: 0.05, green: 0.05, blue: 0.13),
+                Color(red: 0.08, green: 0.07, blue: 0.20),
+                Color(red: 0.04, green: 0.04, blue: 0.10)
+            ], startPoint: .topLeading, endPoint: .bottomTrailing)
+            RadialGradient(colors: [tint.opacity(0.45), .clear],
+                           center: .topLeading,
+                           startRadius: 0, endRadius: 220)
+                .blendMode(.plusLighter)
+            RadialGradient(colors: [MooniColor.accent.opacity(0.25), .clear],
+                           center: .bottomTrailing,
+                           startRadius: 0, endRadius: 200)
+                .blendMode(.plusLighter)
+        }
     }
 
 }
@@ -6965,10 +7174,12 @@ private struct BodyStudiesScreen: View {
             ZStack {
                 switch page {
                 case 0: gh
-                case 1: testo
-                case 2: cortisol
-                case 3: brain
-                case 4: heart
+                case 1: teenHeight
+                case 2: adultSpine
+                case 3: testo
+                case 4: cortisol
+                case 5: brain
+                case 6: heart
                 default: quality
                 }
             }
@@ -7021,10 +7232,12 @@ private struct BodyStudiesScreen: View {
     private var headlineForPage: String {
         switch page {
         case 0: return "Growth hormone\ndrops 70%."
-        case 1: return "Testosterone\ncrashes 15%."
-        case 2: return "Stress hormone\nspikes 37%."
-        case 3: return "Your brain stops\ncleaning itself."
-        case 4: return "Heart attack risk\nclimbs 48%."
+        case 1: return "Short sleepers\nare 2 cm shorter."
+        case 2: return "You shrink 1.5 cm\nevery day."
+        case 3: return "Testosterone\ncrashes 15%."
+        case 4: return "Stress hormone\nspikes 37%."
+        case 5: return "Your brain stops\ncleaning itself."
+        case 6: return "Heart attack risk\nclimbs 48%."
         default: return "Hours don't matter\nif quality is broken."
         }
     }
@@ -7032,10 +7245,12 @@ private struct BodyStudiesScreen: View {
     private var takeawayForPage: String {
         switch page {
         case 0: return "Most growth hormone is released during deep sleep. Skip it and recovery, repair, and lean mass all suffer."
-        case 1: return "One week of 5-hour nights drops testosterone like aging 10 years. Energy, muscle, mood — all hit."
-        case 2: return "Bad sleep raises cortisol the next day. Belly fat, anxiety, and high blood pressure follow."
-        case 3: return "Deep sleep flushes brain waste (the same gunk linked to dementia). Cut sleep, cut the cleanup."
-        case 4: return "Sleeping under 6 hours raises heart attack risk by nearly half. It's the highest-impact heart habit you have."
+        case 1: return "Kids and teens who sleep less than 8 hours end up measurably shorter as adults. Growth literally happens at night."
+        case 2: return "Your spine compresses while you stand. Deep sleep is when discs rehydrate and you get those centimeters back."
+        case 3: return "One week of 5-hour nights drops testosterone like aging 10 years. Energy, muscle, mood — all hit."
+        case 4: return "Bad sleep raises cortisol the next day. Belly fat, anxiety, and high blood pressure follow."
+        case 5: return "Deep sleep flushes brain waste (the same gunk linked to dementia). Cut sleep, cut the cleanup."
+        case 6: return "Sleeping under 6 hours raises heart attack risk by nearly half. It's the highest-impact heart habit you have."
         default: return "Two people sleeping 7 hours can have totally different recovery — fragmentation matters more than the number."
         }
     }
@@ -7043,10 +7258,12 @@ private struct BodyStudiesScreen: View {
     private var sourceForPage: String {
         switch page {
         case 0: return "VAN CAUTER · ENDOCRINOLOGY · 2000"
-        case 1: return "LEPROULT & VAN CAUTER · JAMA · 2011"
-        case 2: return "LEPROULT ET AL · SLEEP · 1997"
-        case 3: return "XIE ET AL · SCIENCE · 2013"
-        case 4: return "AYAS ET AL · ARCH INTERN MED · 2003"
+        case 1: return "JENNI ET AL · PEDIATRICS · 2007"
+        case 2: return "TYRRELL ET AL · SPINE · 1985"
+        case 3: return "LEPROULT & VAN CAUTER · JAMA · 2011"
+        case 4: return "LEPROULT ET AL · SLEEP · 1997"
+        case 5: return "XIE ET AL · SCIENCE · 2013"
+        case 6: return "AYAS ET AL · ARCH INTERN MED · 2003"
         default: return "BERRY ET AL · AASM SCORING · v3"
         }
     }
@@ -7056,6 +7273,109 @@ private struct BodyStudiesScreen: View {
     private var gh: some View {
         bigStatBlock(value: "−70%", label: "growth hormone", tint: MooniColor.danger,
                      supportingEmojis: ["💪", "🩸", "🌙"])
+    }
+
+    /// Teen-height visual — two stick figures side by side, "good sleeper"
+    /// vs "short sleeper", with the latter visibly shorter. The 2 cm gap is
+    /// the real-world average from the Jenni et al. pediatric cohort.
+    private var teenHeight: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .bottom, spacing: 36) {
+                heightFigure(emoji: "🧑", barHeight: 168,
+                             label: "8+ hrs",
+                             stat: "Avg height",
+                             tint: MooniColor.success)
+                heightFigure(emoji: "🧑", barHeight: 148,
+                             label: "<6 hrs",
+                             stat: "−2 cm shorter",
+                             tint: MooniColor.danger)
+            }
+            .frame(height: 170)
+
+            HStack(spacing: 6) {
+                Text("📏")
+                Text("Same age. Same diet. Different sleep.")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+        }
+    }
+
+    /// Adult-spine visual — a stylised spine that compresses through the day
+    /// and decompresses overnight, with the 1.5 cm daily figure called out.
+    private var adultSpine: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 14) {
+                spineColumn(label: "Morning", height: 150, tint: MooniColor.success,
+                            sub: "Discs rehydrated", emoji: "☀️")
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(MooniColor.textMuted)
+                    .padding(.bottom, 36)
+                spineColumn(label: "Evening", height: 130, tint: MooniColor.warning,
+                            sub: "Discs compressed", emoji: "🌆")
+            }
+            .frame(height: 170)
+
+            HStack(spacing: 6) {
+                Text("🛏️")
+                Text("Deep sleep rebuilds those 1.5 cm overnight.")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+        }
+    }
+
+    private func heightFigure(emoji: String, barHeight: CGFloat, label: String,
+                              stat: String, tint: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(emoji).font(.system(size: 22))
+            Text(stat)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(tint)
+            ZStack(alignment: .bottom) {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 56, height: 170)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [tint.opacity(0.65), tint],
+                        startPoint: .top, endPoint: .bottom))
+                    .frame(width: 56, height: barHeight - 24)
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(tint.opacity(0.35), lineWidth: 1)
+            )
+            Text(label)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textPrimary)
+        }
+    }
+
+    private func spineColumn(label: String, height: CGFloat, tint: Color,
+                             sub: String, emoji: String) -> some View {
+        VStack(spacing: 4) {
+            Text(emoji).font(.system(size: 20))
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.white.opacity(0.05))
+                    .frame(width: 28, height: height)
+                VStack(spacing: 2) {
+                    ForEach(0..<7, id: \.self) { _ in
+                        Capsule()
+                            .fill(tint.opacity(0.85))
+                            .frame(width: 22, height: max(8, (height - 28) / 7 - 2))
+                    }
+                }
+            }
+            Text(label)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(tint)
+            Text(sub)
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+        }
     }
 
     private var testo: some View {

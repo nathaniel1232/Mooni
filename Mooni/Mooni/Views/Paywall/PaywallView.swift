@@ -177,10 +177,20 @@ struct PaywallView: View {
                           title: "All spirit unlocks", detail: "Every color, animation & background")
             proFeatureRow(icon: "brain.head.profile", color: .pink,
                           title: "Deep sleep insights", detail: "REM, debt, recovery & sleep coach")
+            // Features we've marketed in onboarding but haven't fully shipped
+            // yet. Showing them with a SOON badge keeps the promise visible
+            // without claiming we've already delivered them.
+            proFeatureRow(icon: "ear.fill", color: MooniColor.accentSoft,
+                          title: "Voice & snore detection", detail: "On-device AI listens to your night",
+                          comingSoon: true)
+            proFeatureRow(icon: "person.2.fill", color: MooniColor.accent,
+                          title: "Sleep Circle with friends", detail: "Compare scores, cheer each other on",
+                          comingSoon: true)
         }
     }
 
-    private func proFeatureRow(icon: String, color: Color, title: String, detail: String) -> some View {
+    private func proFeatureRow(icon: String, color: Color, title: String,
+                               detail: String, comingSoon: Bool = false) -> some View {
         HStack(spacing: 14) {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .semibold))
@@ -197,9 +207,21 @@ struct PaywallView: View {
                     .foregroundColor(MooniColor.textSecondary)
             }
             Spacer()
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(MooniColor.success)
+            if comingSoon {
+                Text("SOON")
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.warning)
+                    .tracking(1.2)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(MooniColor.warning.opacity(0.18))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(MooniColor.warning.opacity(0.4), lineWidth: 1))
+            } else {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(MooniColor.success)
+            }
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 14)
@@ -420,6 +442,17 @@ struct PaywallView: View {
                 .foregroundColor(MooniColor.textMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
+
+            // Quiet, honest disclosure. Tiny + tracked + low-contrast so it
+            // doesn't draw attention but it IS present — the user explicitly
+            // asked for this. Tags any features that are still maturing.
+            Text("Some features are still rolling out and may improve over time.")
+                .font(.system(size: 8, weight: .regular, design: .rounded))
+                .foregroundColor(MooniColor.textMuted.opacity(0.55))
+                .tracking(0.2)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.top, 2)
         }
     }
 

@@ -158,6 +158,15 @@ struct DiscountPaywallView: View {
                         .foregroundColor(.white.opacity(0.4))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
+
+                    // Tiny rollout disclosure — same as the main paywall.
+                    Text("Some features are still rolling out and may improve over time.")
+                        .font(.system(size: 8, weight: .regular, design: .rounded))
+                        .foregroundColor(.white.opacity(0.25))
+                        .tracking(0.2)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 36)
+                        .padding(.top, 2)
                         .padding(.bottom, 24)
                 }
             }
