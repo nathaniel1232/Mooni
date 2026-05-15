@@ -64,19 +64,19 @@ struct FriendsSleepWidgetView: View {
     // MARK: Person card
 
     private func personCard(_ person: FriendSleepSnapshot, isMe: Bool, isWinner: Bool) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 5) {
             // Avatar + glowing gradient ring + crown when applicable
             ZStack {
-                // Outer glow
+                // Outer glow — tighter so it doesn't bleed into adjacent cards
                 Circle()
-                    .fill(person.scoreTint.opacity(0.22))
-                    .frame(width: 60, height: 60)
-                    .blur(radius: 8)
+                    .fill(person.scoreTint.opacity(0.20))
+                    .frame(width: 50, height: 50)
+                    .blur(radius: 6)
 
                 // Track
                 Circle()
                     .stroke(SleepWidgetPalette.ringTrack, lineWidth: 4)
-                    .frame(width: 50, height: 50)
+                    .frame(width: 44, height: 44)
 
                 // Gradient progress
                 Circle()
@@ -92,7 +92,7 @@ struct FriendsSleepWidgetView: View {
                         ),
                         style: StrokeStyle(lineWidth: 4, lineCap: .round)
                     )
-                    .frame(width: 50, height: 50)
+                    .frame(width: 44, height: 44)
                     .rotationEffect(.degrees(-90))
                     .shadow(color: person.scoreTint.opacity(0.5), radius: 4)
 
@@ -100,18 +100,17 @@ struct FriendsSleepWidgetView: View {
 
                 if isWinner {
                     Text("👑")
-                        .font(.system(size: 14))
-                        .offset(x: 22, y: -22)
+                        .font(.system(size: 12))
+                        .offset(x: 18, y: -18)
                         .shadow(color: Color(red: 1.0, green: 0.85, blue: 0.3).opacity(0.7), radius: 4)
                 }
             }
-            .frame(width: 60, height: 60)
+            .frame(width: 50, height: 50)
 
             Text("\(person.score)")
-                .font(.system(size: 19, weight: .heavy, design: .rounded))
+                .font(.system(size: 18, weight: .heavy, design: .rounded))
                 .foregroundStyle(person.scoreTint)
                 .shadow(color: person.scoreTint.opacity(0.45), radius: 4)
-                .padding(.top, 1)
 
             Text(isMe ? "You" : person.name)
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
@@ -123,16 +122,9 @@ struct FriendsSleepWidgetView: View {
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .foregroundStyle(SleepWidgetPalette.textSecondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.85)
-
-            Text("\(shorten(person.sleepStart)) → \(shorten(person.wakeTime))")
-                .font(.system(size: 9, weight: .medium, design: .rounded))
-                .foregroundStyle(SleepWidgetPalette.textTertiary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.65)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .padding(.horizontal, 4)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -166,7 +158,7 @@ struct FriendsSleepWidgetView: View {
     private func avatar(for person: FriendSleepSnapshot) -> some View {
         if person.id == "me" {
             MooniMascotView()
-                .frame(width: 30, height: 30)
+                .frame(width: 26, height: 26)
         } else {
             ZStack {
                 Circle()
@@ -179,10 +171,10 @@ struct FriendsSleepWidgetView: View {
                             startPoint: .top, endPoint: .bottom
                         )
                     )
-                    .frame(width: 32, height: 32)
+                    .frame(width: 28, height: 28)
                     .overlay(Circle().stroke(Color.white.opacity(0.35), lineWidth: 0.8))
                 Text(person.avatarEmoji)
-                    .font(.system(size: 20))
+                    .font(.system(size: 17))
             }
         }
     }
@@ -190,38 +182,36 @@ struct FriendsSleepWidgetView: View {
     // MARK: Empty slot
 
     private var inviteCard: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 5) {
             ZStack {
-                // Soft glow so the invite still feels alive
                 Circle()
-                    .fill(SleepWidgetPalette.textTertiary.opacity(0.10))
-                    .frame(width: 60, height: 60)
+                    .fill(SleepWidgetPalette.textTertiary.opacity(0.08))
+                    .frame(width: 50, height: 50)
                     .blur(radius: 6)
                 Circle()
                     .strokeBorder(
-                        SleepWidgetPalette.textTertiary.opacity(0.55),
+                        SleepWidgetPalette.textTertiary.opacity(0.50),
                         style: StrokeStyle(lineWidth: 1.5, dash: [3, 3])
                     )
-                    .frame(width: 50, height: 50)
+                    .frame(width: 44, height: 44)
                 Image(systemName: "plus")
-                    .font(.system(size: 20, weight: .heavy))
+                    .font(.system(size: 18, weight: .heavy))
                     .foregroundStyle(SleepWidgetPalette.textPrimary.opacity(0.7))
             }
-            .frame(width: 60, height: 60)
+            .frame(width: 50, height: 50)
 
             Text("—")
                 .font(.system(size: 18, weight: .heavy, design: .rounded))
                 .foregroundStyle(SleepWidgetPalette.textTertiary)
-                .padding(.top, 1)
             Text("Invite")
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundStyle(SleepWidgetPalette.textPrimary)
-            Text("a friend")
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
+            Text("friend")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .foregroundStyle(SleepWidgetPalette.textTertiary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .padding(.horizontal, 4)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)

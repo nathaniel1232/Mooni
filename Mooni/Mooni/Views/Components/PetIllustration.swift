@@ -43,15 +43,24 @@ struct PetIllustration: View {
         }
     }
 
+    private var owlImageName: String {
+        switch pet.mood.legacyBucket {
+        case .rested: return "spirit_dream"   // great sleep
+        case .good:   return "spirit_awake"   // normal / awake
+        case .tired:  return "spirit_sleep"   // sleeping / slight tired
+        case .low:    return "spirit_tired"   // lack sleep / very tired
+        default:      return "spirit_awake"
+        }
+    }
+
     var body: some View {
         ZStack {
             haloLayer
 
-            Image("owl_base")
+            Image(owlImageName)
                 .resizable()
                 .scaledToFit()
                 .frame(width: size, height: size)
-                .saturation(moodSaturation)
                 .scaleEffect(pulse ? 1.02 : 0.98)
                 .offset(y: bob ? -6 : 6)
                 .shadow(color: tint.opacity(0.55), radius: 22, y: 6)

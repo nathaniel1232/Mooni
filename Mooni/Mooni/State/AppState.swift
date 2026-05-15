@@ -964,6 +964,7 @@ final class AppState: ObservableObject {
         if let data = try? JSONEncoder().encode(profile) {
             UserDefaults.standard.set(data, forKey: Key.profileData)
         }
+        Task { await ProfileSync.shared.upsertProfile(profile) }
     }
 
     /// Wipes every key this app writes to UserDefaults plus in-memory state.

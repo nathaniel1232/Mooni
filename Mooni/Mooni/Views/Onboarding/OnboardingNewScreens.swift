@@ -19,7 +19,7 @@ struct WelcomeScreen: View {
                     .frame(width: 240, height: 240)
                     .blur(radius: 36)
 
-                Image("owl_base")
+                Image("spirit_awake")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 170, height: 170)
@@ -604,8 +604,7 @@ struct AudioInsightScreen: View {
 
     private func soundChip(emoji: String, label: String, tint: Color, visible: Bool) -> some View {
         VStack(spacing: 6) {
-            Text(emoji)
-                .font(.system(size: 32))
+            EmojiIcon(emoji: emoji, size: 26, tint: tint)
             Text(label)
                 .font(.system(size: 13, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.textPrimary)
@@ -701,17 +700,7 @@ struct YAMNetScreen: View {
                             .frame(width: 124, height: 124)
                             .shadow(color: .black.opacity(0.35), radius: 16, y: 6)
 
-                        Text("G")
-                            .font(.system(size: 84, weight: .bold, design: .rounded))
-                            .foregroundStyle(LinearGradient(
-                                colors: [
-                                    Color(red: 0.26, green: 0.52, blue: 0.96), // Google blue
-                                    Color(red: 0.92, green: 0.26, blue: 0.21), // Google red
-                                    Color(red: 0.98, green: 0.74, blue: 0.02), // Google yellow
-                                    Color(red: 0.20, green: 0.66, blue: 0.33)  // Google green
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing))
+                        GoogleGLogo(diameter: 82)
                     }
                     .scaleEffect(logoIn ? 1 : 0.7)
                     .opacity(logoIn ? 1 : 0)
@@ -1082,8 +1071,7 @@ struct SleepArchitectureScreen: View {
     private func stageCard(emoji: String, label: String, blurb: String,
                            color: Color, visible: Bool) -> some View {
         HStack(spacing: 14) {
-            Text(emoji)
-                .font(.system(size: 30))
+            EmojiIcon(emoji: emoji, size: 24, tint: color)
                 .frame(width: 50, height: 50)
                 .background(color.opacity(0.18))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1247,7 +1235,7 @@ struct OnDevicePrivacyScreen: View {
 
     private func promiseRow(emoji: String, text: String, visible: Bool) -> some View {
         HStack(spacing: 14) {
-            Text(emoji).font(.system(size: 24))
+            EmojiIcon(emoji: emoji, size: 20, tint: MooniColor.accentSoft)
             Text(text)
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
                 .foregroundColor(MooniColor.textPrimary)
@@ -1289,7 +1277,7 @@ struct ProPromiseScreen: View {
             Spacer(minLength: 6)
 
             VStack(spacing: 10) {
-                Text("✨ EVERYTHING YOU GET")
+                Text.iconHeader("✨", "EVERYTHING YOU GET")
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.warning)
                     .tracking(2)
@@ -1334,8 +1322,7 @@ struct ProPromiseScreen: View {
     private func pillar(emoji: String, tint: Color, title: String,
                         sub: String, visible: Bool) -> some View {
         HStack(spacing: 14) {
-            Text(emoji)
-                .font(.system(size: 28))
+            EmojiIcon(emoji: emoji, size: 22, tint: tint)
                 .frame(width: 52, height: 52)
                 .background(tint.opacity(0.18))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1360,5 +1347,50 @@ struct ProPromiseScreen: View {
         )
         .opacity(visible ? 1 : 0)
         .offset(x: visible ? 0 : -18)
+    }
+}
+
+// MARK: - Google G logo
+
+private struct GoogleGLogo: View {
+    var diameter: CGFloat = 80
+
+    private let gBlue   = Color(red: 0.26, green: 0.52, blue: 0.96)
+    private let gRed    = Color(red: 0.92, green: 0.26, blue: 0.21)
+    private let gYellow = Color(red: 0.98, green: 0.74, blue: 0.02)
+    private let gGreen  = Color(red: 0.20, green: 0.66, blue: 0.33)
+
+    var body: some View {
+        Canvas { ctx, sz in
+            let cx = sz.width / 2
+            let cy = sz.height / 2
+            let r  = sz.width * 0.36
+            let lw = sz.width * 0.165
+            let ctr = CGPoint(x: cx, y: cy)
+
+            func arc(_ start: Double, _ end: Double, _ color: Color) {
+                var p = Path()
+                p.addArc(center: ctr, radius: r,
+                         startAngle: .degrees(start), endAngle: .degrees(end),
+                         clockwise: false)
+                ctx.stroke(p, with: .color(color),
+                           style: StrokeStyle(lineWidth: lw, lineCap: .butt))
+            }
+
+            // 4 colored arc segments, clockwise from 3 o'clock
+            // gap from 345° back to 15° (30° opening at right)
+            arc(15,  90,  gRed)
+            arc(90,  180, gYellow)
+            arc(180, 270, gGreen)
+            arc(270, 345, gBlue)
+
+            // White horizontal bar at midline, fills the opening
+            let barH: CGFloat = lw * 0.82
+            let barX: CGFloat = cx + r * 0.08
+            let barW: CGFloat = r + lw * 0.52 - r * 0.08
+            ctx.fill(Path(CGRect(x: barX, y: cy - barH / 2, width: barW, height: barH)),
+                     with: .color(.white))
+        }
+        .frame(width: diameter, height: diameter)
     }
 }

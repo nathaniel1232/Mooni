@@ -27,9 +27,8 @@ struct AudioSampleButton: View {
                     Circle()
                         .stroke(tint.opacity(isPlaying ? 0.85 : 0.4), lineWidth: 1.5)
                         .frame(width: 60 + 6 * pulse, height: 60 + 6 * pulse)
-                        .opacity(1 - 0.6 * pulse)
-                    Text(emoji)
-                        .font(.system(size: 30))
+                        .opacity(Double(1 - 0.6 * pulse))
+                    EmojiIcon(emoji: emoji, size: 26, tint: tint)
                 }
                 Text(label)
                     .font(MooniFont.caption(11))
@@ -41,11 +40,11 @@ struct AudioSampleButton: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(Color.white.opacity(0.05))
+            .background(Color(white: 1, opacity: 0.05))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(tint.opacity(isPlaying ? 0.55 : 0.18), lineWidth: 1)
+                    .stroke(tint.opacity(isPlaying ? 0.55 : 0.18) as Color, lineWidth: 1)
             )
             .opacity(isAvailable ? 1 : 0.55)
         }

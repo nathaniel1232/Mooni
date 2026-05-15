@@ -1060,8 +1060,8 @@ private struct OptionRow<T: Hashable>: View {
         } label: {
             HStack(spacing: 14) {
                 if let emoji {
-                    Text(emoji)
-                        .font(.system(size: 26))
+                    EmojiIcon(emoji: emoji, size: 20,
+                              tint: isSelected ? MooniColor.accent : MooniColor.accentSoft)
                         .frame(width: 38, height: 38)
                         .background((isSelected ? MooniColor.accent : MooniColor.accentSoft).opacity(0.16))
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -1187,7 +1187,7 @@ private struct SleepImpactStatScreen: View {
             Spacer(minLength: 8)
 
             VStack(spacing: 10) {
-                Text("😴 SOUND FAMILIAR?")
+                Text.iconHeader("😴", "SOUND FAMILIAR?")
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.warning)
                     .tracking(2)
@@ -1231,8 +1231,7 @@ private struct SleepImpactStatScreen: View {
 
     private func painCard(emoji: String, label: String, tint: Color, visible: Bool) -> some View {
         HStack(spacing: 16) {
-            Text(emoji)
-                .font(.system(size: 32))
+            EmojiIcon(emoji: emoji, size: 26, tint: tint)
                 .frame(width: 56, height: 56)
                 .background(tint.opacity(0.18))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1271,7 +1270,7 @@ private struct NamePetScreen: View {
                 DreamSpiritView(pet: previewPet, size: 150)
                     .transition(.scale.combined(with: .opacity))
             } else {
-                Image("owl_base")
+                Image("spirit_awake")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 46, height: 46)
@@ -2803,7 +2802,7 @@ private struct AnalyzingAnswersScreen: View {
         VStack(spacing: 26) {
             Spacer(minLength: 14)
 
-            Text("🔬 ANALYZING YOU")
+            Text.iconHeader("🔬", "ANALYZING YOU")
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.accentSoft)
                 .tracking(2)
@@ -2854,8 +2853,8 @@ private struct AnalyzingAnswersScreen: View {
 
             // Current step — big, animated
             HStack(spacing: 10) {
-                Text(messages[min(currentStep, messages.count - 1)].emoji)
-                    .font(.system(size: 22))
+                EmojiIcon(emoji: messages[min(currentStep, messages.count - 1)].emoji,
+                          size: 20, tint: MooniColor.accent)
                 Text(messages[min(currentStep, messages.count - 1)].text)
                     .font(.system(size: 17, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.textPrimary)
@@ -2883,8 +2882,7 @@ private struct AnalyzingAnswersScreen: View {
                         }
                         .frame(width: 22)
 
-                        Text(msg.emoji)
-                            .font(.system(size: 16))
+                        EmojiIcon(emoji: msg.emoji, size: 14, tint: MooniColor.accentSoft)
                             .opacity(idx <= currentStep ? 1 : 0.4)
 
                         Text(msg.text)
@@ -2964,7 +2962,7 @@ private struct SleepScoreRevealScreen: View {
         VStack(spacing: 18) {
             Spacer(minLength: 4)
 
-            Text("📋 YOUR SLEEP SCORE")
+            Text.iconHeader("📋", "YOUR SLEEP SCORE")
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.warning)
                 .tracking(2)
@@ -3087,7 +3085,7 @@ private struct SleepScoreRevealScreen: View {
         let tint = tintFor(score)
         return VStack(spacing: 6) {
             HStack(spacing: 6) {
-                Text(emoji).font(.system(size: 18))
+                EmojiIcon(emoji: emoji, size: 18)
                 Text(label)
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.textPrimary)
@@ -3123,7 +3121,7 @@ private struct SleepScoreRevealScreen: View {
     private func compareChip(emoji: String, value: String, label: String, tint: Color) -> some View {
         VStack(spacing: 2) {
             HStack(spacing: 6) {
-                Text(emoji).font(.system(size: 18))
+                EmojiIcon(emoji: emoji, size: 18)
                 Text(value)
                     .font(.system(size: 18, weight: .heavy, design: .rounded))
                     .foregroundColor(tint)
@@ -3184,7 +3182,7 @@ private struct TopIssuesScreen: View {
             Spacer(minLength: 4)
 
             VStack(spacing: 10) {
-                Text("🔍 WE FOUND \(issues.count) ISSUE\(issues.count == 1 ? "" : "S")")
+                Text.iconHeader("🔍", "WE FOUND \(issues.count) ISSUE\(issues.count == 1 ? "" : "S")", size: 12, tint: MooniColor.warning)
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.warning)
                     .tracking(2)
@@ -3210,7 +3208,7 @@ private struct TopIssuesScreen: View {
             }
 
             HStack(spacing: 8) {
-                Text("✨")
+                EmojiIcon(emoji: "✨", size: 14, tint: MooniColor.warning)
                 Text("Every one gets a fix in your plan.")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundColor(MooniColor.textSecondary)
@@ -3236,8 +3234,7 @@ private struct TopIssuesScreen: View {
 
     private func issueCard(emoji: String, tint: Color, title: String, visible: Bool) -> some View {
         HStack(spacing: 14) {
-            Text(emoji)
-                .font(.system(size: 28))
+            EmojiIcon(emoji: emoji, size: 22, tint: tint)
                 .frame(width: 54, height: 54)
                 .background(tint.opacity(0.18))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -3290,7 +3287,7 @@ private struct ScienceCredibilityScreen: View {
             Spacer(minLength: 8)
 
             VStack(spacing: 10) {
-                Text("🔬 BUILT ON REAL SCIENCE")
+                Text.iconHeader("🔬", "BUILT ON REAL SCIENCE")
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.success)
                     .tracking(2)
@@ -3343,8 +3340,7 @@ private struct ScienceCredibilityScreen: View {
     private func logoCard(emoji: String, name: String, blurb: String,
                           tint: Color, visible: Bool) -> some View {
         HStack(spacing: 16) {
-            Text(emoji)
-                .font(.system(size: 36))
+            EmojiIcon(emoji: emoji, size: 30, tint: tint)
                 .frame(width: 64, height: 64)
                 .background(tint.opacity(0.18))
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -3393,7 +3389,7 @@ private struct WidgetPreviewScreen: View {
         VStack(spacing: 20) {
             // Header — same on every page
             VStack(spacing: 8) {
-                Text("📱 HOME SCREEN WIDGETS")
+                Text.iconHeader("📱", "HOME SCREEN WIDGETS")
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.accentSoft)
                     .tracking(2)
@@ -3556,10 +3552,8 @@ private struct WidgetPreviewScreen: View {
                 VStack(alignment: .leading, spacing: -4) {
                     Text("84")
                         .font(.system(size: 56, weight: .heavy, design: .rounded))
-                        .foregroundStyle(LinearGradient(
-                            colors: [.white, tint],
-                            startPoint: .top, endPoint: .bottom))
-                        .shadow(color: tint.opacity(0.55), radius: 12)
+                        .foregroundColor(.white)
+                        .shadow(color: tint.opacity(0.75), radius: 14)
                     Text("TONIGHT")
                         .font(.system(size: 9, weight: .heavy, design: .rounded))
                         .tracking(1.4)
@@ -3781,7 +3775,7 @@ private struct WidgetPreviewScreen: View {
                 .frame(width: size - lineWidth, height: size - lineWidth)
                 .rotationEffect(.degrees(-90))
                 .shadow(color: tint.opacity(0.55), radius: 6)
-            Image("owl_base")
+            Image("spirit_awake")
                 .resizable()
                 .scaledToFit()
                 .frame(width: size * 0.48, height: size * 0.48)
@@ -3809,15 +3803,15 @@ private struct WidgetPreviewScreen: View {
     private func mockFriendCard(initial: String, name: String, score: Int?,
                                 tint: Color, duration: String, window: String,
                                 isWinner: Bool, isInvite: Bool = false) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 5) {
             ZStack {
                 Circle()
-                    .fill(tint.opacity(isInvite ? 0.10 : 0.22))
-                    .frame(width: 60, height: 60)
-                    .blur(radius: 8)
+                    .fill(tint.opacity(isInvite ? 0.10 : 0.20))
+                    .frame(width: 50, height: 50)
+                    .blur(radius: 6)
                 Circle()
                     .stroke(Color.white.opacity(0.10), lineWidth: 4)
-                    .frame(width: 50, height: 50)
+                    .frame(width: 44, height: 44)
                 if !isInvite {
                     Circle()
                         .trim(from: 0, to: CGFloat(score ?? 0) / 100)
@@ -3825,32 +3819,31 @@ private struct WidgetPreviewScreen: View {
                             colors: [tint.opacity(0.55), tint, tint.opacity(0.85)],
                             center: .center),
                                 style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                        .frame(width: 50, height: 50)
+                        .frame(width: 44, height: 44)
                         .rotationEffect(.degrees(-90))
                         .shadow(color: tint.opacity(0.5), radius: 4)
                 } else {
                     Circle()
                         .strokeBorder(MooniColor.textMuted.opacity(0.55),
                                       style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
-                        .frame(width: 50, height: 50)
+                        .frame(width: 44, height: 44)
                 }
                 if isInvite {
                     Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .heavy))
+                        .font(.system(size: 18, weight: .heavy))
                         .foregroundColor(.white.opacity(0.7))
                 } else {
                     Text(initial)
-                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .font(.system(size: 19, weight: .heavy, design: .rounded))
                         .foregroundColor(.white)
                 }
                 if isWinner {
-                    Text("👑")
-                        .font(.system(size: 14))
-                        .offset(x: 22, y: -22)
+                    EmojiIcon(emoji: "👑", size: 12, tint: MooniColor.warning)
+                        .offset(x: 18, y: -18)
                         .shadow(color: Color(red: 1.0, green: 0.85, blue: 0.3).opacity(0.7), radius: 4)
                 }
             }
-            .frame(width: 60, height: 60)
+            .frame(width: 50, height: 50)
 
             if let s = score {
                 Text("\(s)")
@@ -3869,14 +3862,10 @@ private struct WidgetPreviewScreen: View {
             Text(duration)
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .foregroundColor(MooniColor.textSecondary)
-            Text(window)
-                .font(.system(size: 9, weight: .medium, design: .rounded))
-                .foregroundColor(MooniColor.textMuted)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 6).padding(.horizontal, 4)
+        .padding(.vertical, 8).padding(.horizontal, 4)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
             .fill(LinearGradient(
                 colors: [tint.opacity(isWinner ? 0.20 : 0.10), tint.opacity(0.02)],
@@ -3915,9 +3904,11 @@ private struct SoundscapePreviewScreen: View {
     let petName: String
 
     @State private var selected: Sound = .rainforest
-    @State private var isPlaying: Bool = false
     @State private var pulse: CGFloat = 0
     @State private var revealed: Bool = false
+    @ObservedObject private var player = SamplePlayer.shared
+
+    private var isPlaying: Bool { player.currentlyPlaying == "rain" }
 
     enum Sound: String, CaseIterable, Identifiable {
         case rainforest, rain, ocean, fire, whitenoise
@@ -3996,7 +3987,7 @@ private struct SoundscapePreviewScreen: View {
 
                 Button {
                     Haptics.medium()
-                    isPlaying.toggle()
+                    SamplePlayer.shared.toggle("rain")
                 } label: {
                     ZStack {
                         Circle()
@@ -4046,6 +4037,7 @@ private struct SoundscapePreviewScreen: View {
                 ForEach(Sound.allCases) { s in
                     Button {
                         Haptics.tap()
+                        if isPlaying { SamplePlayer.shared.stop() }
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             selected = s
                         }
@@ -4092,6 +4084,9 @@ private struct SoundscapePreviewScreen: View {
         .padding(.horizontal, 20)
         .onAppear {
             withAnimation(.easeOut(duration: 0.4).delay(0.3)) { revealed = true }
+        }
+        .onDisappear {
+            SamplePlayer.shared.stop()
         }
     }
 }
@@ -4338,14 +4333,14 @@ private struct GeneratingPlanScreen: View {
     @State private var orbit: Double = 0
     @State private var sparkleScale: CGFloat = 1
 
-    private var msgs: [String] {
+    private var msgs: [(emoji: String, text: String)] {
         [
-            "🌙  Learning your sleep rhythm",
-            "🎯  Building your first quest",
-            "🦉  Preparing \(petName)'s room",
-            "⏰  Tuning your wake-up window",
-            "🌬️  Setting your wind-down",
-            "✨  Locking in tonight's plan"
+            ("🌙", "Learning your sleep rhythm"),
+            ("🎯", "Building your first quest"),
+            ("🦉", "Preparing \(petName)'s room"),
+            ("⏰", "Tuning your wake-up window"),
+            ("🌬️", "Setting your wind-down"),
+            ("✨", "Locking in tonight's plan")
         ]
     }
 
@@ -4389,7 +4384,7 @@ private struct GeneratingPlanScreen: View {
 
             // Big single message — fades + slides between phases.
             VStack(spacing: 10) {
-                Text("✨ BUILDING YOUR PLAN")
+                Text.iconHeader("✨", "BUILDING YOUR PLAN")
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.accentSoft)
                     .tracking(2)
@@ -4397,14 +4392,18 @@ private struct GeneratingPlanScreen: View {
                     .padding(.vertical, 5)
                     .background(MooniColor.accent.opacity(0.16))
                     .clipShape(Capsule())
-                Text(msgs[min(messageIndex, msgs.count - 1)])
-                    .font(.system(size: 22, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-                    .id(messageIndex)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    .animation(.easeInOut(duration: 0.45), value: messageIndex)
+                let msg = msgs[min(messageIndex, msgs.count - 1)]
+                HStack(spacing: 10) {
+                    EmojiIcon(emoji: msg.emoji, size: 22, tint: MooniColor.accentSoft)
+                    Text(msg.text)
+                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .foregroundColor(MooniColor.textPrimary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 24)
+                .id(messageIndex)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .animation(.easeInOut(duration: 0.45), value: messageIndex)
             }
             .frame(minHeight: 90)
 
@@ -4609,7 +4608,7 @@ private struct SimulatedResultScreen: View {
             Spacer(minLength: 8)
 
             VStack(spacing: 10) {
-                Text("🪞 TOMORROW")
+                Text.iconHeader("🪞", "TOMORROW")
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.accentSoft)
                     .tracking(2)
@@ -4659,7 +4658,7 @@ private struct SimulatedResultScreen: View {
                 .frame(width: 70, height: 70)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(emoji).font(.system(size: 22))
+                    EmojiIcon(emoji: emoji, size: 22)
                     Text(label)
                         .font(.system(size: 16, weight: .heavy, design: .rounded))
                         .foregroundColor(tint)
@@ -5221,7 +5220,7 @@ private struct ExpertQuoteScreen: View {
             Spacer(minLength: 12)
 
             // Eyebrow chip
-            Text("💡 \(quote.topLabel)")
+            Text.iconHeader("💡", "\(quote.topLabel)")
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(quote.accent)
                 .tracking(2)
@@ -5318,7 +5317,7 @@ private struct AutoTrackIntroScreen: View {
         VStack(spacing: 28) {
             Spacer(minLength: 8)
 
-            Text("📲 ZERO TAPS NEEDED")
+            Text.iconHeader("📲", "ZERO TAPS NEEDED")
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.accentSoft)
                 .tracking(2)
@@ -5349,8 +5348,7 @@ private struct AutoTrackIntroScreen: View {
                     )
                     .overlay(
                         VStack(spacing: 14) {
-                            Text("😴")
-                                .font(.system(size: 60))
+                            EmojiIcon(emoji: "😴", size: 56, tint: MooniColor.accent)
                             Text("AUTO")
                                 .font(.system(size: 11, weight: .heavy, design: .rounded))
                                 .foregroundColor(MooniColor.success)
@@ -5392,7 +5390,7 @@ private struct AutoTrackIntroScreen: View {
 
     private func lineRow(emoji: String, text: String) -> some View {
         HStack(spacing: 12) {
-            Text(emoji).font(.system(size: 22))
+            EmojiIcon(emoji: emoji, size: 22)
             Text(text)
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
                 .foregroundColor(MooniColor.textPrimary)
@@ -5413,7 +5411,7 @@ private struct AutoTrackRemScreen: View {
         VStack(spacing: 26) {
             Spacer(minLength: 8)
 
-            Text("🧠 EVERY STAGE CAUGHT")
+            Text.iconHeader("🧠", "EVERY STAGE CAUGHT")
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.success)
                 .tracking(2)
@@ -5480,7 +5478,7 @@ private struct AutoTrackRemScreen: View {
 
     private func stageChip(emoji: String, label: String, tint: Color) -> some View {
         VStack(spacing: 4) {
-            Text(emoji).font(.system(size: 24))
+            EmojiIcon(emoji: emoji, size: 24)
             Text(label)
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(tint)
@@ -5512,7 +5510,7 @@ private struct AutoTrackAccuracyScreen: View {
         VStack(spacing: 24) {
             Spacer(minLength: 8)
 
-            Text("🏆 MOST ACCURATE")
+            Text.iconHeader("🏆", "MOST ACCURATE")
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.success)
                 .tracking(2)
@@ -5560,8 +5558,7 @@ private struct AutoTrackAccuracyScreen: View {
     private func accuracyBar(emoji: String, name: String, mins: Double,
                              tint: Color, isWinner: Bool) -> some View {
         HStack(spacing: 12) {
-            Text(emoji)
-                .font(.system(size: 22))
+            EmojiIcon(emoji: emoji, size: 18, tint: tint)
                 .frame(width: 36, height: 36)
                 .background(tint.opacity(0.16))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -5628,7 +5625,7 @@ private struct BodyFactScreen: View {
         VStack(spacing: 26) {
             Spacer(minLength: 8)
 
-            Text("🛌 YOUR BODY'S NEED")
+            Text.iconHeader("🛌", "YOUR BODY'S NEED")
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.accentSoft)
                 .tracking(2)
@@ -5708,7 +5705,7 @@ private struct BodyFactScreen: View {
                         startPoint: .top, endPoint: .bottom))
                     .frame(width: 90, height: 180 * fill)
                 VStack(spacing: 2) {
-                    Text(emoji).font(.system(size: 28))
+                    EmojiIcon(emoji: emoji, size: 28)
                     Text(String(format: "%.1f", hours))
                         .font(.system(size: 24, weight: .heavy, design: .rounded))
                         .foregroundColor(.white)
@@ -5970,13 +5967,13 @@ private struct SleepDebtFactScreen: View {
             Circle()
                 .fill(Color.white.opacity(0.06))
                 .frame(width: 50, height: 50)
-            Text(e).font(.system(size: 26))
+            EmojiIcon(emoji: e, size: 22, tint: MooniColor.accentSoft)
         }
     }
 
     private func experienceCard(emoji: String, number: Int, label: String, tint: Color) -> some View {
         HStack(spacing: 10) {
-            Text(emoji).font(.system(size: 26))
+            EmojiIcon(emoji: emoji, size: 26)
             VStack(alignment: .leading, spacing: -2) {
                 Text("\(number)")
                     .font(.system(size: 28, weight: .heavy, design: .rounded))
@@ -6522,7 +6519,7 @@ private struct IdentityDamageScreen: View {
             Spacer(minLength: 8)
 
             VStack(spacing: 10) {
-                Text("⚠️ IT'S NOT JUST NIGHTS")
+                Text.iconHeader("⚠️", "IT'S NOT JUST NIGHTS")
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.warning)
                     .tracking(2)
@@ -6568,8 +6565,7 @@ private struct IdentityDamageScreen: View {
     private func damageCard(emoji: String, title: String, line: String,
                             tint: Color, visible: Bool) -> some View {
         HStack(spacing: 14) {
-            Text(emoji)
-                .font(.system(size: 30))
+            EmojiIcon(emoji: emoji, size: 24, tint: tint)
                 .frame(width: 54, height: 54)
                 .background(tint.opacity(0.18))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -6989,7 +6985,7 @@ private struct PseudoAnalysisScreen: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Text("🧬 PATTERN MATCH")
+            Text.iconHeader("🧬", "PATTERN MATCH")
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.accentSoft)
                 .tracking(2)
@@ -7065,8 +7061,7 @@ private struct PseudoAnalysisScreen: View {
             Circle()
                 .fill(tint.opacity(0.10))
                 .frame(width: 40, height: 40)
-            Text(emoji)
-                .font(.system(size: 20))
+            EmojiIcon(emoji: emoji, size: 16, tint: tint)
                 .opacity(0.55)
         }
     }
@@ -7193,7 +7188,7 @@ private struct BodyStudiesScreen: View {
     var body: some View {
         VStack(spacing: 10) {
             // Top chip — same on every page so it's the visual anchor
-            Text("🧬 WHILE YOU SLEEP")
+            Text.iconHeader("🧬", "WHILE YOU SLEEP")
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.accentSoft)
                 .tracking(2)
@@ -7357,7 +7352,7 @@ private struct BodyStudiesScreen: View {
             Text(stat)
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundColor(tint)
-            Text(emoji).font(.system(size: 20))
+            EmojiIcon(emoji: emoji, size: 20)
             ZStack(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color.white.opacity(0.06))
@@ -7381,7 +7376,7 @@ private struct BodyStudiesScreen: View {
     private func spineColumn(label: String, height: CGFloat, tint: Color,
                              emoji: String) -> some View {
         VStack(spacing: 6) {
-            Text(emoji).font(.system(size: 18))
+            EmojiIcon(emoji: emoji, size: 18)
             ZStack {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Color.white.opacity(0.05))
@@ -7430,8 +7425,7 @@ private struct BodyStudiesScreen: View {
                 Circle()
                     .fill(MooniColor.accent.opacity(0.15))
                     .frame(width: 180, height: 180)
-                Text("🧠")
-                    .font(.system(size: 96))
+                EmojiIcon(emoji: "🧠", size: 90, tint: MooniColor.accent)
                 // Tiny "waste" particles around the brain
                 ForEach(0..<6, id: \.self) { i in
                     Text("·")
@@ -7457,8 +7451,7 @@ private struct BodyStudiesScreen: View {
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.textMuted)
                 .tracking(1.6)
-            Text("❤️")
-                .font(.system(size: 56))
+            EmojiIcon(emoji: "❤", size: 52, tint: MooniColor.danger)
         }
     }
 
@@ -7506,14 +7499,14 @@ private struct BodyStudiesScreen: View {
             Circle()
                 .fill(Color.white.opacity(0.06))
                 .frame(width: 50, height: 50)
-            Text(e).font(.system(size: 26))
+            EmojiIcon(emoji: e, size: 22, tint: MooniColor.accentSoft)
         }
     }
 
     private func qualityCol(emoji: String, label: String, fillPct: CGFloat,
                             tint: Color, subtext: String) -> some View {
         VStack(spacing: 6) {
-            Text(emoji).font(.system(size: 22))
+            EmojiIcon(emoji: emoji, size: 22)
             ZStack(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color.white.opacity(0.06))
@@ -7552,7 +7545,7 @@ private struct FeatureTourScreen: View {
     var body: some View {
         VStack(spacing: 22) {
             VStack(spacing: 10) {
-                Text("👯 SLEEP CIRCLE")
+                Text.iconHeader("👯", "SLEEP CIRCLE")
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.accentSoft)
                     .tracking(2)
@@ -7673,7 +7666,7 @@ private struct FeatureTourScreen: View {
             .padding(.horizontal, 4)
 
             HStack(spacing: 6) {
-                Text("🏆")
+                EmojiIcon(emoji: "🏆", size: 14, tint: MooniColor.warning)
                 Text("You won last night")
                     .font(.system(size: 13, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.textPrimary)
@@ -7695,8 +7688,7 @@ private struct FeatureTourScreen: View {
                             colors: [MooniColor.accent, MooniColor.accentSoft],
                             startPoint: .topLeading, endPoint: .bottomTrailing))
                         .frame(width: 44, height: 44)
-                    Text("🎉")
-                        .font(.system(size: 22))
+                    EmojiIcon(emoji: "🎉", size: 20, tint: MooniColor.warning)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
@@ -7708,7 +7700,7 @@ private struct FeatureTourScreen: View {
                             .font(.system(size: 11))
                             .foregroundColor(MooniColor.textMuted)
                     }
-                    Text("Alex just hit a 91 — their best night ever 🌙")
+                    Text("Alex just hit a 91 — their best night ever")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(MooniColor.textPrimary)
                         .lineLimit(2)
@@ -7777,8 +7769,7 @@ private struct FeatureTourScreen: View {
                         .foregroundColor(scoreTint)
                 }
                 if isWinner {
-                    Text("🏆")
-                        .font(.system(size: 20))
+                    EmojiIcon(emoji: "🏆", size: 18, tint: MooniColor.warning)
                         .offset(x: 28, y: -28)
                 }
             }
@@ -7802,7 +7793,7 @@ private struct FeatureTourScreen: View {
 
     private func cheerChip(emoji: String, label: String) -> some View {
         VStack(spacing: 4) {
-            Text(emoji).font(.system(size: 26))
+            EmojiIcon(emoji: emoji, size: 26)
             Text(label)
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.textPrimary)

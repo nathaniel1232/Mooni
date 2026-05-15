@@ -81,8 +81,8 @@ struct DiscountPaywallView: View {
 
     var body: some View {
         ZStack {
-            MooniColor.background.ignoresSafeArea()
-            StarsBackground(count: 60)
+            MooniGradient.night.ignoresSafeArea()
+            StarsBackground(count: 70).opacity(0.9)
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 12) {
@@ -200,15 +200,17 @@ struct DiscountPaywallView: View {
                         .foregroundColor(MooniColor.warning)
                         .tracking(2)
                 }
-                Text("Spin the wheel,\nclaim your discount")
-                    .font(MooniFont.display(34))
+                Text("Wait — before you go,\nclaim your gift.")
+                    .font(MooniFont.display(30))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
-                Text("One spin — keep what you land on.")
-                    .font(MooniFont.body(15))
+                Text("One spin. Keep whatever you land on.")
+                    .font(MooniFont.body(14))
                     .foregroundColor(.white.opacity(0.85))
                     .multilineTextAlignment(.center)
+                socialProofChip
+                    .padding(.top, 2)
             }
         case .spinning:
             VStack(spacing: 10) {
@@ -251,6 +253,31 @@ struct DiscountPaywallView: View {
                 }
             }
         }
+    }
+
+    /// Tiny social-proof chip — five faces overlapping + a rating sentence.
+    /// Lives in the gift stage to lower hesitancy before the spin.
+    private var socialProofChip: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: -6) {
+                ForEach(0..<4, id: \.self) { i in
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [MooniColor.accentSoft, MooniColor.accent],
+                            startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 18, height: 18)
+                        .overlay(Circle().stroke(MooniColor.background, lineWidth: 1.5))
+                        .opacity(1 - Double(i) * 0.12)
+                }
+            }
+            Text("1,000+ sleepers · 4.9 ★")
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(.white.opacity(0.85))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(Color.white.opacity(0.08)))
+        .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
     }
 
     // MARK: - Wheel

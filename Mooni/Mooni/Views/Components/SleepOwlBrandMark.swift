@@ -46,7 +46,7 @@ struct SleepOwlBrandMark: View {
 
     var body: some View {
         HStack(spacing: spacing) {
-            Image("owl_base")
+            Image("spirit_awake")
                 .resizable()
                 .scaledToFit()
                 .frame(width: logoSide, height: logoSide)

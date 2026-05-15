@@ -50,7 +50,7 @@ final class SubscriptionManager: ObservableObject {
 
     func configure() {
         Purchases.logLevel = .error
-        Purchases.configure(withAPIKey: "test_ZLGdnSIgtxLglPKmaWsNnGXtYvn")
+        Purchases.configure(withAPIKey: "appl_NHazhFbSVJwZapxrWPhcOVfrGma")
         Purchases.shared.delegate = MooniPurchasesDelegate.shared
         Task { await refreshAll() }
     }
@@ -87,10 +87,45 @@ final class SubscriptionManager: ObservableObject {
             let offerings = try await Purchases.shared.offerings()
             currentOffering = offerings.current
             discountOffering = offerings.all[Self.discountOfferingID]
+            #if DEBUG
+            Self.printOfferingDiagnostics(offerings)
+            #endif
         } catch {
-            // Silently fail — UI will show fallback state
+            #if DEBUG
+            print("⚠️ RevenueCat: failed to load offerings — \(error.localizedDescription)")
+            #endif
         }
     }
+
+    /// Prints a single-line readout in DEBUG so you can verify at a glance
+    /// that the dashboard has the products you expect. If you don't see your
+    /// `current` offering or your annual package here, the rest of the app
+    /// will silently fall back to a fake-price state — fix the dashboard
+    /// before debugging anything else.
+    #if DEBUG
+    private static func printOfferingDiagnostics(_ offerings: Offerings) {
+        guard let current = offerings.current else {
+            print("⚠️ RevenueCat: NO current offering. Set one as Current in the dashboard.")
+            return
+        }
+        print("✅ RevenueCat current offering: \(current.identifier)")
+        for pkg in current.availablePackages {
+            let p = pkg.storeProduct
+            let intro: String
+            if let d = p.introductoryDiscount {
+                intro = " (intro: \(d.subscriptionPeriod.value) \(d.subscriptionPeriod.unit) free)"
+            } else {
+                intro = ""
+            }
+            print("   • \(pkg.identifier) \(p.localizedPriceString)\(intro) — \(p.productIdentifier)")
+        }
+        if let disc = offerings.all[discountOfferingID] {
+            print("✅ RevenueCat discount offering: \(disc.identifier)")
+        } else {
+            print("ℹ️ RevenueCat: no `discount` offering found — win-back paywall will show non-discount CTA.")
+        }
+    }
+    #endif
 
     /// The annual package that should be charged on the win-back paywall.
     /// Returns the discount offering's annual if configured, otherwise nil so

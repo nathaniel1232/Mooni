@@ -202,7 +202,7 @@ enum HomeIntelligence {
             ]
         }
         let seed = daySeed(Date().dayKey)
-        return pick(pool, seed: seed, salt: 71)
+        return pick(pool, seed: seed, salt: 71) ?? ""
     }
 
     // MARK: - Aura logic
@@ -222,14 +222,14 @@ enum HomeIntelligence {
 
         if variance > 90 && score < 70 { return .chaotic }
         if score >= 88 { return .glowing }
-        if score >= 78 { return pick([.energized, .glowing], seed: seed, salt: 7) }
+        if score >= 78 { return pick([.energized, .glowing], seed: seed, salt: 7) ?? .calm }
         if score >= 68 {
-            return pick([.focused, .calm, .energized], seed: seed, salt: 13)
+            return pick([.focused, .calm, .energized], seed: seed, salt: 13) ?? .calm
         }
         if score >= 55 {
-            return pick([.calm, .focused, .recovering], seed: seed, salt: 17)
+            return pick([.calm, .focused, .recovering], seed: seed, salt: 17) ?? .calm
         }
-        if score >= 40 { return pick([.recovering, .unstable], seed: seed, salt: 23) }
+        if score >= 40 { return pick([.recovering, .unstable], seed: seed, salt: 23) ?? .calm }
         return .unstable
     }
 
@@ -346,8 +346,8 @@ enum HomeIntelligence {
         }
 
         return (
-            pick(titles, seed: seed, salt: 31),
-            pick(subs,   seed: seed, salt: 37)
+            pick(titles, seed: seed, salt: 31) ?? "",
+            pick(subs,   seed: seed, salt: 37) ?? ""
         )
     }
 
@@ -367,7 +367,7 @@ enum HomeIntelligence {
         case .unstable:   pool = ["Bit fuzzy.", "Coffee, then talk.", "Slow start today."]
         case .chaotic:    pool = ["What day is it?", "Where am I?", "Let's reset tonight."]
         }
-        return pick(pool, seed: seed, salt: 43)
+        return pick(pool, seed: seed, salt: 43) ?? "" ?? ""
     }
 
     // MARK: - Morning cards
@@ -392,7 +392,7 @@ enum HomeIntelligence {
                 "Peak around \(formatHour(peakHour))",
                 "Most energy near \(formatHour(peakHour))",
                 "Push hard at \(formatHour(peakHour))"
-            ], seed: seed, salt: 51),
+            ], seed: seed, salt: 51) ?? "",
             detail: score >= 70
                 ? "You'll likely feel sharpest in a 90-minute window around then."
                 : "After that, expect a noticeable dip — plan a break."
@@ -404,7 +404,7 @@ enum HomeIntelligence {
             headline: score >= 75
                 ? "Your body recovered well."
                 : score >= 55 ? "Half-recovered." : "Still recovering.",
-            detail: pick(recoveryDetails(score: score, hours: hours), seed: seed, salt: 53)
+            detail: pick(recoveryDetails(score: score, hours: hours), seed: seed, salt: 53) ?? ""
         )
 
         // Mood (SleepOwl)
@@ -433,7 +433,7 @@ enum HomeIntelligence {
             headline: score >= 70
                 ? "Strong morning focus"
                 : "Focus may dip near \(formatHour(focusDip))",
-            detail: pick(focusDetails(score: score), seed: seed, salt: 57)
+            detail: pick(focusDetails(score: score), seed: seed, salt: 57) ?? ""
         )
 
         return [energy, recovery, mood, consistency, focus]
@@ -615,7 +615,7 @@ enum HomeIntelligence {
         seed: UInt64
     ) -> String {
         let pool: [String] = whyPool(entry: entry, all: all, targetBedtime: targetBedtime)
-        return pick(pool, seed: seed, salt: 67)
+        return pick(pool, seed: seed, salt: 67) ?? ""
     }
 
     private static func whyPool(
@@ -722,8 +722,8 @@ enum HomeIntelligence {
         return hash
     }
 
-    private static func pick<T>(_ array: [T], seed: UInt64, salt: UInt64) -> T {
-        precondition(!array.isEmpty)
+    private static func pick<T>(_ array: [T], seed: UInt64, salt: UInt64) -> T? {
+        guard !array.isEmpty else { return nil }
         let idx = Int((seed &+ salt) % UInt64(array.count))
         return array[idx]
     }

@@ -125,14 +125,12 @@ struct MorningCheckInView: View {
     // MARK: - Background
 
     private var backgroundLayer: some View {
-        ZStack {
-            ForEach(Scene.allCases, id: \.self) { s in
-                gradient(for: s)
-                    .ignoresSafeArea()
-                    .opacity(scene == s ? 1 : 0)
-            }
-        }
-        .animation(.easeInOut(duration: 0.85), value: scene)
+        LinearGradient(
+            colors: [Color(red: 0.03, green: 0.04, blue: 0.16),
+                     Color(red: 0.08, green: 0.08, blue: 0.24)],
+            startPoint: .top, endPoint: .bottom
+        )
+        .ignoresSafeArea()
     }
 
     private func gradient(for s: Scene) -> LinearGradient {
@@ -444,7 +442,7 @@ struct MorningCheckInView: View {
             selectAccuracy(r)
         } label: {
             VStack(spacing: 6) {
-                Text(r.emoji).font(.system(size: 22))
+                EmojiIcon(emoji: r.emoji, size: 20, tint: MooniColor.accentSoft)
                     .scaleEffect(selected ? 1.15 : 1.0)
                 Text(r.label)
                     .font(MooniFont.caption(11))
@@ -486,10 +484,10 @@ struct MorningCheckInView: View {
             spirit(size: 90)
 
             VStack(spacing: 6) {
-                Text("How long did sleep")
+                Text("How long did it take")
                     .font(MooniFont.display(26))
                     .foregroundColor(MooniColor.textPrimary)
-                Text("take to find you?")
+                Text("to fall asleep?")
                     .font(MooniFont.display(26))
                     .foregroundColor(MooniColor.textPrimary)
             }
@@ -786,8 +784,7 @@ struct MorningCheckInView: View {
             withAnimation(.spring(response: 0.3)) { caffeine = c }
         } label: {
             VStack(spacing: 8) {
-                Text(c.emoji)
-                    .font(.system(size: 32))
+                EmojiIcon(emoji: c.emoji, size: 26, tint: MooniColor.accentSoft)
                     .scaleEffect(selected ? 1.15 : 1.0)
                 Text(c.label)
                     .font(MooniFont.caption(12))

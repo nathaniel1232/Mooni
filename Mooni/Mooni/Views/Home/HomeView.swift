@@ -1744,7 +1744,7 @@ private struct AutoWakeUpSheet: View {
             VStack(spacing: 22) {
                 // Chip + headline
                 VStack(spacing: 10) {
-                    Text("🦉 WE TRACKED YOUR NIGHT")
+                    Text.iconHeader("🦉", "WE TRACKED YOUR NIGHT")
                         .font(.system(size: 12, weight: .heavy, design: .rounded))
                         .foregroundColor(MooniColor.accentSoft)
                         .tracking(2)
@@ -1786,7 +1786,7 @@ private struct AutoWakeUpSheet: View {
                 let durationHours = (editing ? editedWakeTime : entry.wakeTime)
                     .timeIntervalSince(editing ? editedBedtime : entry.bedtime) / 3600.0
                 HStack(spacing: 8) {
-                    Text("⏱️")
+                    EmojiIcon(emoji: "⏱", size: 14, tint: MooniColor.textPrimary)
                     Text(durationLabel(durationHours))
                         .font(.system(size: 14, weight: .heavy, design: .rounded))
                         .foregroundColor(MooniColor.textPrimary)
@@ -1944,7 +1944,7 @@ private struct AutoWakeUpSheet: View {
                                   date: Binding<Date>, editing: Bool) -> some View {
         VStack(spacing: 8) {
             HStack(spacing: 6) {
-                Text(emoji).font(.system(size: 16))
+                EmojiIcon(emoji: emoji, size: 14, tint: tint)
                 Text(label)
                     .font(.system(size: 10, weight: .heavy, design: .rounded))
                     .foregroundColor(tint)
@@ -1981,7 +1981,7 @@ private struct AutoWakeUpSheet: View {
                                 tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                Text(emoji).font(.system(size: 28))
+                EmojiIcon(emoji: emoji, size: 24, tint: tint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(label)
                         .font(.system(size: 16, weight: .heavy, design: .rounded))
@@ -2116,8 +2116,7 @@ private struct AutoWakeUpSheet: View {
             // header. The eyebrow is uppercased on purpose so the headline beneath
             // gets the eye.
             HStack(spacing: 6) {
-                Text("☀️")
-                    .font(.system(size: 14))
+                EmojiIcon(emoji: "☀", size: 13, tint: MooniColor.warning)
                 Text("GOOD MORNING")
                     .font(MooniFont.caption(11))
                     .foregroundColor(MooniColor.accentSoft)

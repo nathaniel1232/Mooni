@@ -10,6 +10,12 @@ enum MooniFont {
             || UIFont(name: "Outfit-Regular", size: 12) != nil
     }()
 
+    /// Cached cascaded fonts per (name, size). Without a cascade list to
+    /// AppleColorEmoji, SwiftUI Text using .custom(...) renders emoji as the
+    /// missing-glyph "?" box — so every emoji in the app must go through a
+    /// font that explicitly cascades to the colour-emoji family.
+    private static var cache: [String: Font] = [:]
+
     private static func outfit(_ size: CGFloat, weight: Font.Weight) -> Font {
         guard isOutfitAvailable else {
             return .system(size: size, weight: weight, design: .rounded)
@@ -21,7 +27,24 @@ enum MooniFont {
         case .medium:               name = "Outfit-Medium"
         default:                    name = "Outfit-Regular"
         }
-        return .custom(name, size: size)
+
+        let key = "\(name)-\(size)"
+        if let cached = cache[key] { return cached }
+
+        guard let base = UIFont(name: name, size: size),
+              let emoji = UIFont(name: "AppleColorEmoji", size: size) else {
+            let fallback = Font.custom(name, size: size)
+            cache[key] = fallback
+            return fallback
+        }
+
+        let descriptor = base.fontDescriptor.addingAttributes([
+            .cascadeList: [emoji.fontDescriptor]
+        ])
+        let composed = UIFont(descriptor: descriptor, size: size)
+        let font = Font(composed)
+        cache[key] = font
+        return font
     }
 
     static func display(_ size: CGFloat = 34) -> Font {

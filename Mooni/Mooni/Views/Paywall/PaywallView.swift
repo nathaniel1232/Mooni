@@ -3,8 +3,24 @@ import RevenueCat
 import RevenueCatUI
 
 // MARK: - PaywallView
+//
+// Trial-first paywall. Annual plan leads with a 7-day free trial; user can
+// flip to Monthly for instant access without a trial. The timeline visual
+// is meant as an invitation — what happens day-by-day on the trial — rather
+// than a price wall.
+//
+// To wire the trial up in RevenueCat / App Store Connect, see the notes in
+// SubscriptionManager — the trial period is configured on the StoreKit
+// product itself as a 7-day Free intro offer, not in code.
 
 struct PaywallView: View {
+    /// `.short` is whichever short-period package the current Offering exposes
+    /// — weekly or monthly. The dashboard decides; the UI adapts. This is the
+    /// hook RevenueCat Experiments uses to A/B test weekly vs monthly without
+    /// any code change: ship two Offerings ("short_weekly" / "short_monthly"),
+    /// assign them in an experiment, the SDK rotates `current` accordingly.
+    enum Plan { case annual, short }
+
     @StateObject private var manager = SubscriptionManager.shared
     @Environment(\.dismiss) private var dismiss
 
@@ -14,34 +30,60 @@ struct PaywallView: View {
     var onSoftDismiss: (() -> Void)? = nil
     var onPurchased: (() -> Void)? = nil
 
-    @State private var selectedPackage: Package?
+    @State private var plan: Plan = .annual
     @State private var showCustomerCenter = false
     @State private var showSuccess = false
     @State private var animateIn = false
+    @State private var moonGlow = false
 
-    // Preview pet for the hero
     private var heroPet: Pet {
         var p = Pet()
         p.mood = .rested
         return p
     }
 
-    private var weeklyPackage: Package? {
-        manager.currentOffering?.availablePackages.first { $0.packageType == .weekly }
-    }
-
     private var annualPackage: Package? {
         manager.currentOffering?.availablePackages.first { $0.packageType == .annual }
     }
 
+    /// Whichever short-period package this offering ships with. Weekly wins
+    /// over monthly when both are present (rare — usually only one is set).
+    private var shortPackage: Package? {
+        let packages = manager.currentOffering?.availablePackages ?? []
+        if let w = packages.first(where: { $0.packageType == .weekly }) { return w }
+        return packages.first { $0.packageType == .monthly }
+    }
+
+    private var shortPeriodLabel: String {
+        switch shortPackage?.packageType {
+        case .weekly:  return "Weekly"
+        case .monthly: return "Monthly"
+        default:       return "Monthly"
+        }
+    }
+
+    private var shortPerLabel: String {
+        switch shortPackage?.packageType {
+        case .weekly:  return "/week"
+        default:       return "/mo"
+        }
+    }
+
+    private var selectedPackage: Package? {
+        plan == .annual ? annualPackage : shortPackage
+    }
+
     var body: some View {
         ZStack {
-            MooniColor.background
+            MooniGradient.night
                 .ignoresSafeArea()
-            StarsBackground(count: 60)
+            StarsBackground(count: 70)
+                .opacity(0.9)
 
             if showSuccess {
                 successOverlay
+            } else if manager.currentOffering == nil && !manager.isLoading {
+                offeringsErrorView
             } else {
                 mainContent
             }
@@ -52,365 +94,421 @@ struct PaywallView: View {
         }
     }
 
+    private var offeringsErrorView: some View {
+        VStack(spacing: 20) {
+            Spacer()
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 38, weight: .semibold))
+                .foregroundColor(MooniColor.textMuted)
+            VStack(spacing: 8) {
+                Text("Couldn't load plans")
+                    .font(MooniFont.title(20))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text("Check your connection and try again.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            Button {
+                Task { await manager.loadOfferings() }
+            } label: {
+                Text("Retry")
+                    .font(MooniFont.title(16))
+                    .foregroundColor(.white)
+                    .frame(width: 140, height: 48)
+                    .background(MooniColor.accent)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            closeRow
+                .padding(.bottom, 8)
+        }
+        .padding(.horizontal, 32)
+    }
+
     // MARK: - Main content
 
-    /// Single-screen, no-scroll paywall. Anchored top + bottom with one
-    /// elastic Spacer between the value-prop block and the price block so the
-    /// layout fills the whole sheet on every device size.
     private var mainContent: some View {
         VStack(spacing: 0) {
-            // Close button row
-            HStack {
-                Spacer()
-                Button {
-                    if hideCloseButton, let soft = onSoftDismiss { soft() } else { dismiss() }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(
-                            size: hideCloseButton ? 10 : 13,
-                            weight: hideCloseButton ? .regular : .semibold))
-                        .foregroundColor(hideCloseButton
-                                         ? Color.white.opacity(0.18)
-                                         : MooniColor.textSecondary)
-                        .padding(hideCloseButton ? 6 : 8)
-                        .background(hideCloseButton ? Color.clear : Color.white.opacity(0.10))
-                        .clipShape(Circle())
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Close paywall")
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
+            closeRow
 
-            // Top zone — hero + rating + benefits
-            VStack(spacing: 0) {
-                heroBlock
-                    .padding(.horizontal, 22)
-                    .padding(.top, 4)
-                    .opacity(animateIn ? 1 : 0)
-                    .animation(.spring(response: 0.6, dampingFraction: 0.75), value: animateIn)
+            heroBlock
+                .padding(.top, 4)
+                .opacity(animateIn ? 1 : 0)
+                .offset(y: animateIn ? 0 : 12)
+                .animation(.spring(response: 0.65, dampingFraction: 0.78), value: animateIn)
 
-                ratingRow
-                    .padding(.top, 10)
-                    .opacity(animateIn ? 1 : 0)
-                    .animation(.easeOut(duration: 0.4).delay(0.10), value: animateIn)
+            titleBlock
+                .padding(.horizontal, 24)
+                .padding(.top, 14)
+                .opacity(animateIn ? 1 : 0)
+                .animation(.easeOut(duration: 0.4).delay(0.10), value: animateIn)
 
-                benefitsSection
-                    .padding(.horizontal, 22)
-                    .padding(.top, 18)
-                    .opacity(animateIn ? 1 : 0)
-                    .animation(.easeOut(duration: 0.4).delay(0.16), value: animateIn)
-            }
+            planToggle
+                .padding(.top, 14)
+                .opacity(animateIn ? 1 : 0)
+                .animation(.easeOut(duration: 0.4).delay(0.14), value: animateIn)
 
-            Spacer(minLength: 12)
+            content
+                .padding(.horizontal, 28)
+                .padding(.top, 22)
+                .opacity(animateIn ? 1 : 0)
+                .animation(.easeOut(duration: 0.45).delay(0.18), value: animateIn)
 
-            // Bottom zone — plan picker + CTA + footer, anchored to the floor
-            VStack(spacing: 10) {
-                planPicker
-                    .padding(.horizontal, 20)
+            Spacer(minLength: 8)
 
-                if let error = manager.errorMessage {
-                    Text(error)
-                        .font(MooniFont.caption(11))
-                        .foregroundColor(MooniColor.danger)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                }
-
-                purchaseButton
-                    .padding(.horizontal, 20)
-                trialReminderInline
-                footerLinks
-                    .padding(.horizontal, 20)
-            }
-            .padding(.bottom, 12)
-            .opacity(animateIn ? 1 : 0)
-            .animation(.easeOut(duration: 0.4).delay(0.22), value: animateIn)
+            bottomBlock
+                .opacity(animateIn ? 1 : 0)
+                .animation(.easeOut(duration: 0.4).delay(0.26), value: animateIn)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            if selectedPackage == nil {
-                selectedPackage = annualPackage ?? weeklyPackage
-            }
             withAnimation { animateIn = true }
-        }
-        .onChange(of: manager.currentOffering) { _, _ in
-            if selectedPackage == nil {
-                selectedPackage = annualPackage ?? weeklyPackage
+            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                moonGlow = true
             }
         }
     }
 
-    // MARK: - Compact hero
+    @ViewBuilder
+    private var content: some View {
+        if plan == .annual {
+            timeline
+        } else {
+            monthlyBenefits
+        }
+    }
+
+    // MARK: - Close
+
+    private var closeRow: some View {
+        HStack {
+            Spacer()
+            Button {
+                if hideCloseButton, let soft = onSoftDismiss { soft() } else { dismiss() }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(
+                        size: hideCloseButton ? 10 : 13,
+                        weight: hideCloseButton ? .regular : .semibold))
+                    .foregroundColor(hideCloseButton
+                                     ? Color.white.opacity(0.18)
+                                     : MooniColor.textSecondary)
+                    .frame(width: hideCloseButton ? 24 : 30,
+                           height: hideCloseButton ? 24 : 30)
+                    .background(hideCloseButton ? Color.clear : Color.white.opacity(0.10))
+                    .clipShape(Circle())
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Close paywall")
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+    }
+
+    // MARK: - Hero (moon halo + owl)
 
     private var heroBlock: some View {
-        VStack(spacing: 4) {
-            ZStack {
-                Circle()
-                    .fill(RadialGradient(
-                        colors: [MooniColor.accent.opacity(0.45), .clear],
-                        center: .center, startRadius: 4, endRadius: 90))
-                    .frame(width: 180, height: 130)
-                    .blur(radius: 4)
-                DreamSpiritView(pet: heroPet, size: 84)
-                    .scaleEffect(animateIn ? 1 : 0.82)
-                    .shadow(color: MooniColor.accent.opacity(0.5), radius: 18, y: 8)
-            }
-            .frame(height: 100)
+        ZStack {
+            Circle()
+                .fill(RadialGradient(
+                    colors: [
+                        MooniColor.accent.opacity(0.55),
+                        MooniColor.accent.opacity(0.0)
+                    ],
+                    center: .center,
+                    startRadius: 6,
+                    endRadius: 140))
+                .frame(width: 280, height: 200)
+                .scaleEffect(moonGlow ? 1.04 : 0.96)
+                .blur(radius: 6)
 
-            Text("SleepOwl Pro")
-                .font(MooniFont.display(26))
+            Circle()
+                .fill(LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.18),
+                        MooniColor.accent.opacity(0.35)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom))
+                .frame(width: 140, height: 140)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                )
+                .shadow(color: MooniColor.accent.opacity(0.45), radius: 24, y: 6)
+
+            DreamSpiritView(pet: heroPet, size: 95)
+                .scaleEffect(animateIn ? 1 : 0.85)
+        }
+        .frame(height: 170)
+    }
+
+    // MARK: - Title
+
+    private var titleBlock: some View {
+        VStack(spacing: 6) {
+            Text(plan == .annual ? "How your free trial works" : "Unlock SleepOwl Pro")
+                .font(MooniFont.display(24))
                 .foregroundStyle(LinearGradient(
                     colors: [MooniColor.textPrimary, MooniColor.accentSoft],
                     startPoint: .leading,
                     endPoint: .trailing))
+                .multilineTextAlignment(.center)
 
-            Text("Invest in your sleep — and your health.")
+            Text(planSubtitle)
                 .font(MooniFont.body(13))
                 .foregroundColor(MooniColor.textSecondary)
                 .multilineTextAlignment(.center)
         }
     }
 
-    // MARK: - Rating row
-
-    private var ratingRow: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 2) {
-                ForEach(0..<5, id: \.self) { _ in
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(MooniColor.warning)
-                }
+    private var planSubtitle: String {
+        if plan == .annual {
+            guard let pkg = annualPackage else {
+                return "First 7 days free, then yearly. Cancel anytime."
             }
-            Text("4.9")
-                .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundColor(MooniColor.textPrimary)
-            Text("·")
-                .foregroundColor(MooniColor.textMuted)
-            Text("Loved by 1,000+ sleepers")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundColor(MooniColor.textSecondary)
-        }
-    }
-
-    // MARK: - Compact trial reminder
-
-    private var trialReminderInline: some View {
-        HStack(spacing: 6) {
-            Image(systemName: selectedAnnual ? "gift.fill" : "bolt.fill")
-                .foregroundColor(MooniColor.warning)
-                .font(.system(size: 11, weight: .semibold))
-            Text(selectedAnnual
-                 ? "7-day free trial · cancel anytime"
-                 : "Renews weekly · cancel anytime")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundColor(MooniColor.textSecondary)
-        }
-    }
-
-    // MARK: - Benefits
-
-    /// 4 scannable bullets — short enough that the user reads all of them at a
-    /// glance without scrolling. Two pre-launch features were dropped from
-    /// this view to stay one-screen; they're still surfaced in onboarding.
-    private var benefitsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            benefitRow(text: "Auto sleep tracking — just sleep")
-            benefitRow(text: "Full history & score breakdowns")
-            benefitRow(text: "Deep insights: REM, debt, recovery")
-            benefitRow(text: "Every color, animation & background")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func benefitRow(text: String) -> some View {
-        HStack(spacing: 11) {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient(
-                        colors: [MooniColor.accentSoft, MooniColor.accent],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing))
-                    .frame(width: 22, height: 22)
-                Image(systemName: "checkmark")
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundColor(.white)
+            let price = pkg.storeProduct.localizedPriceString
+            let weeklyEquiv = (pkg.storeProduct.price as Decimal) / 52
+            let symbol = pkg.storeProduct.priceFormatter?.currencySymbol ?? "$"
+            let weeklyStr = String(format: "%@%.2f/week",
+                                   symbol,
+                                   NSDecimalNumber(decimal: weeklyEquiv).floatValue)
+            return "First 7 days free, then \(price) (\(weeklyStr))"
+        } else {
+            guard let pkg = shortPackage else {
+                return "Billed \(shortPeriodLabel.lowercased()). Cancel anytime."
             }
-            Text(text)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundColor(MooniColor.textPrimary)
-                .lineLimit(1)
-            Spacer(minLength: 0)
+            let unit = shortPackage?.packageType == .weekly ? "week" : "month"
+            return "\(pkg.storeProduct.localizedPriceString) per \(unit) · cancel anytime"
         }
     }
 
-    private var selectedAnnual: Bool {
-        selectedPackage?.packageType == .annual
+    // MARK: - Plan toggle
+
+    private var annualPriceLabel: String {
+        guard let pkg = annualPackage else { return "" }
+        return "\(pkg.storeProduct.localizedPriceString)/yr"
     }
 
-    // MARK: - Plan Picker
+    private var shortPriceLabel: String {
+        guard let pkg = shortPackage else { return "" }
+        let unit = pkg.packageType == .weekly ? "wk" : "mo"
+        return "\(pkg.storeProduct.localizedPriceString)/\(unit)"
+    }
 
-    private var planPicker: some View {
-        VStack(spacing: 6) {
-            if let annual = annualPackage {
-                planCard(package: annual, badge: "FREE TRIAL", badgeColor: MooniColor.success)
-            } else {
-                planCardPlaceholder(title: "Yearly", price: "$39.99 / yr", badge: "FREE TRIAL", badgeColor: MooniColor.success)
-            }
-            if let weekly = weeklyPackage {
-                planCard(package: weekly, badge: nil, badgeColor: .clear)
-            } else {
-                planCardPlaceholder(title: "Weekly", price: "$4.99 / wk", badge: nil, badgeColor: .clear)
-            }
+    private var planToggle: some View {
+        HStack(spacing: 0) {
+            toggleSegment(title: "Annual", subtitle: "Free trial", price: annualPriceLabel, value: .annual)
+            toggleSegment(title: shortPeriodLabel, subtitle: "No trial", price: shortPriceLabel, value: .short)
         }
+        .padding(4)
+        .background(
+            Capsule().fill(Color.white.opacity(0.08))
+        )
+        .overlay(
+            Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+        .padding(.horizontal, 60)
     }
 
-    /// Honest savings % for the annual plan relative to weekly × 52 — falls
-    /// back to nil when prices aren't loaded so we don't ship a fake number.
-    private var annualSavingsPercent: Int? {
-        guard let annual = annualPackage,
-              let weekly = weeklyPackage else { return nil }
-        let yearlyEquiv = (weekly.storeProduct.price as Decimal) * 52
-        guard yearlyEquiv > 0 else { return nil }
-        let saved = (yearlyEquiv - (annual.storeProduct.price as Decimal)) / yearlyEquiv
-        let percent = Int((NSDecimalNumber(decimal: saved).doubleValue * 100).rounded())
-        return percent > 0 ? percent : nil
-    }
-
-    private func planCard(package: Package, badge: String?, badgeColor: Color) -> some View {
-        let isSelected = selectedPackage?.identifier == package.identifier
-        let isAnnual = package.packageType == .annual
-        let priceText = package.storeProduct.localizedPriceString
-        let periodText = isAnnual ? "/ yr" : "/ wk"
-
+    private func toggleSegment(title: String, subtitle: String, price: String, value: Plan) -> some View {
+        let active = plan == value
         return Button {
-            withAnimation(.spring(response: 0.3)) {
-                selectedPackage = package
-            }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { plan = value }
         } label: {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.35),
-                                lineWidth: 1.5)
-                        .frame(width: 18, height: 18)
-                    if isSelected {
-                        Circle()
-                            .fill(MooniColor.accent)
-                            .frame(width: 10, height: 10)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 6) {
-                        Text(isAnnual ? "Yearly" : "Weekly")
-                            .font(MooniFont.title(15))
-                            .foregroundColor(MooniColor.textPrimary)
-                        if let badge = badge {
-                            Text(badge)
-                                .font(.system(size: 9, weight: .heavy, design: .rounded))
-                                .foregroundColor(.white)
-                                .tracking(0.5)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(badgeColor)
-                                .clipShape(Capsule())
-                        }
-                    }
-                    if isAnnual {
-                        let weeklyEquiv = (package.storeProduct.price as Decimal) / 52
-                        Text(String(format: "Only %@%.2f / week",
-                                    package.storeProduct.priceFormatter?.currencySymbol ?? "$",
-                                    NSDecimalNumber(decimal: weeklyEquiv).floatValue))
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundColor(MooniColor.textSecondary)
-                    }
-                }
-                Spacer()
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text(priceText)
-                        .font(MooniFont.title(15))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Text(periodText)
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundColor(MooniColor.textMuted)
+            VStack(spacing: 1) {
+                Text(title)
+                    .font(MooniFont.title(14))
+                    .foregroundColor(active ? .white : MooniColor.textSecondary)
+                Text(subtitle)
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .foregroundColor(active ? Color.white.opacity(0.85) : MooniColor.textMuted)
+                if !price.isEmpty {
+                    Text(price)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(active ? Color.white.opacity(0.9) : MooniColor.textMuted)
+                        .padding(.top, 1)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isSelected ? MooniColor.accent.opacity(0.15) : Color.white.opacity(0.06))
+                Capsule()
+                    .fill(active
+                          ? LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
+                                           startPoint: .leading, endPoint: .trailing)
+                          : LinearGradient(colors: [.clear, .clear],
+                                           startPoint: .leading, endPoint: .trailing))
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.10),
-                            lineWidth: isSelected ? 2 : 1)
-            )
-            .overlay(alignment: .topTrailing) {
-                if isAnnual, let pct = annualSavingsPercent {
-                    Text("SAVE \(pct)%")
-                        .font(.system(size: 9, weight: .heavy, design: .rounded))
-                        .foregroundColor(.white)
-                        .tracking(0.8)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule().fill(
-                                LinearGradient(
-                                    colors: [MooniColor.danger, MooniColor.warning],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                        )
-                        .shadow(color: MooniColor.warning.opacity(0.45), radius: 6, y: 2)
-                        .offset(x: -8, y: -10)
-                }
-            }
         }
         .buttonStyle(.plain)
     }
 
-    private func planCardPlaceholder(title: String, price: String, badge: String?, badgeColor: Color) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(title)
-                        .font(MooniFont.title(16))
-                        .foregroundColor(MooniColor.textPrimary)
-                    if let badge = badge {
-                        Text(badge)
-                            .font(MooniFont.caption(11))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(badgeColor)
-                            .clipShape(Capsule())
-                    }
-                }
-            }
-            Spacer()
-            Text(price)
-                .font(MooniFont.title(15))
-                .foregroundColor(MooniColor.textMuted)
+    // MARK: - Annual: trial timeline
+
+    private var timeline: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            timelineRow(
+                icon: "lock.open.fill",
+                tint: MooniColor.accent,
+                title: "Today",
+                body: "Unlock the full SleepOwl library — meditations, sleep sounds, deep insights & every spirit colour.",
+                showConnector: true,
+                connectorFill: 1.0
+            )
+            timelineRow(
+                icon: "bell.fill",
+                tint: MooniColor.accentSoft,
+                title: "In 5 days",
+                body: "We'll send a gentle reminder that your trial is ending soon — no surprises.",
+                showConnector: true,
+                connectorFill: 0.35
+            )
+            timelineRow(
+                icon: "star.fill",
+                tint: MooniColor.warning,
+                title: "In 7 days",
+                body: "Your subscription begins. Cancel anytime before then and you won't be charged.",
+                showConnector: false,
+                connectorFill: 0.0
+            )
         }
-        .padding(16)
-        .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
-        .redacted(reason: .placeholder)
     }
 
-    // MARK: - Purchase Button
+    private func timelineRow(
+        icon: String,
+        tint: Color,
+        title: String,
+        body: String,
+        showConnector: Bool,
+        connectorFill: Double
+    ) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            VStack(spacing: 0) {
+                ZStack {
+                    Circle()
+                        .fill(tint.opacity(0.22))
+                        .frame(width: 36, height: 36)
+                    Circle()
+                        .stroke(tint.opacity(0.55), lineWidth: 1)
+                        .frame(width: 36, height: 36)
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(tint)
+                }
+                if showConnector {
+                    ZStack(alignment: .top) {
+                        Capsule()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 2, height: 44)
+                        Capsule()
+                            .fill(tint.opacity(0.55))
+                            .frame(width: 2, height: 44 * connectorFill)
+                    }
+                    .padding(.top, 2)
+                }
+            }
 
-    private var purchaseCTA: String {
-        guard selectedPackage != nil else { return "Loading…" }
-        return selectedAnnual ? "Start 7-day free trial" : "Start Dream Journey"
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(MooniFont.title(15))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text(body)
+                    .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.bottom, showConnector ? 14 : 0)
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: - Monthly: benefit list (no trial framing)
+
+    private var monthlyBenefits: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            benefitRow(icon: "waveform", tint: MooniColor.accent,
+                       title: "Auto sleep tracking",
+                       body: "Just sleep. SleepOwl scores your night while you rest.")
+            benefitRow(icon: "chart.bar.fill", tint: MooniColor.accentSoft,
+                       title: "Full history & insights",
+                       body: "Deep dives into REM, debt, and recovery — every night.")
+            benefitRow(icon: "sparkles", tint: MooniColor.warning,
+                       title: "Every sound, scene & colour",
+                       body: "All meditations, soundscapes and spirit themes unlocked.")
+        }
+    }
+
+    private func benefitRow(icon: String, tint: Color, title: String, body: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.22))
+                    .frame(width: 36, height: 36)
+                Circle()
+                    .stroke(tint.opacity(0.55), lineWidth: 1)
+                    .frame(width: 36, height: 36)
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(tint)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(MooniFont.title(15))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text(body)
+                    .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: - Bottom block
+
+    private var bottomBlock: some View {
+        VStack(spacing: 10) {
+            if let error = manager.errorMessage {
+                Text(error)
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.danger)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+
+            Button { Task { await manager.restorePurchases() } } label: {
+                Text("Restore purchase")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(MooniColor.accentSoft)
+            }
+            .padding(.bottom, 2)
+
+            Text("Cancel anytime in the App Store")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+
+            purchaseButton
+                .padding(.horizontal, 20)
+
+            footerLinks
+                .padding(.horizontal, 20)
+                .padding(.top, 2)
+        }
+        .padding(.bottom, 14)
+    }
+
+    // MARK: - CTA
+
+    private var ctaText: String {
+        if plan == .annual {
+            guard let pkg = annualPackage else { return "Start Free Trial" }
+            return "Try Free · \(pkg.storeProduct.localizedPriceString)/yr after"
+        }
+        guard let pkg = shortPackage else { return "Continue" }
+        return "Continue — \(pkg.storeProduct.localizedPriceString)\(shortPerLabel)"
     }
 
     private var purchaseButton: some View {
@@ -430,17 +528,16 @@ struct PaywallView: View {
                         .tint(.white)
                 } else {
                     HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                        Text(purchaseCTA)
-                            .font(MooniFont.title(17))
+                        Text(ctaText)
+                            .font(MooniFont.title(18))
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                     }
                     .foregroundColor(.white)
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
+            .frame(height: 56)
             .background(
                 LinearGradient(
                     colors: [MooniColor.accentSoft, MooniColor.accent],
@@ -448,50 +545,35 @@ struct PaywallView: View {
                     endPoint: .trailing
                 )
             )
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: MooniColor.accent.opacity(0.55), radius: 14, y: 5)
+            .clipShape(Capsule())
+            .shadow(color: MooniColor.accent.opacity(0.55), radius: 16, y: 6)
         }
         .buttonStyle(.plain)
         .disabled(manager.isLoading || selectedPackage == nil)
     }
 
-    // MARK: - Footer
+    // MARK: - Footer (App Store guideline 3.1.2)
 
     private var footerLinks: some View {
-        VStack(spacing: 3) {
-            // App Store guideline 3.1.2 requires: restore, EULA/terms, privacy,
-            // and clear auto-renew disclosure — all visible on the paywall.
-            HStack(spacing: 14) {
-                Button { Task { await manager.restorePurchases() } } label: {
-                    Text("Restore")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundColor(MooniColor.textMuted)
-                        .underline()
-                }
-                Link("Terms",
-                     destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+        HStack(spacing: 14) {
+            Link("Terms",
+                 destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+                .underline()
+            Link("Privacy",
+                 destination: URL(string: "https://nathanielfiskaa.github.io/sleepowl-privacy/")!)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(MooniColor.textMuted)
+                .underline()
+            Button { showCustomerCenter = true } label: {
+                Text("Manage")
                     .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundColor(MooniColor.textMuted)
                     .underline()
-                Link("Privacy",
-                     destination: URL(string: "https://nathanielfiskaa.github.io/sleepowl-privacy/")!)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundColor(MooniColor.textMuted)
-                    .underline()
-                Button { showCustomerCenter = true } label: {
-                    Text("Manage")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundColor(MooniColor.textMuted)
-                        .underline()
-                }
             }
-
-            Text("Auto-renews unless cancelled in Settings.")
-                .font(.system(size: 9, weight: .regular, design: .rounded))
-                .foregroundColor(MooniColor.textMuted.opacity(0.7))
-                .multilineTextAlignment(.center)
-
         }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Success overlay

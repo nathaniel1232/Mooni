@@ -31,31 +31,33 @@ struct BedtimeQuestView: View {
                 MooniGradient.night.ignoresSafeArea()
                 StarsBackground(count: 32)
 
-                ScrollView {
-                    VStack(spacing: 18) {
-                        comingSoonBanner
-                        header
-                        questCard
-                        rewardCard
-                        guidedWindDowns
-                        programsSection
+                VStack(spacing: 20) {
+                    ZStack {
+                        Circle()
+                            .fill(MooniColor.accentSoft.opacity(0.15))
+                            .frame(width: 100, height: 100)
+                            .blur(radius: 20)
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 44, weight: .semibold))
+                            .foregroundColor(MooniColor.accentSoft)
                     }
-                    .padding(20)
-                    .padding(.bottom, 96)
+
+                    VStack(spacing: 10) {
+                        Text("Coming Soon")
+                            .font(MooniFont.display(32))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Text("Nightly quests are on the way.\nCheck back in a future update.")
+                            .font(MooniFont.body(16))
+                            .foregroundColor(MooniColor.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                    }
                 }
+                .padding(.horizontal, 32)
             }
             .navigationTitle("Quest")
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .sheet(isPresented: $showReadySheet) {
-                ReadyForSleepSheet()
-            }
-            .sheet(isPresented: $showSampleWindDown) {
-                SampleWindDownSheet()
-            }
-            .sheet(isPresented: $showQuestFlow) {
-                QuestFlowView()
-            }
         }
     }
 
