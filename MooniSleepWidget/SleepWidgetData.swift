@@ -73,7 +73,7 @@ enum WidgetDataStore {
     /// The "App Groups" capability must be enabled on BOTH targets in
     /// Xcode with this identifier for the snapshot to cross the process
     /// boundary; otherwise we fall back to the bundled sample.
-    static let appGroupIdentifier: String = "group.com.sabaiduka.mooni"
+    static let appGroupIdentifier: String = "group.com.nathanielfiskaa.sleepowl"
 
     private static let storageKey = "mooni.widget.latestSleep"
 

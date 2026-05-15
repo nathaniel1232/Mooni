@@ -82,7 +82,11 @@ struct PaywallView: View {
 
             if showSuccess {
                 successOverlay
-            } else if manager.currentOffering == nil && !manager.isLoading {
+            } else if manager.isLoadingOfferings {
+                ProgressView()
+                    .tint(MooniColor.accentSoft)
+                    .scaleEffect(1.4)
+            } else if manager.currentOffering == nil {
                 offeringsErrorView
             } else {
                 mainContent
@@ -121,8 +125,15 @@ struct PaywallView: View {
             }
             .buttonStyle(.plain)
             Spacer()
-            closeRow
-                .padding(.bottom, 8)
+            Button {
+                if let soft = onSoftDismiss { soft() } else { dismiss() }
+            } label: {
+                Text("Continue without subscribing")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundColor(MooniColor.textMuted)
+                    .underline()
+            }
+            .padding(.bottom, 24)
         }
         .padding(.horizontal, 32)
     }

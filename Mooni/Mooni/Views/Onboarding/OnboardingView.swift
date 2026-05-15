@@ -774,6 +774,10 @@ struct OnboardingView: View {
         // ── Pet ceremony trimmed ───────────────────────────────────────
         case .petAttachment, .bondMessage, .demo:
             return true
+        // ── Sleep Circle / friends tour hidden — backend isn't built yet.
+        //    Re-enable once friend invites + score sharing actually work.
+        case .featureTour:
+            return true
         // ── Bio questions: age kept (used to set ideal sleep hours +
         //    personalized fact screens). Gender/height/weight still skipped —
         //    we use defaults for those in scoring.
@@ -3383,7 +3387,9 @@ private struct WidgetPreviewScreen: View {
 
     @State private var appeared: Bool = false
 
-    static let pageCount: Int = 3
+    // Sleep Circle page is hidden until the friends backend ships — see
+    // FriendsSleepData.swift. Bump this back to 3 when re-enabling.
+    static let pageCount: Int = 2
 
     var body: some View {
         VStack(spacing: 20) {
@@ -3415,22 +3421,13 @@ private struct WidgetPreviewScreen: View {
                     .transition(.opacity)
             }
 
-            // The widget mock itself
+            // The widget mock itself. Sleep Circle (friends) is hidden until
+            // the friends backend ships; only Small + Medium are shown.
             ZStack {
                 if page == 0 { smallWidgetMock.transition(widgetTransition) }
-                else if page == 1 { mediumWidgetMock.transition(widgetTransition) }
-                else { sleepCircleMock.transition(widgetTransition) }
+                else { mediumWidgetMock.transition(widgetTransition) }
             }
             .frame(height: 240)
-
-            // On the friends-widget page, give the user a real way to invite
-            // their friends from inside onboarding. Even if they don't
-            // convert to Pro, every invite is a potential new install.
-            if page == Self.pageCount - 1 {
-                inviteFriendsButton
-                    .padding(.horizontal, 4)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
 
             // Page dots
             HStack(spacing: 6) {

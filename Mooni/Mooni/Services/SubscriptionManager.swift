@@ -16,6 +16,7 @@ final class SubscriptionManager: ObservableObject {
     @Published var currentOffering: Offering?
     @Published var discountOffering: Offering?
     @Published var isLoading: Bool = false
+    @Published var isLoadingOfferings: Bool = true
     @Published var errorMessage: String?
 
     /// Entitlement identifier configured in RevenueCat dashboard. Must match
@@ -83,6 +84,8 @@ final class SubscriptionManager: ObservableObject {
     }
 
     func loadOfferings() async {
+        isLoadingOfferings = true
+        defer { isLoadingOfferings = false }
         do {
             let offerings = try await Purchases.shared.offerings()
             currentOffering = offerings.current
