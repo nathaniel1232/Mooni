@@ -744,6 +744,57 @@ final class AppState: ObservableObject {
         MorningCheckInStore.checkIn(for: entry.dayKey)
     }
 
+    /// Seeds a placeholder entry for a missed night (no auto-detection, no
+    /// HealthKit sample) using the user's target schedule, then returns it
+    /// so the morning check-in can be re-launched in edit-times mode for
+    /// the user to enter the actual bed/wake times. If an entry already
+    /// exists for the target wake-day, that entry is returned untouched.
+    @discardableResult
+    func seedMissedNightEntry(for referenceDate: Date = Date()) -> SleepEntry? {
+        let cal = Calendar.current
+        let dayKey = referenceDate.dayKey
+        if let existing = entries.first(where: { $0.dayKey == dayKey }) {
+            return existing
+        }
+
+        let bedComps  = cal.dateComponents([.hour, .minute], from: targetBedtime)
+        let wakeComps = cal.dateComponents([.hour, .minute], from: targetWakeTime)
+        guard let bH = bedComps.hour, let bM = bedComps.minute,
+              let wH = wakeComps.hour, let wM = wakeComps.minute else { return nil }
+
+        var bed = cal.date(bySettingHour: bH, minute: bM, second: 0, of: referenceDate) ?? referenceDate
+        if bed > referenceDate {
+            bed = cal.date(byAdding: .day, value: -1, to: bed) ?? bed
+        }
+        var wake = cal.date(bySettingHour: wH, minute: wM, second: 0, of: referenceDate) ?? referenceDate
+        if wake <= bed {
+            wake = cal.date(byAdding: .day, value: 1, to: wake) ?? wake
+        }
+
+        var entry = SleepEntry(
+            bedtime: bed,
+            wakeTime: wake,
+            quality: .good,
+            mood: .okay,
+            notes: "Added by you",
+            isEstimated: true,
+            totalSleep: wake.timeIntervalSince(bed),
+            timeInBed: wake.timeIntervalSince(bed),
+            stages: nil,
+            source: .userAdjusted
+        )
+        SleepScoringManager.update(
+            entry: &entry,
+            goalHours: goalHours,
+            targetBedtime: targetBedtime,
+            consistencyDays: bedtimeConsistencyDays,
+            checkIn: nil,
+            age: profile.age
+        )
+        entries.append(entry)
+        return entry
+    }
+
     @discardableResult
     func completeMorningCheckIn(_ checkIn: MorningCheckIn) -> SleepEntry? {
         MorningCheckInStore.save(checkIn)

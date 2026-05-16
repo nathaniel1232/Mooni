@@ -18,6 +18,10 @@ struct HomeView: View {
     /// Day key (yyyy-MM-dd) currently selected in the week strip. Nil = the
     /// most-recent night's entry. Drives the day-detail card and insight.
     @State private var selectedDayKey: String? = nil
+    /// Entry currently being edited via the home-screen edit pencil or
+    /// missed-night entry point. Presenting this sheet re-launches the
+    /// full morning check-in flow, pre-set to "way off" edit-times mode.
+    @State private var editingEntry: SleepEntry? = nil
 
     private enum HomeMode {
         case firstNight
@@ -42,6 +46,10 @@ struct HomeView: View {
                     heroCard
 
                     tonightPlanCard
+
+                    if shouldShowMissedNightCard {
+                        missedNightCard
+                    }
 
                     if !appState.entries.isEmpty {
                         weekStripSection
@@ -95,6 +103,63 @@ struct HomeView: View {
         .sheet(isPresented: $showAutoWakeUp) {
             if let entry = appState.lastEntry {
                 AutoWakeUpSheet(entry: entry, petName: appState.pet.name, showPaywall: $showPaywall)
+            }
+        }
+        .sheet(item: $editingEntry) { entry in
+            MorningCheckInView(entryOverride: entry, startInEditMode: true)
+                .environmentObject(appState)
+        }
+    }
+
+    // MARK: - Missed night
+
+    /// True when there's no logged sleep entry for last night and we're
+    /// past 8 AM today — i.e. the auto-detection and morning check-in both
+    /// failed to capture the night, so the user needs a manual way in.
+    private var shouldShowMissedNightCard: Bool {
+        let now = Date()
+        let cal = Calendar.current
+        guard cal.component(.hour, from: now) >= 8 else { return false }
+        let todayKey = now.dayKey
+        if appState.entries.contains(where: { $0.dayKey == todayKey }) { return false }
+        // Only show once onboarding is complete and we'd otherwise expect a night.
+        return appState.hasCompletedOnboarding
+    }
+
+    private var missedNightCard: some View {
+        MooniCard(padding: 16, cornerRadius: 22) {
+            HStack(spacing: 12) {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(MooniColor.warning)
+                    .frame(width: 38, height: 38)
+                    .background(MooniColor.warning.opacity(0.16))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Mooni missed last night")
+                        .font(MooniFont.title(14))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text("Add the times you slept so your streak and score stay accurate.")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Button {
+                    Haptics.tap()
+                    if let seeded = appState.seedMissedNightEntry() {
+                        editingEntry = seeded
+                    }
+                } label: {
+                    Text("Add")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.background)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(MooniColor.warning)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -670,9 +735,25 @@ struct HomeView: View {
                         Text(entry.formattedDuration)
                             .font(MooniFont.display(26))
                             .foregroundColor(MooniColor.textPrimary)
-                        Text("\(entry.bedtime.hourMinuteString) → \(entry.wakeTime.hourMinuteString)")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textSecondary)
+                        HStack(spacing: 8) {
+                            Text("\(entry.bedtime.hourMinuteString) → \(entry.wakeTime.hourMinuteString)")
+                                .font(MooniFont.caption(12))
+                                .foregroundColor(MooniColor.textSecondary)
+                            Button {
+                                Haptics.tap()
+                                editingEntry = entry
+                            } label: {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(MooniColor.accentSoft)
+                                    .frame(width: 22, height: 22)
+                                    .background(MooniColor.accent.opacity(0.16))
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(MooniColor.accent.opacity(0.3), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Edit bedtime and wake time")
+                        }
                     }
                     Spacer()
                     scoreBadge(entry.score)

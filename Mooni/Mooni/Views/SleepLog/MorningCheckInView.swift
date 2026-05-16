@@ -7,6 +7,16 @@ struct MorningCheckInView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
+    /// When set, this entry replaces `appState.entryNeedingMorningCheckIn`
+    /// as the subject of the flow — used when the user re-opens the
+    /// check-in from the home screen to edit or add a missed night.
+    var entryOverride: SleepEntry? = nil
+
+    /// When true, the flow opens directly in "way off" edit-times mode
+    /// so the user can correct bedtime / wake immediately. Used for the
+    /// home-screen edit pencil and the missed-night entry point.
+    var startInEditMode: Bool = false
+
     @State private var scene: Scene = .night
 
     // Night scene — recap + accuracy
@@ -296,7 +306,7 @@ struct MorningCheckInView: View {
     }
 
     private var entryForRecap: SleepEntry? {
-        appState.entryNeedingMorningCheckIn ?? savedEntry
+        entryOverride ?? appState.entryNeedingMorningCheckIn ?? savedEntry
     }
 
     private func recapCard(entry: SleepEntry) -> some View {
@@ -471,7 +481,7 @@ struct MorningCheckInView: View {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
             accuracy = r
         }
-        if r != .wayOff, let entry = appState.entryNeedingMorningCheckIn {
+        if r != .wayOff, let entry = entryOverride ?? appState.entryNeedingMorningCheckIn {
             editedBedtime = entry.bedtime
             editedWakeTime = entry.wakeTime
         }
@@ -831,7 +841,7 @@ struct MorningCheckInView: View {
                 }
             }
 
-            if let entry = savedEntry ?? appState.entryNeedingMorningCheckIn {
+            if let entry = savedEntry ?? entryOverride ?? appState.entryNeedingMorningCheckIn {
                 VStack(spacing: 6) {
                     Text(entry.energyLevel
                          ?? SleepScoringManager.energyLevel(for: entry.readinessScore ?? entry.score))
@@ -994,9 +1004,12 @@ struct MorningCheckInView: View {
     // MARK: - Flow
 
     private func setupInitialTimes() {
-        if let entry = appState.entryNeedingMorningCheckIn {
+        if let entry = entryOverride ?? appState.entryNeedingMorningCheckIn {
             editedBedtime = entry.bedtime
             editedWakeTime = entry.wakeTime
+        }
+        if startInEditMode {
+            accuracy = .wayOff
         }
     }
 
@@ -1032,7 +1045,7 @@ struct MorningCheckInView: View {
     }
 
     private func save() {
-        let entry = appState.entryNeedingMorningCheckIn
+        let entry = entryOverride ?? appState.entryNeedingMorningCheckIn
         let date = entry?.wakeTime ?? Date()
 
         // Prefer auto-captured wake→app-open delay; this question was
