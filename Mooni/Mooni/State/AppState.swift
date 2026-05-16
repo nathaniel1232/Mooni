@@ -195,8 +195,12 @@ final class AppState: ObservableObject {
         // Evaluate streak decay (spends freezes or breaks streak if days missed).
         StreakManager.shared.evaluateOnLaunch()
         StreakManager.shared.reconcileFreezes(forLevel: self.pet.level)
-        // Maybe surface morning check-in
+        // Maybe surface morning check-in immediately…
         evaluateMorningPrompt()
+        // …then run the full safety-net maintenance pass on launch.
+        Task { [weak self] in
+            await self?.runAutomationMaintenance(reason: "app launch")
+        }
 
         // Wake-probe notification taps push us into the morning check-in.
         // Capture self weakly in BOTH the outer observer block and the
@@ -219,26 +223,38 @@ final class AppState: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                await self?.importHealthKitSleep()
+                // SAFETY NET (mechanism 9): new Health/Watch data arrived
+                // (possibly while backgrounded) — run the full pass so the
+                // entry is imported AND the check-in surfaces at any hour.
+                await self?.runAutomationMaintenance(reason: "HealthKit observer")
             }
         }
     }
 
     private func handleConfirmedWake() {
-        guard isSleeping else { return }
         let wakeTime = wakeTappedAt ?? Date()
         // First-app-open delay starts from this moment.
         if UserDefaults.standard.object(forKey: Key.appOpenedAfterWakeAt) == nil {
             UserDefaults.standard.set(Date(), forKey: Key.appOpenedAfterWakeAt)
         }
-        seedSleepModeEntry(
-            wakeTime: wakeTime,
-            notes: "Logged from wake notification"
-        )
-        WindDownDimController.shared.end()
-        NotificationManager.shared.cancelWakeProbes()
-        NotificationManager.shared.cancelOnsetProbes()
-        isSleeping = false
+
+        if isSleeping {
+            // Normal path: user was in sleep mode, seed from the captured
+            // sleep window so the check-in can refine it.
+            seedSleepModeEntry(wakeTime: wakeTime, notes: "Logged from wake notification")
+            WindDownDimController.shared.end()
+            NotificationManager.shared.cancelWakeProbes()
+            NotificationManager.shared.cancelOnsetProbes()
+            isSleeping = false
+        } else {
+            // SAFETY NET (mechanism 2 companion): the user tapped a daily
+            // safety-net probe but never entered sleep mode (the exact
+            // "didn't touch the app" failure). We still have a confirmed
+            // wake moment — make sure last night exists as an editable
+            // entry so the morning check-in has something to refine.
+            seedMissedNightEntry()
+            SleepAutomationLog.shared.log("Wake confirmed via safety-net probe (was not in sleep mode)")
+        }
         showMorningCheckIn = true
     }
 
@@ -585,14 +601,25 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Morning prompt
-    private func evaluateMorningPrompt() {
+    /// SAFETY NET (mechanism 3). The morning check-in used to be hard-gated to
+    /// 04:00–12:00 — open the app at midday and it silently did nothing, with
+    /// no way to log the night. That gate is removed: ANY time there is a
+    /// night without a completed check-in, we surface it. The once-per-day
+    /// guard (`lastMorningPrompt`) still prevents nagging after the user has
+    /// already been shown / dismissed it today.
+    func evaluateMorningPrompt() {
         let lastPrompted = UserDefaults.standard.string(forKey: Key.lastMorningPrompt)
         let today = Date().dayKey
-        let hour = Calendar.current.component(.hour, from: Date())
-        if hour >= 4 && hour < 12 && lastPrompted != today && entryNeedingMorningCheckIn != nil {
-            showMorningCheckIn = true
-        }
+        guard lastPrompted != today, entryNeedingMorningCheckIn != nil else { return }
+        showMorningCheckIn = true
+        SleepAutomationLog.shared.log("Surfaced morning check-in (no time gate)")
     }
+
+    /// True when there is a logged night the user still hasn't confirmed via
+    /// the morning check-in. Drives the always-available in-app "log last
+    /// night" surface (mechanism 10) so the user can never be stuck unable
+    /// to input their sleep.
+    var hasUnconfirmedNight: Bool { entryNeedingMorningCheckIn != nil }
 
     func dismissMorningCheckIn() {
         UserDefaults.standard.set(Date().dayKey, forKey: Key.lastMorningPrompt)
@@ -750,7 +777,8 @@ final class AppState: ObservableObject {
     /// the user to enter the actual bed/wake times. If an entry already
     /// exists for the target wake-day, that entry is returned untouched.
     @discardableResult
-    func seedMissedNightEntry(for referenceDate: Date = Date()) -> SleepEntry? {
+    func seedMissedNightEntry(for referenceDate: Date = Date(),
+                              autoBackfilled: Bool = false) -> SleepEntry? {
         let cal = Calendar.current
         let dayKey = referenceDate.dayKey
         if let existing = entries.first(where: { $0.dayKey == dayKey }) {
@@ -776,12 +804,17 @@ final class AppState: ObservableObject {
             wakeTime: wake,
             quality: .good,
             mood: .okay,
-            notes: "Added by you",
+            notes: autoBackfilled
+                ? "No check-in — estimated from your target schedule"
+                : "Added by you",
             isEstimated: true,
             totalSleep: wake.timeIntervalSince(bed),
             timeInBed: wake.timeIntervalSince(bed),
             stages: nil,
-            source: .userAdjusted
+            // Auto-backfilled nights are NOT user-adjusted — keep them
+            // flagged as an estimate so the UI can explain why and HealthKit
+            // can still replace them later if data arrives.
+            source: autoBackfilled ? .appActivityEstimate : .userAdjusted
         )
         SleepScoringManager.update(
             entry: &entry,
@@ -891,6 +924,92 @@ final class AppState: ObservableObject {
             source: .appActivityEstimate,
             sourceLabel: "Auto-estimated from your schedule"
         )
+    }
+
+    // MARK: - Safety net automation
+
+    /// SAFETY NET (mechanism 5). Single maintenance pass that runs on every
+    /// app launch, every foreground, and from the background-refresh task.
+    /// Each step is independently idempotent. This is what guarantees the
+    /// app *always* makes forward progress even with zero user interaction —
+    /// the failure the user hit ("opened at midday, nothing happened") is
+    /// structurally impossible once every entry point calls this.
+    func runAutomationMaintenance(reason: String) async {
+        SleepAutomationLog.shared.log("Maintenance start — \(reason)")
+        // M1/M6/M7: ensure the full notification safety net is scheduled.
+        NotificationManager.shared.reconcileSafetyNetNotifications(
+            petName: pet.name, bedtime: targetBedtime, wakeTime: targetWakeTime
+        )
+        // Recover a stuck sleep-lock if the user forgot to tap "I'm awake".
+        autoEndStaleSleepIfNeeded()
+        // M9: pull HealthKit / activity data, always re-register the observer.
+        await importHealthKitSleep()
+        HealthKitManager.shared.startSleepObserverIfNeeded()
+        // M4: make sure every elapsed night exists as an editable entry.
+        backfillMissedNights()
+        // M3: surface the morning check-in if a night is unconfirmed (any hour).
+        evaluateMorningPrompt()
+        SleepAutomationLog.shared.log("Maintenance done — entries=\(entries.count)")
+    }
+
+    /// SAFETY NET (mechanism 4). Fills EVERY elapsed night between the
+    /// earliest known data and today with an editable estimated entry, so
+    /// sleep data can never silently show "same as yesterday" again. Bounded
+    /// to real history (earliest existing entry, or just last night for a
+    /// brand-new user) so we never fabricate pre-install nights. Never
+    /// overwrites real or user-adjusted data.
+    func backfillMissedNights() {
+        guard hasCompletedOnboarding else { return }
+        let cal = Calendar.current
+        let now = Date()
+
+        let earliest: Date = entries.map { $0.wakeTime }.min()
+            ?? cal.date(byAdding: .day, value: -1, to: now) ?? now
+        let startDay = cal.startOfDay(for: earliest)
+
+        let wakeComps = cal.dateComponents([.hour, .minute], from: targetWakeTime)
+        guard let wH = wakeComps.hour, let wM = wakeComps.minute else { return }
+
+        var seeded = 0
+        var cursor = startDay
+        while cursor <= now {
+            defer { cursor = cal.date(byAdding: .day, value: 1, to: cursor) ?? now.addingTimeInterval(86_400) }
+            let key = cursor.dayKey
+            if entries.contains(where: { $0.dayKey == key }) { continue }
+            // Only backfill a night whose wake time has fully passed.
+            guard let wake = cal.date(bySettingHour: wH, minute: wM, second: 0, of: cursor),
+                  wake <= now else { continue }
+            if seedMissedNightEntry(for: cursor, autoBackfilled: true) != nil { seeded += 1 }
+        }
+        if seeded > 0 {
+            SleepAutomationLog.shared.log("Backfilled \(seeded) missed night(s)")
+        }
+    }
+
+    /// SAFETY NET (mechanism 2). Arms the night automatically when the phone
+    /// is put down in the evening/overnight window — schedules the onset and
+    /// wake probes and records an estimated sleep-start WITHOUT flipping the
+    /// full screen-lock sleep mode (auto-locking the UI on every evening
+    /// backgrounding would be hostile). The morning flow then has an accurate
+    /// `sleepStartedAt` and the probes fire even though the user never tapped
+    /// "going to bed". Called on background transitions.
+    func autoArmNightIfDue(at date: Date = Date()) {
+        guard hasCompletedOnboarding, !isSleeping else { return }
+        let hour = Calendar.current.component(.hour, from: date)
+        guard hour >= 19 || hour < 4 else { return }
+
+        let alreadyArmed = sleepStartedAt.map { date.timeIntervalSince($0) < 12 * 3600 } ?? false
+        if !alreadyArmed {
+            let start = ActivitySleepEstimator.shared.pendingEstimatedSleepStart ?? date
+            UserDefaults.standard.set(start, forKey: Key.sleepStartedAt)
+            UserDefaults.standard.removeObject(forKey: Key.wakeTappedAt)
+            UserDefaults.standard.removeObject(forKey: Key.appOpenedAfterWakeAt)
+            UserDefaults.standard.removeObject(forKey: "mooni.lastStillAwakeAt")
+            SleepAutomationLog.shared.log("Auto-armed night at \(start.hourMinuteString) (no tap)")
+        }
+        let anchor = sleepStartedAt ?? date
+        NotificationManager.shared.scheduleOnsetProbes(sleepStart: anchor, petName: pet.name)
+        NotificationManager.shared.scheduleWakeProbes(wakeTime: nextWakeProbeAnchor, petName: pet.name)
     }
 
     // MARK: - HealthKit import

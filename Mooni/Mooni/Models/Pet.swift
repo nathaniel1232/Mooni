@@ -47,15 +47,15 @@ struct Pet: Codable {
             case .cozy:       return "feels warm and cozy."
             case .calm:       return "had a peaceful night."
             case .sleepy:     return "is a little sleepy today."
-            case .groggy:     return "is groggy — let's wind down earlier tonight."
-            case .restless:   return "had a restless night."
-            case .recovering: return "is recovering from sleep debt."
+            case .groggy:     return "is groggy and needs a kinder night — let's wind down earlier."
+            case .restless:   return "had a restless night and is leaning on you tonight."
+            case .recovering: return "is worn down by sleep debt and needs you to rest tonight."
             case .excited:    return "is excited for tonight!"
             case .proud:      return "is proud of your streak."
             case .rested:     return "feels fully recharged."
             case .good:       return "had a good night."
-            case .tired:      return "is a little tired today. Let's recover tonight."
-            case .low:        return "needs a gentle night. Try a calmer bedtime routine."
+            case .tired:      return "is a little tired and is counting on you tonight."
+            case .low:        return "is running on empty and really needs you to rest tonight."
             }
         }
 

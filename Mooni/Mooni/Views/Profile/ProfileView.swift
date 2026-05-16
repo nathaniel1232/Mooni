@@ -16,6 +16,10 @@ struct ProfileView: View {
     @State private var isDeleting = false
     @State private var deleteError: String?
     @State private var showBadges = false
+    @State private var showSleepStoryPreview = false
+
+    @AppStorage(Haptics.hapticsKey) private var hapticsOn = true
+    @AppStorage(Haptics.soundKey) private var soundOn = true
 
     #if DEBUG
     @State private var showMarketingVideo = false
@@ -30,6 +34,7 @@ struct ProfileView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         lunaSummaryCard
+                        sleepStoryPreviewCard
                         levelCard
                         sleepGoalCard
                         progressCard
@@ -55,6 +60,12 @@ struct ProfileView: View {
             .sheet(isPresented: $showBadges) {
                 BadgesView()
                     .environmentObject(appState)
+            }
+            .fullScreenCover(isPresented: $showSleepStoryPreview) {
+                SleepStoryView(
+                    context: previewStoryContext(),
+                    onFinished: { showSleepStoryPreview = false }
+                )
             }
             .task {
                 healthKit.refreshAuthState()
@@ -90,6 +101,93 @@ struct ProfileView: View {
                 Spacer()
             }
         }
+    }
+
+    /// Always-visible entry point so the morning Sleep Story can be opened
+    /// on demand for review — works in Release, no logged night required
+    /// (falls back to a representative sample night).
+    private var sleepStoryPreviewCard: some View {
+        Button {
+            Haptics.tap()
+            showSleepStoryPreview = true
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(MooniColor.accent.opacity(0.18))
+                        .frame(width: 46, height: 46)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundColor(MooniColor.accent)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Preview Sleep Story")
+                        .font(MooniFont.title(16))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text("See the morning reveal end to end")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MooniColor.accent)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .background(MooniGradient.card)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(MooniColor.accent.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Uses the most recent real night if there is one; otherwise builds a
+    /// representative 7h12m night so the story always has something to show.
+    private func previewStoryContext() -> SleepStoryContext {
+        let entry: SleepEntry
+        if let last = appState.lastEntry {
+            entry = last
+        } else {
+            let cal = Calendar.current
+            let now = Date()
+            let wake = cal.date(bySettingHour: 7, minute: 12, second: 0, of: now) ?? now
+            let bed = cal.date(byAdding: .hour, value: -7, to: wake)
+                ?? now.addingTimeInterval(-7 * 3600)
+            var sample = SleepEntry(
+                bedtime: bed,
+                wakeTime: wake,
+                quality: .good,
+                mood: .okay,
+                notes: "[preview]",
+                isEstimated: false,
+                timeInBed: wake.timeIntervalSince(bed),
+                source: .appActivityEstimate
+            )
+            SleepScoringManager.update(
+                entry: &sample,
+                goalHours: appState.goalHours,
+                targetBedtime: appState.targetBedtime,
+                consistencyDays: appState.bedtimeConsistencyDays,
+                checkIn: nil,
+                age: appState.profile.age
+            )
+            entry = sample
+        }
+        return SleepStoryContext(
+            entry: entry,
+            pet: appState.pet,
+            petName: appState.pet.name,
+            history: appState.entries,
+            goalHours: appState.goalHours,
+            currentStreak: streak.current,
+            longestStreak: streak.longest,
+            consistencyDays: appState.bedtimeConsistencyDays,
+            leveledUpTo: appState.lastLevelUp
+        )
     }
 
     private var levelCard: some View {
@@ -238,6 +336,18 @@ struct ProfileView: View {
 
                 Divider().background(Color.white.opacity(0.08))
 
+                feedbackToggleRow(icon: "hand.tap.fill",
+                                  title: "Haptics",
+                                  isOn: $hapticsOn)
+
+                Divider().background(Color.white.opacity(0.08))
+
+                feedbackToggleRow(icon: "speaker.wave.2.fill",
+                                  title: "Sounds",
+                                  isOn: $soundOn)
+
+                Divider().background(Color.white.opacity(0.08))
+
                 Link(destination: URL(string: "https://nathanielfiskaa.github.io/sleepowl-privacy/")!) {
                     HStack(spacing: 12) {
                         Image(systemName: "hand.raised.fill")
@@ -358,6 +468,31 @@ struct ProfileView: View {
         } catch {
             deleteError = error.localizedDescription
         }
+    }
+
+    private func feedbackToggleRow(icon: String, title: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(MooniColor.accent)
+                .frame(width: 30, height: 30)
+                .background(MooniColor.accent.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Text(title)
+                .font(MooniFont.body(15))
+                .foregroundColor(MooniColor.textPrimary)
+
+            Spacer()
+
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .tint(MooniColor.accent)
+                .onChange(of: isOn.wrappedValue) { _, on in
+                    if on { Haptics.soft() }
+                }
+        }
+        .padding(.vertical, 4)
     }
 
     private func settingsButton(icon: String, title: String, value: String, action: @escaping () -> Void) -> some View {

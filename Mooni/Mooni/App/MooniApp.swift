@@ -13,6 +13,9 @@ struct MooniApp: App {
         // Force-init so the UNUserNotificationCenter delegate is set
         // before any wake-probe notification can be tapped.
         _ = NotificationManager.shared
+        // SAFETY NET (mechanism 8): register the background refresh task
+        // before launch completes. No-op/logs if the capability isn't set.
+        BackgroundRefreshManager.register()
     }
 
     var body: some Scene {

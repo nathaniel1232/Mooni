@@ -224,23 +224,27 @@ struct MainTabView: View {
                 .tag(Tab.me)
         }
         .tint(MooniColor.accent)
+        .onChange(of: selection) { _, _ in Haptics.tap() }
         .sheet(isPresented: $appState.showMorningCheckIn) {
             MorningCheckInView()
         }
         .mooniPaywall(isPresented: $showPaywall)
         .task {
-            appState.autoEndStaleSleepIfNeeded()
-            await appState.importHealthKitSleep()
-            appState.autoSeedLastNightIfMissing()
-            // Start HealthKit sleep observer so new Watch / Health data
-            // triggers an automatic re-import without user action.
-            HealthKitManager.shared.startSleepObserverIfNeeded()
+            await appState.runAutomationMaintenance(reason: "launch task")
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                appState.autoEndStaleSleepIfNeeded()
-                Task { await appState.importHealthKitSleep() }
-                appState.autoSeedLastNightIfMissing()
+            switch phase {
+            case .active:
+                Task { await appState.runAutomationMaintenance(reason: "foreground") }
+            case .background, .inactive:
+                // SAFETY NET (mechanism 2): phone put down at night → arm the
+                // night automatically so probes fire even with no "going to
+                // bed" tap.
+                appState.autoArmNightIfDue()
+                // SAFETY NET (mechanism 8): queue the next background refresh.
+                BackgroundRefreshManager.scheduleNext()
+            @unknown default:
+                break
             }
         }
     }

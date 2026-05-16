@@ -7,7 +7,10 @@ struct PrimaryButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            Haptics.soft()
+            action()
+        } label: {
             HStack(spacing: 10) {
                 if isLoading {
                     ProgressView()
@@ -44,7 +47,10 @@ struct SecondaryButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
             HStack(spacing: 8) {
                 if let icon { Image(systemName: icon) }
                 Text(title)

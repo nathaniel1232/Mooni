@@ -14,6 +14,7 @@ struct HomeView: View {
     @State private var showRecoveryPlan = false
     @State private var showLostStreak = false
     @State private var showAutoWakeUp = false
+    @State private var showSleepStory = false
     @State private var showManualOptions = false
     /// Day key (yyyy-MM-dd) currently selected in the week strip. Nil = the
     /// most-recent night's entry. Drives the day-detail card and insight.
@@ -105,6 +106,29 @@ struct HomeView: View {
                 AutoWakeUpSheet(entry: entry, petName: appState.pet.name, showPaywall: $showPaywall)
             }
         }
+        .fullScreenCover(isPresented: $showSleepStory) {
+            if let entry = appState.lastEntry {
+                SleepStoryView(
+                    context: SleepStoryContext(
+                        entry: entry,
+                        pet: appState.pet,
+                        petName: appState.pet.name,
+                        history: appState.entries,
+                        goalHours: appState.goalHours,
+                        currentStreak: streak.current,
+                        longestStreak: streak.longest,
+                        consistencyDays: appState.bedtimeConsistencyDays,
+                        leveledUpTo: appState.lastLevelUp
+                    ),
+                    onFinished: {
+                        showSleepStory = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            showWhy = true
+                        }
+                    }
+                )
+            }
+        }
         .sheet(item: $editingEntry) { entry in
             MorningCheckInView(entryOverride: entry, startInEditMode: true)
                 .environmentObject(appState)
@@ -117,13 +141,17 @@ struct HomeView: View {
     /// past 8 AM today — i.e. the auto-detection and morning check-in both
     /// failed to capture the night, so the user needs a manual way in.
     private var shouldShowMissedNightCard: Bool {
+        guard appState.hasCompletedOnboarding else { return false }
+        // SAFETY NET (mechanism 10): if there's a logged-but-unconfirmed
+        // night, always offer a way in — at ANY hour. The user must never
+        // be stuck staring at stale sleep with no way to log it.
+        if appState.hasUnconfirmedNight { return true }
         let now = Date()
         let cal = Calendar.current
         guard cal.component(.hour, from: now) >= 8 else { return false }
         let todayKey = now.dayKey
         if appState.entries.contains(where: { $0.dayKey == todayKey }) { return false }
-        // Only show once onboarding is complete and we'd otherwise expect a night.
-        return appState.hasCompletedOnboarding
+        return true
     }
 
     private var missedNightCard: some View {
@@ -136,7 +164,7 @@ struct HomeView: View {
                     .background(MooniColor.warning.opacity(0.16))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Mooni missed last night")
+                    Text(appState.hasUnconfirmedNight ? "Confirm last night's sleep" : "Mooni missed last night")
                         .font(MooniFont.title(14))
                         .foregroundColor(MooniColor.textPrimary)
                     Text("Add the times you slept so your streak and score stay accurate.")
@@ -147,11 +175,15 @@ struct HomeView: View {
                 Spacer(minLength: 8)
                 Button {
                     Haptics.tap()
-                    if let seeded = appState.seedMissedNightEntry() {
+                    if appState.hasUnconfirmedNight {
+                        // An entry exists but isn't confirmed — go straight
+                        // to the morning check-in for it.
+                        appState.showMorningCheckIn = true
+                    } else if let seeded = appState.seedMissedNightEntry() {
                         editingEntry = seeded
                     }
                 } label: {
-                    Text("Add")
+                    Text(appState.hasUnconfirmedNight ? "Log" : "Add")
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.background)
                         .padding(.horizontal, 14)
@@ -365,12 +397,13 @@ struct HomeView: View {
                              color: scoreTint)
                 }
 
-                // See why — primary-style pill so it actually invites a tap.
-                Button { showWhy = true } label: {
+                // Replay the morning Sleep Story — the plain-English reveal.
+                // The full analytics dashboard is one tap past its final card.
+                Button { showSleepStory = true } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "sparkles")
                             .font(.system(size: 13, weight: .bold))
-                        Text("See why this score")
+                        Text("See your sleep story")
                             .font(MooniFont.title(14))
                         Image(systemName: "chevron.right")
                             .font(.system(size: 11, weight: .bold))
@@ -727,6 +760,57 @@ struct HomeView: View {
 
     // MARK: - Day detail
 
+    /// True when this night's numbers are NOT measured — they're a fallback
+    /// estimate from the user's target schedule because the app was never
+    /// opened and no morning notification was tapped that day.
+    private func isUnconfirmedScheduleEstimate(_ entry: SleepEntry) -> Bool {
+        entry.isEstimated
+            && entry.resolvedSource == .appActivityEstimate
+            && !entry.didCompleteMorningCheckIn
+            && MorningCheckInStore.checkIn(for: entry.dayKey) == nil
+    }
+
+    private func missedDayExplanation(_ entry: SleepEntry) -> some View {
+        let df = DateFormatter()
+        df.dateFormat = "EEEE, MMM d"
+        let dayString = df.string(from: entry.wakeTime)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MooniColor.warning)
+                Text("This is an estimate, not a measurement")
+                    .font(MooniFont.title(13))
+                    .foregroundColor(MooniColor.textPrimary)
+            }
+            Text("SleepOwl wasn't opened on \(dayString) and no morning check-in was tapped, so these times come from your target schedule. Next time, tap any \"Are you awake?\" notification in the morning — that's all it takes to log the real night and keep your score accurate.")
+                .font(MooniFont.caption(12))
+                .foregroundColor(MooniColor.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                Haptics.tap()
+                editingEntry = entry
+            } label: {
+                Text("Set the real times")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.background)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(MooniColor.warning)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MooniColor.warning.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(MooniColor.warning.opacity(0.3), lineWidth: 1)
+        )
+    }
+
     private func dayDetailCard(_ entry: SleepEntry) -> some View {
         MooniCard(padding: 18, cornerRadius: 26) {
             VStack(alignment: .leading, spacing: 14) {
@@ -757,6 +841,10 @@ struct HomeView: View {
                     }
                     Spacer()
                     scoreBadge(entry.score)
+                }
+
+                if isUnconfirmedScheduleEstimate(entry) {
+                    missedDayExplanation(entry)
                 }
 
                 Divider().background(Color.white.opacity(0.06))
@@ -1742,7 +1830,7 @@ private struct AutoWakeUpSheet: View {
     // sees on waking — it asks "did we get this right?" and offers a quick
     // edit. Only after they confirm (or save edits) does the rich morning
     // summary play its animations.
-    private enum WakePhase { case accuracy, summary }
+    private enum WakePhase { case accuracy, story, summary }
     @State private var phase: WakePhase = .accuracy
 
     // Editable copies of the tracked times, surfaced when the user taps Edit.
@@ -1772,6 +1860,20 @@ private struct AutoWakeUpSheet: View {
         )
     }
 
+    private var storyContext: SleepStoryContext {
+        SleepStoryContext(
+            entry: entry,
+            pet: appState.pet,
+            petName: petName,
+            history: appState.entries,
+            goalHours: appState.goalHours,
+            currentStreak: streak.current,
+            longestStreak: streak.longest,
+            consistencyDays: appState.bedtimeConsistencyDays,
+            leveledUpTo: appState.lastLevelUp
+        )
+    }
+
     private var scoreTint: Color {
         switch entry.score {
         case 85...: return MooniColor.success
@@ -1791,6 +1893,12 @@ private struct AutoWakeUpSheet: View {
                     if phase == .accuracy {
                         accuracyGateView
                             .transition(.opacity.combined(with: .move(edge: .leading)))
+                    } else if phase == .story {
+                        SleepStoryView(
+                            context: storyContext,
+                            onFinished: { advanceToSummary() }
+                        )
+                        .transition(.opacity)
                     } else {
                         summaryScrollView
                             .transition(.opacity.combined(with: .move(edge: .trailing)))
@@ -1800,10 +1908,11 @@ private struct AutoWakeUpSheet: View {
             }
             .navigationTitle(phase == .accuracy ? "Good morning" : "This morning")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(phase == .story ? .hidden : .visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    // Only show Done once the user is past the accuracy gate.
+                    // Only show Done once the user is past the story.
                     if phase == .summary {
                         Button("Done") { dismiss() }
                             .foregroundColor(MooniColor.accent)
@@ -1918,11 +2027,11 @@ private struct AutoWakeUpSheet: View {
                         accuracyChoice(emoji: "👍", label: "Accurate",
                                        sub: "Times match what I remember",
                                        tint: MooniColor.success,
-                                       action: { record("accurate"); advanceToSummary() })
+                                       action: { record("accurate"); advanceToStory() })
                         accuracyChoice(emoji: "🤏", label: "Somewhat accurate",
                                        sub: "Close but off by a few minutes",
                                        tint: MooniColor.warning,
-                                       action: { record("somewhat"); advanceToSummary() })
+                                       action: { record("somewhat"); advanceToStory() })
                         accuracyChoice(emoji: "👎", label: "Not accurate",
                                        sub: "Pretty off — let me edit",
                                        tint: MooniColor.danger,
@@ -1948,7 +2057,7 @@ private struct AutoWakeUpSheet: View {
                     .opacity(accuracyChipsIn ? 1 : 0)
                     .padding(.top, 4)
 
-                    Button(action: { record("skipped"); advanceToSummary() }) {
+                    Button(action: { record("skipped"); advanceToStory() }) {
                         Text("Skip — show my morning")
                             .font(.system(size: 12, weight: .medium, design: .rounded))
                             .foregroundColor(MooniColor.textMuted.opacity(0.7))
@@ -2145,7 +2254,11 @@ private struct AutoWakeUpSheet: View {
             routineCompleted: entry.routineCompleted
         )
         record("edited")
-        advanceToSummary()
+        advanceToStory()
+    }
+
+    private func advanceToStory() {
+        withAnimation(.easeInOut(duration: 0.4)) { phase = .story }
     }
 
     private func advanceToSummary() {

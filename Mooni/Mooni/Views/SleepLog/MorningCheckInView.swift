@@ -42,20 +42,27 @@ struct MorningCheckInView: View {
     // Reveal scene
     @State private var revealScale: CGFloat = 0.85
     @State private var savedEntry: SleepEntry?
+    @State private var showStory = false
 
     enum Scene: Int, CaseIterable, Hashable {
-        case night, onset, between, morning, echoes, reveal
+        // One question per screen.
+        case night, onset, restless, dreams, morning, outOfBed, echoes, reveal
 
         var progressIndex: Int? {
             switch self {
-            case .night:   return 0
-            case .onset:   return 1
-            case .between: return 2
-            case .morning: return 3
-            case .echoes:  return 4
-            case .reveal:  return nil
+            case .night:    return 0
+            case .onset:    return 1
+            case .restless: return 2
+            case .dreams:   return 3
+            case .morning:  return 4
+            case .outOfBed: return 5
+            case .echoes:   return 6
+            case .reveal:   return nil
             }
         }
+
+        /// Number of question screens (drives the progress dots).
+        static let questionCount = 7
 
         var showsDots: Bool { self != .reveal }
     }
@@ -109,27 +116,66 @@ struct MorningCheckInView: View {
                     .padding(.top, 14)
                     .opacity(scene.showsDots ? 1 : 0)
 
-                ScrollView(showsIndicators: false) {
-                    sceneContent
-                        .id(scene)
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .move(edge: .trailing)),
-                            removal: .opacity
-                        ))
-                        .padding(.horizontal, 22)
-                        .padding(.top, 18)
-                        .padding(.bottom, 12)
+                ScrollViewReader { proxy in
+                    ScrollView(showsIndicators: false) {
+                        Color.clear.frame(height: 1).id("top")
+                        sceneContent
+                            .id(scene)
+                            .transition(.opacity)
+                            .padding(.horizontal, 22)
+                            .padding(.top, 18)
+                            // Generous gap so the last control is never
+                            // adjacent to the Continue button.
+                            .padding(.bottom, 40)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    .onChange(of: scene) { _, _ in
+                        // Each screen starts at the top — no carried-over
+                        // scroll offset, so it never "jumps".
+                        proxy.scrollTo("top", anchor: .top)
+                    }
                 }
-                .scrollDismissesKeyboard(.interactively)
 
                 footer
                     .padding(.horizontal, 22)
+                    .padding(.top, 14)
                     .padding(.bottom, 24)
-                    .padding(.top, 6)
+                    .background(
+                        // Visually separates the action bar from the
+                        // scrolling content so accidental taps stop.
+                        Rectangle()
+                            .fill(.ultraThinMaterial)
+                            .environment(\.colorScheme, .dark)
+                            .overlay(alignment: .top) {
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.08))
+                                    .frame(height: 1)
+                            }
+                            .ignoresSafeArea(edges: .bottom)
+                    )
             }
         }
         .interactiveDismissDisabled(scene != .reveal)
         .onAppear(perform: setupInitialTimes)
+        .fullScreenCover(isPresented: $showStory) {
+            if let entry = savedEntry ?? entryOverride ?? appState.entryNeedingMorningCheckIn {
+                SleepStoryView(
+                    context: SleepStoryContext(
+                        entry: entry,
+                        pet: appState.pet,
+                        petName: appState.pet.name,
+                        history: appState.entries,
+                        goalHours: appState.goalHours,
+                        currentStreak: StreakManager.shared.current,
+                        longestStreak: StreakManager.shared.longest,
+                        consistencyDays: appState.bedtimeConsistencyDays,
+                        leveledUpTo: appState.lastLevelUp
+                    ),
+                    onFinished: { showStory = false }
+                )
+            }
+        }
     }
 
     // MARK: - Background
@@ -157,13 +203,13 @@ struct MorningCheckInView: View {
                          Color(red: 0.14, green: 0.10, blue: 0.30)],
                 startPoint: .top, endPoint: .bottom
             )
-        case .between:
+        case .restless, .dreams:
             return LinearGradient(
                 colors: [Color(red: 0.09, green: 0.07, blue: 0.26),
                          Color(red: 0.32, green: 0.18, blue: 0.36)],
                 startPoint: .top, endPoint: .bottom
             )
-        case .morning:
+        case .morning, .outOfBed:
             return LinearGradient(
                 colors: [Color(red: 0.20, green: 0.13, blue: 0.30),
                          Color(red: 0.55, green: 0.30, blue: 0.40)],
@@ -186,11 +232,11 @@ struct MorningCheckInView: View {
 
     private var starOpacity: Double {
         switch scene {
-        case .night, .onset: return 0.55
-        case .between:       return 0.40
-        case .morning:       return 0.22
-        case .echoes:        return 0.10
-        case .reveal:        return 0.30
+        case .night, .onset:    return 0.55
+        case .restless, .dreams: return 0.40
+        case .morning, .outOfBed: return 0.22
+        case .echoes:           return 0.10
+        case .reveal:           return 0.30
         }
     }
 
@@ -211,7 +257,7 @@ struct MorningCheckInView: View {
     }
 
     private var progressDots: some View {
-        let count = 5
+        let count = Scene.questionCount
         let current = scene.progressIndex ?? -1
         return HStack(spacing: 6) {
             ForEach(0..<count, id: \.self) { idx in
@@ -267,12 +313,14 @@ struct MorningCheckInView: View {
     @ViewBuilder
     private var sceneContent: some View {
         switch scene {
-        case .night:   nightScene
-        case .onset:   onsetScene
-        case .between: betweenScene
-        case .morning: morningScene
-        case .echoes:  echoesScene
-        case .reveal:  revealScene
+        case .night:    nightScene
+        case .onset:    onsetScene
+        case .restless: restlessScene
+        case .dreams:   dreamsScene
+        case .morning:  morningScene
+        case .outOfBed: outOfBedScene
+        case .echoes:   echoesScene
+        case .reveal:   revealScene
         }
     }
 
@@ -601,7 +649,9 @@ struct MorningCheckInView: View {
                         guard !fallAsleepUnknown else { return }
                         let clamped = max(0, min(width, drag.location.x))
                         let raw = Double(clamped / max(1, width)) * 180.0
-                        fallAsleepMinutes = raw.rounded()
+                        let rounded = raw.rounded()
+                        if rounded != fallAsleepMinutes { Haptics.tick() }
+                        fallAsleepMinutes = rounded
                     }
             )
         }
@@ -609,72 +659,92 @@ struct MorningCheckInView: View {
         .opacity(fallAsleepUnknown ? 0.35 : 1.0)
     }
 
-    // MARK: - Scene 3: The Hours Between
+    // MARK: - Scene 3: Restless? (emoji slider)
 
-    private var betweenScene: some View {
-        VStack(spacing: 22) {
+    private var restlessScene: some View {
+        VStack(spacing: 28) {
             spirit(size: 90)
 
             VStack(spacing: 4) {
-                Text("The hours between")
+                Text("Restless last night?")
                     .font(MooniFont.display(26))
                     .foregroundColor(MooniColor.textPrimary)
-                Text("Did your night stay still?")
+                Text("Drag to how often you stirred.")
                     .font(MooniFont.body(15))
                     .foregroundColor(MooniColor.textSecondary)
             }
             .multilineTextAlignment(.center)
 
-            VStack(spacing: 8) {
-                ForEach(WakeUpFrequency.allCases) { w in
-                    bigChoiceRow(
-                        label: wakeUpLabel(w),
-                        icon: wakeUpIcon(w),
-                        selected: wakeUps == w
-                    ) {
-                        withAnimation(.spring(response: 0.35)) { wakeUps = w }
-                    }
-                }
-            }
-
-            VStack(spacing: 8) {
-                Text("Did dreams visit you?")
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                HStack(spacing: 8) {
-                    ForEach(DreamRecall.allCases) { d in
-                        smallChip(label: d.label, selected: dreams == d) {
-                            withAnimation(.spring(response: 0.3)) { dreams = d }
-                        }
-                    }
-                }
-            }
+            EmojiScaleSlider(
+                stops: WakeUpFrequency.allCases.map {
+                    (wakeUpEmoji($0), wakeUpLabel($0))
+                },
+                index: Binding(
+                    get: { WakeUpFrequency.allCases.firstIndex(of: wakeUps) ?? 0 },
+                    set: { wakeUps = WakeUpFrequency.allCases[$0] }
+                )
+            )
             .padding(.top, 6)
         }
     }
 
     private func wakeUpLabel(_ w: WakeUpFrequency) -> String {
         switch w {
-        case .none:     return "Slept straight through"
+        case .none:     return "Slept through"
         case .once:     return "Stirred once"
         case .fewTimes: return "Up a few times"
-        case .aLot:     return "Restless — many wake-ups"
+        case .aLot:     return "Very restless"
         }
     }
 
-    private func wakeUpIcon(_ w: WakeUpFrequency) -> String {
+    private func wakeUpEmoji(_ w: WakeUpFrequency) -> String {
         switch w {
-        case .none:     return "moon.zzz.fill"
-        case .once:     return "moon.fill"
-        case .fewTimes: return "moon.stars.fill"
-        case .aLot:     return "moon.haze.fill"
+        case .none:     return "😴"
+        case .once:     return "🙂"
+        case .fewTimes: return "😕"
+        case .aLot:     return "😣"
         }
     }
 
-    // MARK: - Scene 4: This Morning
+    // MARK: - Scene 4: Dreams?
+
+    private var dreamsScene: some View {
+        VStack(spacing: 28) {
+            spirit(size: 90)
+
+            VStack(spacing: 4) {
+                Text("Did dreams visit you?")
+                    .font(MooniFont.display(26))
+                    .foregroundColor(MooniColor.textPrimary)
+            }
+            .multilineTextAlignment(.center)
+
+            HStack(spacing: 10) {
+                ForEach(DreamRecall.allCases) { d in
+                    iconChoiceCard(
+                        emoji: dreamEmoji(d),
+                        label: d.label,
+                        selected: dreams == d
+                    ) {
+                        withAnimation(.spring(response: 0.3)) { dreams = d }
+                    }
+                }
+            }
+        }
+    }
+
+    private func dreamEmoji(_ d: DreamRecall) -> String {
+        switch d {
+        case .yes:     return "💭"
+        case .notSure: return "🌫️"
+        case .no:      return "🌑"
+        }
+    }
+
+    // MARK: - Scene 5: This morning (feeling)
 
     private var morningScene: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 28) {
             spirit(size: 90)
 
             VStack(spacing: 4) {
@@ -692,20 +762,44 @@ struct MorningCheckInView: View {
                     feelingCard(f)
                 }
             }
+        }
+    }
 
-            VStack(spacing: 8) {
+    // MARK: - Scene 6: Out of bed? (emoji slider)
+
+    private var outOfBedScene: some View {
+        VStack(spacing: 28) {
+            spirit(size: 90)
+
+            VStack(spacing: 4) {
                 Text("Getting out of bed?")
-                    .font(MooniFont.body(14))
+                    .font(MooniFont.display(26))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text("Drag to how hard it felt.")
+                    .font(MooniFont.body(15))
                     .foregroundColor(MooniColor.textSecondary)
-                HStack(spacing: 8) {
-                    ForEach(BedDifficulty.allCases) { b in
-                        smallChip(label: bedLabel(b), selected: bedDifficulty == b) {
-                            withAnimation(.spring(response: 0.3)) { bedDifficulty = b }
-                        }
-                    }
-                }
             }
+            .multilineTextAlignment(.center)
+
+            EmojiScaleSlider(
+                stops: BedDifficulty.allCases.map {
+                    (bedEmoji($0), bedLabel($0))
+                },
+                index: Binding(
+                    get: { BedDifficulty.allCases.firstIndex(of: bedDifficulty) ?? 1 },
+                    set: { bedDifficulty = BedDifficulty.allCases[$0] }
+                )
+            )
             .padding(.top, 6)
+        }
+    }
+
+    private func bedEmoji(_ b: BedDifficulty) -> String {
+        switch b {
+        case .easy:     return "🪶"
+        case .normal:   return "🙂"
+        case .hard:     return "😮‍💨"
+        case .veryHard: return "🥵"
         }
     }
 
@@ -836,6 +930,7 @@ struct MorningCheckInView: View {
             }
             .onAppear {
                 revealScale = 0.85
+                Haptics.celebrate()
                 withAnimation(.spring(response: 0.95, dampingFraction: 0.6).delay(0.05)) {
                     revealScale = 1.1
                 }
@@ -880,6 +975,36 @@ struct MorningCheckInView: View {
                         }
                     }
                 }
+
+                Button {
+                    Haptics.tap()
+                    showStory = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("See your sleep story")
+                            .font(MooniFont.title(15))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundColor(MooniColor.textPrimary)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 13)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        Capsule().fill(
+                            LinearGradient(
+                                colors: [MooniColor.accentSoft.opacity(0.35),
+                                         MooniColor.accent.opacity(0.35)],
+                                startPoint: .leading, endPoint: .trailing
+                            )
+                        )
+                    )
+                    .overlay(Capsule().stroke(MooniColor.accent.opacity(0.4), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
             } else {
                 Text("SleepOwl is still gathering last night's sleep.")
                     .font(MooniFont.body(15))
@@ -910,64 +1035,41 @@ struct MorningCheckInView: View {
 
     private var spiritGlowColor: Color {
         switch scene {
-        case .night, .onset:           return MooniColor.accent
-        case .between:                 return MooniColor.accentSoft
-        case .morning, .echoes, .reveal: return MooniColor.warning
+        case .night, .onset:                       return MooniColor.accent
+        case .restless, .dreams:                   return MooniColor.accentSoft
+        case .morning, .outOfBed, .echoes, .reveal: return MooniColor.warning
         }
     }
 
-    private func bigChoiceRow(label: String,
-                              icon: String,
-                              selected: Bool,
-                              action: @escaping () -> Void) -> some View {
+    /// A big tappable emoji+label card — used for the few questions that
+    /// are genuine discrete choices (dreams, caffeine) rather than a scale.
+    private func iconChoiceCard(emoji: String,
+                                label: String,
+                                selected: Bool,
+                                action: @escaping () -> Void) -> some View {
         Button {
             Haptics.tap()
             action()
         } label: {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(selected ? MooniColor.warning : MooniColor.textSecondary)
-                    .frame(width: 36, height: 36)
-                    .background(selected ? MooniColor.warning.opacity(0.18) : Color.white.opacity(0.10))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(spacing: 10) {
+                Text(emoji)
+                    .font(.system(size: 34))
+                    .scaleEffect(selected ? 1.15 : 1.0)
                 Text(label)
-                    .font(MooniFont.title(15))
+                    .font(MooniFont.caption(12))
                     .foregroundColor(MooniColor.textPrimary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                Spacer()
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(selected ? MooniColor.warning : MooniColor.textMuted)
-                    .font(.system(size: 18))
+                    .minimumScaleFactor(0.8)
             }
-            .padding(.vertical, 14)
-            .padding(.horizontal, 14)
-            .background(selected ? Color.white.opacity(0.20) : Color.white.opacity(0.08))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 22)
+            .background(selected ? Color.white.opacity(0.22) : Color.white.opacity(0.08))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(selected ? MooniColor.warning : .white.opacity(0.06),
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(selected ? MooniColor.warning : .white.opacity(0.08),
                             lineWidth: selected ? 1.5 : 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func smallChip(label: String,
-                           selected: Bool,
-                           action: @escaping () -> Void) -> some View {
-        Button {
-            Haptics.tap()
-            action()
-        } label: {
-            Text(label)
-                .font(MooniFont.caption(13))
-                .foregroundColor(selected ? MooniColor.background : MooniColor.textPrimary)
-                .padding(.vertical, 9)
-                .padding(.horizontal, 14)
-                .background(selected ? MooniColor.warning : Color.white.opacity(0.08))
-                .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -1024,23 +1126,27 @@ struct MorningCheckInView: View {
 
     private func next(of s: Scene) -> Scene {
         switch s {
-        case .night:   return .onset
-        case .onset:   return .between
-        case .between: return .morning
-        case .morning: return .echoes
-        case .echoes:  return .reveal
-        case .reveal:  return .reveal
+        case .night:    return .onset
+        case .onset:    return .restless
+        case .restless: return .dreams
+        case .dreams:   return .morning
+        case .morning:  return .outOfBed
+        case .outOfBed: return .echoes
+        case .echoes:   return .reveal
+        case .reveal:   return .reveal
         }
     }
 
     private func previous(of s: Scene) -> Scene {
         switch s {
-        case .night:   return .night
-        case .onset:   return .night
-        case .between: return .onset
-        case .morning: return .between
-        case .echoes:  return .morning
-        case .reveal:  return .echoes
+        case .night:    return .night
+        case .onset:    return .night
+        case .restless: return .onset
+        case .dreams:   return .restless
+        case .morning:  return .dreams
+        case .outOfBed: return .morning
+        case .echoes:   return .outOfBed
+        case .reveal:   return .echoes
         }
     }
 
@@ -1076,6 +1182,91 @@ struct MorningCheckInView: View {
             accuracyRating: accuracy
         )
         savedEntry = appState.completeMorningCheckIn(checkIn)
+    }
+}
+
+/// A horizontal slider that snaps between discrete emoji+label stops.
+/// Almost nothing to read — you drag a thumb and the big emoji + one
+/// short label update live. Used for the subjective scale questions.
+private struct EmojiScaleSlider: View {
+    let stops: [(emoji: String, label: String)]
+    @Binding var index: Int
+
+    var body: some View {
+        VStack(spacing: 22) {
+            VStack(spacing: 8) {
+                Text(stops[safe: index]?.emoji ?? "🙂")
+                    .font(.system(size: 66))
+                    .contentTransition(.opacity)
+                    .id(index)
+                Text(stops[safe: index]?.label ?? "")
+                    .font(MooniFont.title(20))
+                    .foregroundColor(MooniColor.warning)
+                    .contentTransition(.opacity)
+            }
+
+            GeometryReader { geo in
+                let count = max(2, stops.count)
+                let w = geo.size.width
+                let stepW = w / CGFloat(count - 1)
+                let clampedIndex = min(count - 1, max(0, index))
+                let fillW = stepW * CGFloat(clampedIndex)
+
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.12))
+                        .frame(height: 6)
+                    Capsule()
+                        .fill(MooniColor.warning)
+                        .frame(width: max(6, fillW), height: 6)
+
+                    ForEach(0..<count, id: \.self) { i in
+                        Circle()
+                            .fill(i <= clampedIndex ? MooniColor.warning : Color.white.opacity(0.22))
+                            .frame(width: 9, height: 9)
+                            .offset(x: stepW * CGFloat(i) - 4.5)
+                    }
+
+                    Circle()
+                        .fill(MooniColor.warning)
+                        .frame(width: 30, height: 30)
+                        .overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 2))
+                        .shadow(color: MooniColor.warning.opacity(0.6), radius: 8)
+                        .offset(x: fillW - 15)
+                }
+                .frame(maxHeight: .infinity, alignment: .center)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { v in
+                            let raw = max(0, min(w, v.location.x))
+                            let i = Int((raw / stepW).rounded())
+                            let clamped = min(count - 1, max(0, i))
+                            if clamped != index {
+                                Haptics.tap()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    index = clamped
+                                }
+                            }
+                        }
+                )
+            }
+            .frame(height: 44)
+
+            HStack {
+                Text(stops.first?.label ?? "")
+                Spacer()
+                Text(stops.last?.label ?? "")
+            }
+            .font(MooniFont.caption(11))
+            .foregroundColor(MooniColor.textMuted)
+        }
+    }
+}
+
+private extension Array {
+    subscript(safe i: Int) -> Element? {
+        indices.contains(i) ? self[i] : nil
     }
 }
 

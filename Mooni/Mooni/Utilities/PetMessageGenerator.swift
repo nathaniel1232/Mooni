@@ -48,8 +48,8 @@ enum PetMessageGenerator {
             ]
         default:
             pool = [
-                "I missed some sleep — let's recover.",
-                "A gentle night would help me a lot."
+                "I'm worn out — I really need you to rest tonight.",
+                "Rough night. Be kind to us both today, and let's recover tonight."
             ]
         }
         let idx = abs(pet.name.hashValue ^ Calendar.current.component(.day, from: Date())) % pool.count

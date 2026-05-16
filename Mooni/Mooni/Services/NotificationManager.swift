@@ -21,6 +21,19 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
     /// Action ID for the "I'm awake" tap on a wake-probe notification.
     nonisolated static let wakeProbeAction = "mooni.wakeProbe.iAmAwake"
 
+    /// SAFETY NET — Identifier prefix for the *daily-repeating* wake probes.
+    /// Unlike `wakeProbePrefix` (per-night, only scheduled inside sleep mode),
+    /// these are scheduled proactively every day from the user's target wake
+    /// time regardless of whether the user ever opened the app or entered
+    /// sleep mode. They are NOT cancelled on wake — they must keep firing
+    /// every morning so a missed night can never go un-prompted again.
+    nonisolated static let dailyWakeProbePrefix = "mooni.dailyWakeProbe."
+    /// SAFETY NET — single daily-repeating "we couldn't confirm last night's
+    /// sleep, tap to log it" catch-up notification, fired late morning.
+    nonisolated static let catchUpIdentifier = "mooni.catchUpLog"
+    /// How many daily safety-net probes we schedule per morning.
+    static let dailyWakeProbeCount = 5
+
     /// Sleep-onset probes — silent "still awake?" pings during the first
     /// 45 minutes after sleep mode starts. Each tap proves the user was
     /// still awake at that moment, letting us narrow the real onset
@@ -77,7 +90,7 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
 
         let content = UNMutableNotificationContent()
         content.title = "\(petName) is getting sleepy…"
-        content.body = "Tap to start tonight's wind-down."
+        content.body = "Tuck in soon — your sleep story will be waiting the moment you wake."
         content.sound = .default
 
         // Fire 30 min before target bedtime
@@ -87,6 +100,102 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
 
         let request = UNNotificationRequest(identifier: "mooni.bedtime", content: content, trigger: trigger)
         center.add(request)
+    }
+
+    // MARK: - Safety net (proactive, schedule-independent)
+
+    /// SAFETY NET (mechanisms 1, 6, 7). Idempotently (re)schedules the full
+    /// set of notifications the app should ALWAYS have pending, regardless of
+    /// whether the user ever taps "going to bed" or opens the app:
+    ///
+    ///   • the nightly wind-down nudge,
+    ///   • daily-repeating "are you awake?" wake probes around wake time,
+    ///   • a daily-repeating late-morning "log last night" catch-up.
+    ///
+    /// Each sub-call removes its own pending requests before re-adding, so
+    /// calling this on every launch / foreground / background-refresh
+    /// self-heals anything iOS dropped or that was never scheduled because
+    /// the user never entered sleep mode. This is the core fix for the
+    /// "I didn't touch the app and it did nothing" failure.
+    func reconcileSafetyNetNotifications(petName: String, bedtime: Date, wakeTime: Date) {
+        scheduleNightlyBedtimeNudge(petName: petName, bedtime: bedtime)
+        scheduleDailyWakeProbes(wakeTime: wakeTime, petName: petName)
+        scheduleCatchUpPrompt(wakeTime: wakeTime, petName: petName)
+        SleepAutomationLog.shared.log("Reconciled safety-net notifications (wake \(wakeTime.hourMinuteString))")
+    }
+
+    /// SAFETY NET (mechanism 8 companion). Rebuilds bedtime/wake from the
+    /// persisted target schedule and reconciles — used by the background
+    /// refresh task, which has no `AppState` instance to read from.
+    func reconcileFromStoredSchedule() {
+        let d = UserDefaults.standard
+        let bH = d.object(forKey: "mooni.targetBedHour") as? Int ?? 22
+        let bM = d.object(forKey: "mooni.targetBedMinute") as? Int ?? 30
+        let wH = d.object(forKey: "mooni.targetWakeHour") as? Int ?? 7
+        let wM = d.object(forKey: "mooni.targetWakeMinute") as? Int ?? 0
+        let cal = Calendar.current
+        let now = Date()
+        let bed = cal.date(bySettingHour: bH, minute: bM, second: 0, of: now) ?? now
+        let wake = cal.date(bySettingHour: wH, minute: wM, second: 0, of: now) ?? now
+        var name = "Mooni"
+        if let data = d.data(forKey: "mooni.pet"),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let n = obj["name"] as? String, !n.isEmpty {
+            name = n
+        }
+        reconcileSafetyNetNotifications(petName: name, bedtime: bed, wakeTime: wake)
+    }
+
+    /// Daily-repeating "are you awake?" probes at wake −60/−30/0/+30/+60 min.
+    /// Uses repeating clock-time calendar triggers so they fire every single
+    /// morning even with zero interaction. Safe to call repeatedly.
+    func scheduleDailyWakeProbes(wakeTime: Date, petName: String) {
+        let center = UNUserNotificationCenter.current()
+        let ids = (0..<Self.dailyWakeProbeCount).map { "\(Self.dailyWakeProbePrefix)\($0)" }
+        center.removePendingNotificationRequests(withIdentifiers: ids)
+
+        let offsets: [Int] = [-60, -30, 0, 30, 60]
+        let cal = Calendar.current
+        for (idx, minutes) in offsets.enumerated() {
+            let fire = wakeTime.addingTimeInterval(TimeInterval(minutes * 60))
+            let content = UNMutableNotificationContent()
+            if minutes < 0 {
+                content.title = "\(petName) is stirring…"
+                content.body = "Your night is almost ready. Tap the moment you're up to unlock it."
+            } else {
+                content.title = "🌙 Your sleep story is ready"
+                content.body = "\(petName) watched over you all night. Tap to see what happened while you slept."
+            }
+            content.sound = .default
+            content.categoryIdentifier = "mooni.wakeProbe"
+            content.interruptionLevel = .timeSensitive
+            content.userInfo = ["safetyNet": true]
+
+            let comps = cal.dateComponents([.hour, .minute], from: fire)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
+            center.add(UNNotificationRequest(identifier: ids[idx], content: content, trigger: trigger))
+        }
+    }
+
+    /// Daily-repeating late-morning catch-up: if the user slept through /
+    /// ignored every wake probe, this still pings them once so the night is
+    /// never silently lost. Fires ~2h after target wake time.
+    func scheduleCatchUpPrompt(wakeTime: Date, petName: String) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [Self.catchUpIdentifier])
+
+        let content = UNMutableNotificationContent()
+        content.title = "🌙 You have an unopened night"
+        content.body = "\(petName) is still holding last night's story. Tap to open it and keep your streak alive."
+        content.sound = .default
+        content.categoryIdentifier = "mooni.wakeProbe"
+        content.interruptionLevel = .timeSensitive
+        content.userInfo = ["safetyNet": true, "catchUp": true]
+
+        let fire = wakeTime.addingTimeInterval(2 * 3600)
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: fire)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
+        center.add(UNNotificationRequest(identifier: Self.catchUpIdentifier, content: content, trigger: trigger))
     }
 
     // MARK: - Wake probes
@@ -110,14 +219,16 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
             guard fireDate > now.addingTimeInterval(5) else { continue }
 
             let content = UNMutableNotificationContent()
-            content.title = minutes == 0
-                ? "\(petName) is waking up"
-                : "\(petName) is checking in"
-            content.body = minutes == 0
-                ? "Are you awake yet? Tap so we can log it."
-                : "If you're up, tap so we can record exactly when you woke."
+            if minutes < 0 {
+                content.title = "\(petName) is stirring…"
+                content.body = "Your night is almost ready. Tap the moment you're up to unlock it."
+            } else {
+                content.title = "🌙 Your sleep story is ready"
+                content.body = "\(petName) watched over you all night. Tap to see what happened while you slept."
+            }
             content.sound = .default
             content.categoryIdentifier = "mooni.wakeProbe"
+            content.interruptionLevel = .timeSensitive
             content.userInfo = ["fireDate": fireDate.timeIntervalSince1970]
 
             let comps = Calendar.current.dateComponents(
@@ -238,7 +349,9 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
     ) {
         let id = response.notification.request.identifier
         let tapTime = Date()
-        if id.hasPrefix(Self.wakeProbePrefix) {
+        if id.hasPrefix(Self.wakeProbePrefix)
+            || id.hasPrefix(Self.dailyWakeProbePrefix)
+            || id == Self.catchUpIdentifier {
             Task { @MainActor in
                 NotificationManager.shared.recordWakeConfirmation(at: tapTime)
             }
