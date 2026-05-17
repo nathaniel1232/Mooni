@@ -46,6 +46,25 @@ struct OnboardingProfile: Codable, Equatable {
     var motivation: Motivation? = nil
     var commitmentNights: Int = 7
 
+    /// Goals the user multi-selected on the dedicated goals screen. These drive
+    /// personalized recommendations & messaging. The single primary `sleepGoal`
+    /// (stored elsewhere) still feeds the paywall headline.
+    var selectedGoals: [SleepGoal] = []
+
+    /// nil = not asked yet, true = tapped "Personalize", false = tapped "Skip".
+    /// Cosmetic preference only — no system permission is tied to this.
+    var personalizationOptIn: Bool? = nil
+
+    // MARK: - Post-"personalize" multi-select block
+    // Everything below is collected after the "Let's personalize" screen.
+    // All multi-select so the user ticks as much as applies — the more they
+    // pick, the more invested they feel and the richer the tailoring.
+
+    var sleepBlockers: [SleepBlocker] = []
+    var sleepImpacts: [SleepImpact] = []
+    var triedBefore: [TriedBefore] = []
+    var windDownPrefs: [WindDownPref] = []
+
     // MARK: - Derived presentation values
 
     /// Personalized starting "sleep score" we show on the analysis screen.
@@ -323,6 +342,118 @@ extension OnboardingProfile {
             case .fitnessRecovery: return "figure.run"
             case .mood: return "face.smiling.fill"
             case .longerLife: return "leaf.fill"
+            }
+        }
+    }
+
+    enum SleepBlocker: String, Codable, CaseIterable, Identifiable {
+        case racingMind, phone, stress, notTired, noise, pain, caffeine, partner
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .racingMind: return "Racing thoughts"
+            case .phone:      return "Scrolling my phone"
+            case .stress:     return "Stress & anxiety"
+            case .notTired:   return "Not tired at bedtime"
+            case .noise:      return "Noise or light"
+            case .pain:       return "Discomfort or pain"
+            case .caffeine:   return "Caffeine too late"
+            case .partner:    return "Partner, kids or pets"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .racingMind: return "brain.head.profile"
+            case .phone:      return "iphone"
+            case .stress:     return "exclamationmark.triangle.fill"
+            case .notTired:   return "eye"
+            case .noise:      return "speaker.wave.2.fill"
+            case .pain:       return "bandage.fill"
+            case .caffeine:   return "cup.and.saucer.fill"
+            case .partner:    return "person.2.fill"
+            }
+        }
+    }
+
+    enum SleepImpact: String, Codable, CaseIterable, Identifiable {
+        case lowEnergy, mood, focus, cravings, looks, motivation, workouts, immunity
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .lowEnergy:  return "Low energy all day"
+            case .mood:       return "Irritable & moody"
+            case .focus:      return "Can't focus"
+            case .cravings:   return "More cravings"
+            case .looks:      return "Tired skin & eyes"
+            case .motivation: return "No motivation"
+            case .workouts:   return "Worse workouts"
+            case .immunity:   return "Get sick more often"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .lowEnergy:  return "battery.25"
+            case .mood:       return "face.dashed"
+            case .focus:      return "scope"
+            case .cravings:   return "fork.knife"
+            case .looks:      return "face.smiling"
+            case .motivation: return "zzz"
+            case .workouts:   return "figure.run"
+            case .immunity:   return "cross.case.fill"
+            }
+        }
+    }
+
+    enum TriedBefore: String, Codable, CaseIterable, Identifiable {
+        case melatonin, meditation, noScreens, earlyBed, cutCaffeine, whiteNoise, nothing
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .melatonin:   return "Melatonin / supplements"
+            case .meditation:  return "Meditation apps"
+            case .noScreens:   return "No screens before bed"
+            case .earlyBed:    return "Going to bed earlier"
+            case .cutCaffeine: return "Cutting caffeine"
+            case .whiteNoise:  return "White noise"
+            case .nothing:     return "Nothing yet"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .melatonin:   return "pills.fill"
+            case .meditation:  return "brain"
+            case .noScreens:   return "iphone.slash"
+            case .earlyBed:    return "bed.double.fill"
+            case .cutCaffeine: return "cup.and.saucer"
+            case .whiteNoise:  return "waveform"
+            case .nothing:     return "hand.raised.slash"
+            }
+        }
+    }
+
+    enum WindDownPref: String, Codable, CaseIterable, Identifiable {
+        case sounds, breathing, reading, warmShower, stretching, journaling, dimLights
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .sounds:     return "Calming sounds"
+            case .breathing:  return "Breathing exercises"
+            case .reading:    return "Reading"
+            case .warmShower: return "Warm shower"
+            case .stretching: return "Stretching"
+            case .journaling: return "Journaling"
+            case .dimLights:  return "Dim lights"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .sounds:     return "music.note"
+            case .breathing:  return "wind"
+            case .reading:    return "book.fill"
+            case .warmShower: return "drop.fill"
+            case .stretching: return "figure.cooldown"
+            case .journaling: return "pencil.and.outline"
+            case .dimLights:  return "lightbulb.fill"
             }
         }
     }

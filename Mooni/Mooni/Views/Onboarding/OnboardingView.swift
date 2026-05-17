@@ -24,6 +24,14 @@ struct OnboardingView: View {
 
     // Goal & schedule
     @State private var sleepGoal: SleepGoal? = nil
+    @State private var selectedGoals: Set<SleepGoal> = []
+    @State private var selBlockers: Set<OnboardingProfile.SleepBlocker> = []
+    @State private var selImpacts: Set<OnboardingProfile.SleepImpact> = []
+    @State private var selTried: Set<OnboardingProfile.TriedBefore> = []
+    @State private var selWindDown: Set<OnboardingProfile.WindDownPref> = []
+    // Becomes true once the user taps "Leave a rating" and the App Store
+    // prompt is shown — only then do we reveal the "I rated it" link.
+    @State private var ratePromptShown = false
     @State private var bedtime: Date = Date.todayAt(hour: 22, minute: 45)
     @State private var wakeTime: Date = Date.todayAt(hour: 7, minute: 0)
     @State private var weekendWake: Date = Date.todayAt(hour: 8, minute: 30)
@@ -127,6 +135,14 @@ struct OnboardingView: View {
         case reflection
         case roomPicker
         case anticipation             // S9 "let's discover how your sleep affects your days"
+        case personalize              // "Let's personalize" intro — tap to begin
+        // ── Post-personalize multi-select block (tailored to prior answers) ──
+        case personalizeGoals         // what to improve (multi)
+        case personalizeBlockers      // what keeps you up (multi)
+        case personalizeImpact        // how poor sleep hits you (multi)
+        case personalizeTried         // what you've already tried (multi)
+        case personalizeWindDown      // what helps you relax (multi)
+        case personalizingReveal      // payoff — echoes picks, "building your plan"
         case notificationPerm
         case healthPerm
         case analyzingAnswers         // loading 1 (long, variable)
@@ -381,6 +397,45 @@ struct OnboardingView: View {
         case .heightQuestion:      HeightScreen(profile: $profile)
         case .weightQuestion:      WeightScreen(profile: $profile)
         case .bodyFact:            BodyFactScreen(profile: profile)
+        case .personalize:         PersonalizeScreen()
+        case .personalizeGoals:    GoalsMultiScreen(selection: $selectedGoals)
+        case .personalizeBlockers:
+            MultiSelectScreen(
+                title: "What keeps you from good sleep?",
+                subtitle: blockersSubtitle,
+                options: OnboardingProfile.SleepBlocker.allCases.map {
+                    ($0, $0.label, $0.icon)
+                },
+                selection: $selBlockers)
+        case .personalizeImpact:
+            MultiSelectScreen(
+                title: "How does poor sleep hit you?",
+                subtitle: "Tick everything you feel — we'll target these.",
+                options: OnboardingProfile.SleepImpact.allCases.map {
+                    ($0, $0.label, $0.icon)
+                },
+                selection: $selImpacts)
+        case .personalizeTried:
+            MultiSelectScreen(
+                title: "What have you already tried?",
+                subtitle: "So we don't hand you the same advice that didn't work.",
+                options: OnboardingProfile.TriedBefore.allCases.map {
+                    ($0, $0.label, $0.icon)
+                },
+                selection: $selTried)
+        case .personalizeWindDown:
+            MultiSelectScreen(
+                title: "What helps you relax?",
+                subtitle: "Your wind-down routine will be built from these.",
+                options: OnboardingProfile.WindDownPref.allCases.map {
+                    ($0, $0.label, $0.icon)
+                },
+                selection: $selWindDown)
+        case .personalizingReveal:
+            PersonalizingRevealScreen(
+                goals: orderedSelectedGoals,
+                pickCount: selectedGoals.count + selBlockers.count
+                    + selImpacts.count + selTried.count + selWindDown.count)
         case .sleepGoal:           GoalScreen(selection: $sleepGoal)
         case .expertGoalFocus:     ExpertQuoteScreen(quote: .goalFocus)
         case .goalStudy1:          GoalStudyScreen(goal: sleepGoal, index: 0)
@@ -509,16 +564,34 @@ struct OnboardingView: View {
                         .padding(.horizontal, 12)
                 }
             case .rateApp:
-                VStack(spacing: 10) {
-                    PrimaryButton(title: "Rate SleepOwl", icon: "star.fill") {
+                // No skip. The big button opens the App Store prompt; the only
+                // way forward is the small "I rated it" link. Apple gives no
+                // callback on SKStoreReviewController, so this is the standard
+                // (unverifiable) pattern — we trust the tap.
+                VStack(spacing: 14) {
+                    PrimaryButton(title: "Leave a rating", icon: "star.fill") {
                         OnboardingRatingPrompt.request()
-                        // Give the system sheet a beat to render before
-                        // advancing — feels less abrupt.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                            advance()
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            ratePromptShown = true
                         }
                     }
-                    SecondaryButton(title: "Maybe later") { advance() }
+                    if ratePromptShown {
+                        Button {
+                            advance()
+                        } label: {
+                            Text("I rated it")
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .underline()
+                                .foregroundColor(MooniColor.textMuted)
+                                .padding(.vertical, 4)
+                        }
+                        .transition(.opacity)
+                    }
+                }
+            case .personalize:
+                PrimaryButton(title: "Personalize my plan", icon: "wand.and.stars") {
+                    profile.personalizationOptIn = true
+                    advance()
                 }
             case .notificationPerm:
                 VStack(spacing: 10) {
@@ -589,6 +662,12 @@ struct OnboardingView: View {
         case .heightQuestion:     return profile.heightCm == nil ? "Set your height" : "Continue"
         case .weightQuestion:     return profile.weightKg == nil ? "Set your weight" : "Continue"
         case .bodyFact:           return "Got it"
+        case .personalizeGoals:    return selectedGoals.isEmpty ? "Pick at least one" : "Continue"
+        case .personalizeBlockers: return selBlockers.isEmpty ? "Pick at least one" : "Continue"
+        case .personalizeImpact:   return selImpacts.isEmpty ? "Pick at least one" : "Continue"
+        case .personalizeTried:    return selTried.isEmpty ? "Pick at least one" : "Continue"
+        case .personalizeWindDown: return selWindDown.isEmpty ? "Pick at least one" : "Continue"
+        case .personalizingReveal: return "Continue"
         case .sleepGoal:          return sleepGoal == nil ? "Pick one to continue" : "Continue"
         case .goalStudy1:         return "Next study"
         case .goalStudy2:         return "Next study"
@@ -654,6 +733,11 @@ struct OnboardingView: View {
         case .ageQuestion:        return profile.age != nil
         case .heightQuestion:     return profile.heightCm != nil
         case .weightQuestion:     return profile.weightKg != nil
+        case .personalizeGoals:    return !selectedGoals.isEmpty
+        case .personalizeBlockers: return !selBlockers.isEmpty
+        case .personalizeImpact:   return !selImpacts.isEmpty
+        case .personalizeTried:    return !selTried.isEmpty
+        case .personalizeWindDown: return !selWindDown.isEmpty
         case .sleepGoal:          return sleepGoal != nil
         case .motivationQuestion: return profile.motivation != nil
         case .struggleDuration:   return profile.struggleDuration != nil
@@ -820,11 +904,9 @@ struct OnboardingView: View {
         //    so we keep `scienceCredibility` and let it carry that weight.
         case .scienceTrust:
             return true
-        // ── Rate prompt removed entirely from onboarding. SKStoreReviewController
-        //    dismisses the modal flow and burns 1 of 3 yearly prompts — too costly
-        //    on a not-yet-converted user. We'll prompt after first successful sleep
-        //    review in-app instead. firstQuest still hidden (lives post-paywall).
-        case .firstQuest, .rateApp:
+        // ── Rate prompt is back in (non-skippable "Leave a rating" gate, per
+        //    glam-up-style onboarding). firstQuest still hidden (post-paywall).
+        case .firstQuest:
             return true
         default:
             return false
@@ -930,11 +1012,33 @@ struct OnboardingView: View {
         }
     }
 
+    /// Selected goals in stable enum order (so the payoff screen lists them
+    /// consistently rather than in Set iteration order).
+    private var orderedSelectedGoals: [SleepGoal] {
+        SleepGoal.allCases.filter { selectedGoals.contains($0) }
+    }
+
+    /// Lightly tailored to what the user already told us earlier in the flow.
+    private var blockersSubtitle: String {
+        if profile.racingThoughtsAtNight == true {
+            return "You mentioned a racing mind at night — what else gets in the way? Pick all that apply."
+        }
+        if profile.usesPhoneBeforeBed == true {
+            return "Late-night scrolling adds up — what else gets in the way? Pick all that apply."
+        }
+        return "Pick everything that gets in the way — the more honest, the better."
+    }
+
     private func finishOnboarding() {
+        profile.selectedGoals = SleepGoal.allCases.filter { selectedGoals.contains($0) }
+        profile.sleepBlockers = OnboardingProfile.SleepBlocker.allCases.filter { selBlockers.contains($0) }
+        profile.sleepImpacts = OnboardingProfile.SleepImpact.allCases.filter { selImpacts.contains($0) }
+        profile.triedBefore = OnboardingProfile.TriedBefore.allCases.filter { selTried.contains($0) }
+        profile.windDownPrefs = OnboardingProfile.WindDownPref.allCases.filter { selWindDown.contains($0) }
         appState.completeOnboarding(
             species: species,
             name: petName,
-            goal: sleepGoal ?? .wakeUpLessTired,
+            goal: sleepGoal ?? selectedGoals.first ?? .wakeUpLessTired,
             goalHours: hoursBetween(bedtime, wakeTime),
             bedtime: bedtime,
             wakeTime: wakeTime,
@@ -1729,6 +1833,212 @@ private struct GoalScreen: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Reusable multi-select question screen
+
+/// One clean, consistent multi-select screen used for the whole post-
+/// "personalize" block. Big tappable rows, checkmarks, encourages picking
+/// as many as apply. `T` just needs to be Hashable.
+private struct MultiSelectScreen<T: Hashable>: View {
+    let title: String
+    let subtitle: String
+    /// (value, label, SF Symbol) — order is the display order.
+    let options: [(T, String, String)]
+    @Binding var selection: Set<T>
+
+    var body: some View {
+        QuestionScaffold(title: title, subtitle: subtitle) {
+            VStack(spacing: 10) {
+                ForEach(Array(options.enumerated()), id: \.offset) { _, opt in
+                    let (value, label, icon) = opt
+                    let isSelected = selection.contains(value)
+                    Button {
+                        withAnimation(.spring(response: 0.3)) {
+                            if isSelected { selection.remove(value) }
+                            else { selection.insert(value) }
+                        }
+                        Haptics.tap()
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: icon)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(isSelected ? MooniColor.accent : MooniColor.accentSoft)
+                                .frame(width: 38, height: 38)
+                                .background((isSelected ? MooniColor.accent : MooniColor.accentSoft).opacity(0.16))
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            Text(label)
+                                .font(MooniFont.title(15))
+                                .foregroundColor(MooniColor.textPrimary)
+                                .multilineTextAlignment(.leading)
+                            Spacer()
+                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(isSelected ? MooniColor.accent : MooniColor.textMuted)
+                                .font(.system(size: 20))
+                        }
+                        .padding(14)
+                        .background(Color.white.opacity(isSelected ? 0.13 : 0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.10),
+                                        lineWidth: isSelected ? 1.5 : 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Screen: Goals (first screen of the personalize block)
+
+private struct GoalsMultiScreen: View {
+    @Binding var selection: Set<SleepGoal>
+
+    var body: some View {
+        MultiSelectScreen(
+            title: "What do you want to improve?",
+            subtitle: "Pick everything you care about — these drive your recommendations.",
+            options: SleepGoal.allCases.map { ($0, $0.title, $0.icon) },
+            selection: $selection)
+    }
+}
+
+// MARK: - Screen: Personalizing payoff
+
+/// The payoff beat: echoes the user's own goals back and counts every choice
+/// they made so the whole block feels like it's actively shaping the plan.
+private struct PersonalizingRevealScreen: View {
+    let goals: [SleepGoal]
+    let pickCount: Int
+
+    @State private var revealed = 0
+    @State private var headerIn = false
+    private let timer = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        VStack(spacing: 22) {
+            Spacer(minLength: 12)
+
+            ZStack {
+                Circle()
+                    .fill(MooniColor.accent.opacity(0.22))
+                    .frame(width: 180, height: 180)
+                    .blur(radius: 34)
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 56, weight: .bold))
+                    .foregroundStyle(LinearGradient(
+                        colors: [.white, MooniColor.accentSoft],
+                        startPoint: .top, endPoint: .bottom))
+            }
+
+            VStack(spacing: 8) {
+                Text("Building your plan")
+                    .font(MooniFont.display(26))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .opacity(headerIn ? 1 : 0)
+
+                Text("Tailored from your \(pickCount) answers. We'll focus on:")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .opacity(headerIn ? 1 : 0)
+            }
+
+            VStack(spacing: 10) {
+                ForEach(Array(goals.enumerated()), id: \.element) { idx, goal in
+                    HStack(spacing: 12) {
+                        Image(systemName: goal.icon)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(MooniColor.accent)
+                            .frame(width: 34, height: 34)
+                            .background(MooniColor.accent.opacity(0.16))
+                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        Text(goal.title)
+                            .font(MooniFont.title(15))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Spacer()
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(MooniColor.accent)
+                            .font(.system(size: 18))
+                    }
+                    .padding(13)
+                    .background(Color.white.opacity(0.07))
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .opacity(idx < revealed ? 1 : 0)
+                    .offset(y: idx < revealed ? 0 : 8)
+                }
+            }
+            .padding(.horizontal, 4)
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 24)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.4)) { headerIn = true }
+        }
+        .onReceive(timer) { _ in
+            if revealed < goals.count {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+                    revealed += 1
+                }
+                Haptics.tap()
+            }
+        }
+    }
+}
+
+// MARK: - Screen: Personalize (cosmetic consent)
+
+/// Clean, low-text personalization ask. No system permission is tied to this —
+/// it just records a preference flag. Mirrors the glam-up "use your data to
+/// personalize" beat with a clear Skip.
+private struct PersonalizeScreen: View {
+    @State private var glow = false
+
+    var body: some View {
+        VStack(spacing: 22) {
+            Spacer(minLength: 16)
+
+            ZStack {
+                Circle()
+                    .fill(MooniColor.accent.opacity(glow ? 0.40 : 0.20))
+                    .frame(width: 200, height: 200)
+                    .blur(radius: 32)
+
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 64, weight: .bold))
+                    .foregroundStyle(LinearGradient(
+                        colors: [.white, MooniColor.accentSoft],
+                        startPoint: .top, endPoint: .bottom))
+                    .shadow(color: MooniColor.accent.opacity(0.55), radius: 14)
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                    glow = true
+                }
+            }
+
+            VStack(spacing: 10) {
+                Text("Personalize SleepOwl")
+                    .font(MooniFont.display(28))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+
+                Text("Use your answers to tailor your plan, recommendations and nightly advice. Your data stays private.")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 24)
     }
 }
 
