@@ -42,9 +42,23 @@ struct HomeView: View {
                 LazyVStack(spacing: 22) {
                     headerBar
 
-                    levelCard
-
                     heroCard
+
+                    if let lastEntry = appState.lastEntry {
+                        MorningHookCard(
+                            context: SleepStoryContext(appState: appState, entry: lastEntry),
+                            streakCurrent: streak.current,
+                            streakLongest: streak.longest
+                        )
+                        SleepBreakdownView(
+                            context: SleepStoryContext(appState: appState, entry: lastEntry),
+                            style: .homeGlance
+                        )
+                        DayPlanView(
+                            forecast: SleepForecast.make(appState: appState, entry: lastEntry),
+                            style: .homeCompact
+                        )
+                    }
 
                     tonightPlanCard
 
@@ -278,59 +292,9 @@ struct HomeView: View {
             .foregroundColor(MooniColor.background)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(
-                Capsule().fill(
-                    LinearGradient(
-                        colors: [MooniColor.accentSoft, MooniColor.accent],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-            )
-            .shadow(color: MooniColor.accent.opacity(0.35), radius: 10, y: 4)
+            .background(Capsule().fill(MooniColor.accent))
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: - Level card (XP bar)
-
-    private var levelCard: some View {
-        let p = appState.pet
-        let progress = p.levelProgress
-        return MooniCard(padding: 16, cornerRadius: 22) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .center, spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [MooniColor.warning, MooniColor.accent],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 44, height: 44)
-                        Text("\(p.level)")
-                            .font(MooniFont.title(18))
-                            .foregroundColor(MooniColor.background)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Level \(p.level) · \(p.levelTitle)")
-                            .font(MooniFont.title(16))
-                            .foregroundColor(MooniColor.textPrimary)
-                        Text("\(p.dreamEnergy) / \(p.energyForNextLevel) XP")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textSecondary)
-                    }
-                    Spacer()
-                }
-                MooniProgressBar(
-                    value: progress,
-                    height: 10,
-                    colors: [MooniColor.warning, MooniColor.accent]
-                )
-            }
-        }
     }
 
     // MARK: - Hero card (varies by mode)
@@ -350,38 +314,35 @@ struct HomeView: View {
     }
 
     private func morningHero(_ entry: SleepEntry, isRecovery: Bool) -> some View {
-        let scoreTint = scoreColor(entry.score)
-        let mood = Pet.Mood.from(score: entry.score)
-
         return MooniCard(padding: 26, cornerRadius: 32) {
-            VStack(spacing: 18) {
-                // Score ring — clean, no pet overlay.
-                ZStack {
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [scoreTint.opacity(0.34), scoreTint.opacity(0.05), .clear],
-                                center: .center,
-                                startRadius: 4,
-                                endRadius: 160
-                            )
-                        )
-                        .frame(width: 300, height: 300)
-                        .blur(radius: 4)
+            VStack(spacing: 20) {
+                // Score ring — the hero. Clean, no halo, no pet overlay.
+                SleepScoreRing(score: entry.score, size: 200, lineWidth: 14)
+                    .padding(.top, 4)
 
-                    SleepScoreRing(score: entry.score, size: 200, lineWidth: 14)
-                }
-                .frame(height: 210)
-
-                // Pet greeting row — relocated below the ring so it's clearly
-                // narration, not part of the score visual.
-                petGreetingRow(mood: mood, headline: heroHeadline(entry, isRecovery: isRecovery))
+                // Colour-coded status — the one place colour earns its keep.
+                Text(scoreStatus(entry.score).uppercased())
+                    .font(MooniFont.caption(12))
+                    .tracking(1.8)
+                    .foregroundColor(scoreColor(entry.score))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(scoreColor(entry.score).opacity(0.16))
+                    .clipShape(Capsule())
 
                 Text(entry.formattedDuration)
                     .font(MooniFont.display(36))
                     .foregroundColor(MooniColor.textPrimary)
 
-                // Stat chips
+                // One short line of context — no owl, no speech bubble.
+                Text(heroHeadline(entry, isRecovery: isRecovery))
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 8)
+
+                // Stat chips — single accent colour, not three.
                 HStack(spacing: 8) {
                     heroChip(icon: "bed.double.fill",
                              value: entry.bedtime.hourMinuteString,
@@ -390,41 +351,23 @@ struct HomeView: View {
                     heroChip(icon: "sunrise.fill",
                              value: entry.wakeTime.hourMinuteString,
                              label: "Wake",
-                             color: MooniColor.warning)
+                             color: MooniColor.accent)
                     heroChip(icon: "bolt.heart.fill",
                              value: "\(entry.readinessScore ?? entry.score)",
                              label: "Ready",
-                             color: scoreTint)
+                             color: MooniColor.accent)
                 }
 
-                // Replay the morning Sleep Story — the plain-English reveal.
-                // The full analytics dashboard is one tap past its final card.
                 Button { showSleepStory = true } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 13, weight: .bold))
-                        Text("See your sleep story")
-                            .font(MooniFont.title(14))
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .bold))
-                    }
-                    .foregroundColor(MooniColor.background)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        Capsule().fill(
-                            LinearGradient(
-                                colors: [MooniColor.accentSoft, MooniColor.accent],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                    )
-                    .shadow(color: MooniColor.accent.opacity(0.35), radius: 12, y: 5)
+                    Text("See your sleep story")
+                        .font(MooniFont.title(15))
+                        .foregroundColor(MooniColor.background)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(MooniColor.accent)
+                        .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .padding(.horizontal, 4)
             }
         }
     }
@@ -1103,31 +1046,6 @@ struct HomeView: View {
         return p
     }
 
-    /// Pet sits beside its own speech bubble, narrating tonight's score.
-    /// Replaces the old setup where the pet floated on top of the ring and
-    /// fought it for attention.
-    private func petGreetingRow(mood: Pet.Mood, headline: String) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            DreamSpiritView(pet: petForMood(mood), size: 56)
-                .shadow(color: MooniColor.petGlow.opacity(0.35), radius: 14, y: 6)
-
-            Text(headline)
-                .font(MooniFont.body(13))
-                .foregroundColor(MooniColor.textSecondary)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
     // MARK: - Copy
 
     private func heroHeadline(_ entry: SleepEntry, isRecovery: Bool) -> String {
@@ -1250,6 +1168,15 @@ struct HomeView: View {
         case 70..<85:  return MooniColor.accent
         case 50..<70:  return MooniColor.warning
         default:       return MooniColor.danger
+        }
+    }
+
+    private func scoreStatus(_ score: Int) -> String {
+        switch score {
+        case 85...:    return "Great night"
+        case 70..<85:  return "Solid night"
+        case 50..<70:  return "So-so night"
+        default:       return "Rough night"
         }
     }
 

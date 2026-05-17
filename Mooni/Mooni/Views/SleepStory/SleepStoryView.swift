@@ -365,6 +365,13 @@ struct SleepStoryView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 14)
 
+                HStack {
+                    Spacer()
+                    skipButton
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+
                 ZStack {
                     if let card = cards[safe: index] {
                         cardView(card)
@@ -391,24 +398,6 @@ struct SleepStoryView: View {
                     .allowsHitTesting(false)
                     .transition(.opacity)
             }
-
-            VStack {
-                HStack {
-                    Spacer()
-                    Button {
-                        Haptics.tap()
-                        onFinished()
-                    } label: {
-                        Text("Skip")
-                            .font(MooniFont.caption(13))
-                            .foregroundColor(MooniColor.textMuted)
-                            .padding(10)
-                    }
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 6)
         }
         .onChange(of: index) { _, _ in onCardChange() }
         .onAppear {
@@ -444,6 +433,22 @@ struct SleepStoryView: View {
                     .animation(.easeInOut(duration: 0.3), value: index)
             }
         }
+    }
+
+    private var skipButton: some View {
+        Button {
+            Haptics.tap()
+            onFinished()
+        } label: {
+            Text("Skip")
+                .font(MooniFont.caption(13))
+                .foregroundColor(MooniColor.textSecondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(Color.white.opacity(0.08))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Card router
@@ -539,8 +544,9 @@ struct SleepStoryView: View {
                 .padding(.top, 10)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Spacer()
+            Spacer(minLength: 22)
             scienceDisclosure(card)
+                .padding(.bottom, 20)
             tapHint("Tap to continue").padding(.bottom, 26)
         }
         .padding(.horizontal, 22)
@@ -589,8 +595,9 @@ struct SleepStoryView: View {
                 .padding(.horizontal, 32)
                 .padding(.top, 10)
 
-            Spacer()
+            Spacer(minLength: 22)
             scienceDisclosure(card, label: "Why this score")
+                .padding(.bottom, 20)
             tapHint("Tap to continue").padding(.bottom, 26)
         }
         .padding(.horizontal, 22)
@@ -625,9 +632,10 @@ struct SleepStoryView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             scienceDisclosure(card, label: "The science of consistency")
-                .padding(.top, 18)
+                .padding(.top, 24)
+                .padding(.bottom, 6)
 
-            Spacer()
+            Spacer(minLength: 18)
 
             VStack(spacing: 12) {
                 if let img = sharePreview {

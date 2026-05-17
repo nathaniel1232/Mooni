@@ -156,7 +156,9 @@ struct MooniProgressBar: View {
     let value: Double
     var height: CGFloat = 10
     var backgroundOpacity: Double = 0.10
-    var colors: [Color] = [MooniColor.accentSoft, MooniColor.accent]
+    /// Kept for call-site compatibility; only the first colour is used so
+    /// every progress bar in the app renders as one flat fill (no gradient).
+    var colors: [Color] = [MooniColor.accent]
 
     private var clampedValue: Double {
         min(max(value, 0), 1)
@@ -168,13 +170,7 @@ struct MooniProgressBar: View {
                 Capsule()
                     .fill(Color.white.opacity(backgroundOpacity))
                 Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: colors,
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .fill(colors.first ?? MooniColor.accent)
                     .frame(width: geo.size.width * CGFloat(clampedValue))
             }
         }

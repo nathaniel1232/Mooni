@@ -25,15 +25,8 @@ struct PrimaryButton: View {
             .foregroundColor(MooniColor.background)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(
-                LinearGradient(
-                    colors: [MooniColor.accentSoft, MooniColor.accent],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+            .background(MooniColor.accent)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .shadow(color: MooniColor.accent.opacity(0.4), radius: 18, y: 8)
             .opacity(isLoading ? 0.7 : 1)
         }
         .disabled(isLoading)
