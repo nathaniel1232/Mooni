@@ -261,9 +261,6 @@ struct HomeView: View {
                 SleepOwlBrandMark(size: .prominent)
                 Spacer(minLength: 8)
                 StreakFlameChip(current: streak.current, freezes: streak.freezesRemaining)
-                if !subscriptionManager.isPro {
-                    upgradeButton
-                }
             }
 
             HStack(alignment: .center, spacing: 4) {
@@ -279,22 +276,6 @@ struct HomeView: View {
             }
         }
         .padding(.top, 6)
-    }
-
-    private var upgradeButton: some View {
-        Button { showPaywall = true } label: {
-            HStack(spacing: 6) {
-                Image(systemName: subscriptionManager.isPro ? "sparkles" : "crown.fill")
-                    .font(.system(size: 12, weight: .bold))
-                Text(subscriptionManager.isPro ? "Pro" : "Upgrade")
-                    .font(MooniFont.caption(12))
-            }
-            .foregroundColor(MooniColor.background)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Capsule().fill(MooniColor.accent))
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Hero card (varies by mode)
@@ -313,49 +294,52 @@ struct HomeView: View {
         }
     }
 
+    private func heroMood(_ r: Int) -> Pet.Mood {
+        switch r {
+        case 85...:   return .energized
+        case 70..<85: return .rested
+        case 55..<70: return .calm
+        case 40..<55: return .groggy
+        default:      return .tired
+        }
+    }
+
     private func morningHero(_ entry: SleepEntry, isRecovery: Bool) -> some View {
-        return MooniCard(padding: 26, cornerRadius: 32) {
-            VStack(spacing: 20) {
-                // Score ring — the hero. Clean, no halo, no pet overlay.
-                SleepScoreRing(score: entry.score, size: 200, lineWidth: 14)
-                    .padding(.top, 4)
+        let r = entry.readinessScore ?? entry.score
+        return MooniCard(padding: 24, cornerRadius: 32) {
+            VStack(spacing: 18) {
+                // Score (left) · pet mood (right)
+                HStack(spacing: 8) {
+                    SleepScoreRing(score: entry.score, size: 158, lineWidth: 13)
 
-                // Colour-coded status — the one place colour earns its keep.
-                Text(scoreStatus(entry.score).uppercased())
-                    .font(MooniFont.caption(12))
-                    .tracking(1.8)
-                    .foregroundColor(scoreColor(entry.score))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(scoreColor(entry.score).opacity(0.16))
-                    .clipShape(Capsule())
+                    Spacer(minLength: 0)
 
-                Text(entry.formattedDuration)
-                    .font(MooniFont.display(36))
-                    .foregroundColor(MooniColor.textPrimary)
+                    VStack(spacing: 8) {
+                        DreamSpiritView(pet: petForMood(heroMood(r)), size: 104)
+                            .shadow(color: MooniColor.petGlow.opacity(0.3),
+                                    radius: 18, y: 8)
+                        Text(scoreStatus(entry.score))
+                            .font(MooniFont.title(13))
+                            .foregroundColor(scoreColor(entry.score))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .background(scoreColor(entry.score).opacity(0.16))
+                            .clipShape(Capsule())
+                    }
+                    .frame(width: 128)
+                }
 
-                // One short line of context — no owl, no speech bubble.
-                Text(heroHeadline(entry, isRecovery: isRecovery))
-                    .font(MooniFont.body(14))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 8)
-
-                // Stat chips — single accent colour, not three.
+                // Timing (bottom)
                 HStack(spacing: 8) {
                     heroChip(icon: "bed.double.fill",
                              value: entry.bedtime.hourMinuteString,
-                             label: "Bed",
-                             color: MooniColor.accent)
+                             label: "Bed", color: MooniColor.accent)
+                    heroChip(icon: "moon.zzz.fill",
+                             value: entry.formattedDuration,
+                             label: "Asleep", color: MooniColor.accent)
                     heroChip(icon: "sunrise.fill",
                              value: entry.wakeTime.hourMinuteString,
-                             label: "Wake",
-                             color: MooniColor.accent)
-                    heroChip(icon: "bolt.heart.fill",
-                             value: "\(entry.readinessScore ?? entry.score)",
-                             label: "Ready",
-                             color: MooniColor.accent)
+                             label: "Wake", color: MooniColor.accent)
                 }
 
                 Button { showSleepStory = true } label: {
@@ -713,45 +697,27 @@ struct HomeView: View {
             && MorningCheckInStore.checkIn(for: entry.dayKey) == nil
     }
 
+    /// Deliberately tiny + muted. The info still matters, but it should
+    /// whisper, not shout a big golden warning box across the card.
     private func missedDayExplanation(_ entry: SleepEntry) -> some View {
-        let df = DateFormatter()
-        df.dateFormat = "EEEE, MMM d"
-        let dayString = df.string(from: entry.wakeTime)
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "info.circle.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(MooniColor.warning)
-                Text("This is an estimate, not a measurement")
-                    .font(MooniFont.title(13))
-                    .foregroundColor(MooniColor.textPrimary)
-            }
-            Text("SleepOwl wasn't opened on \(dayString) and no morning check-in was tapped, so these times come from your target schedule. Next time, tap any \"Are you awake?\" notification in the morning — that's all it takes to log the real night and keep your score accurate.")
-                .font(MooniFont.caption(12))
-                .foregroundColor(MooniColor.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button {
-                Haptics.tap()
-                editingEntry = entry
-            } label: {
-                Text("Set the real times")
+        Button {
+            Haptics.tap()
+            editingEntry = entry
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(MooniColor.textMuted)
+                Text("Estimated from your schedule")
                     .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.background)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(MooniColor.warning)
-                    .clipShape(Capsule())
+                    .foregroundColor(MooniColor.textMuted)
+                Text("·  Set real times")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.accentSoft)
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MooniColor.warning.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(MooniColor.warning.opacity(0.3), lineWidth: 1)
-        )
+        .buttonStyle(.plain)
     }
 
     private func dayDetailCard(_ entry: SleepEntry) -> some View {
@@ -762,25 +728,16 @@ struct HomeView: View {
                         Text(entry.formattedDuration)
                             .font(MooniFont.display(26))
                             .foregroundColor(MooniColor.textPrimary)
-                        HStack(spacing: 8) {
+                        Button {
+                            Haptics.tap()
+                            editingEntry = entry
+                        } label: {
                             Text("\(entry.bedtime.hourMinuteString) → \(entry.wakeTime.hourMinuteString)")
                                 .font(MooniFont.caption(12))
                                 .foregroundColor(MooniColor.textSecondary)
-                            Button {
-                                Haptics.tap()
-                                editingEntry = entry
-                            } label: {
-                                Image(systemName: "pencil")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(MooniColor.accentSoft)
-                                    .frame(width: 22, height: 22)
-                                    .background(MooniColor.accent.opacity(0.16))
-                                    .clipShape(Circle())
-                                    .overlay(Circle().stroke(MooniColor.accent.opacity(0.3), lineWidth: 1))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Edit bedtime and wake time")
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit bedtime and wake time")
                     }
                     Spacer()
                     scoreBadge(entry.score)

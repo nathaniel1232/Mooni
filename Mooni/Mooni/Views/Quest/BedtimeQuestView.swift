@@ -55,8 +55,8 @@ struct BedtimeQuestView: View {
                 }
                 .padding(.horizontal, 32)
             }
-            .navigationTitle("Quest")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }

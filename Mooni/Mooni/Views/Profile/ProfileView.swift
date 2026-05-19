@@ -23,6 +23,7 @@ struct ProfileView: View {
 
     #if DEBUG
     @State private var showMarketingVideo = false
+    @State private var showMarketingPoster = false
     #endif
 
     var body: some View {
@@ -54,8 +55,8 @@ struct ProfileView: View {
                     .padding(.bottom, 96)
                 }
             }
-            .navigationTitle("Me")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showBadges) {
                 BadgesView()
@@ -74,6 +75,9 @@ struct ProfileView: View {
             #if DEBUG
             .fullScreenCover(isPresented: $showMarketingVideo) {
                 MarketingVideoView()
+            }
+            .fullScreenCover(isPresented: $showMarketingPoster) {
+                MarketingPosterView()
             }
             #endif
         }
@@ -622,6 +626,33 @@ struct ProfileView: View {
                     )
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            // Static, screenshot-ready promo poster for App Store / video stills.
+            Button {
+                showMarketingPoster = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Marketing Poster")
+                        .font(MooniFont.title(14))
+                    Spacer()
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .foregroundColor(MooniColor.accentSoft)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(MooniColor.accent.opacity(0.5), lineWidth: 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(MooniColor.accent.opacity(0.12))
+                        )
+                )
             }
             .buttonStyle(.plain)
 

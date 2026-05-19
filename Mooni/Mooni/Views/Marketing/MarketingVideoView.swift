@@ -1,275 +1,210 @@
 import SwiftUI
 
-/// Hidden 10-second auto-looping marketing animation used to record
-/// TikTok / Reels demo clips. Visuals are emotionally obvious without
-/// sound: owl asleep → night timeline draws → score calculates → result
-/// card → "Wake up smarter with SleepOwl." Then loops.
+/// Hidden auto-looping marketing animation used to record TikTok / Reels /
+/// App-Store demo clips.
 ///
-/// Surfaced from Profile → Dev Tools → "Start Marketing Video" so it
-/// never reaches a real user.
+/// Design rules (learned the hard way from cofounder feedback):
+///  • ONE fixed layout skeleton — brand on top, a fixed-height hero in the
+///    middle, one big caption below. Nothing is positioned with magic
+///    offsets, so nothing jumps or sits "too high / too low" between phases.
+///  • The middle is DATA, not mascot. Real-feeling charts that draw in:
+///    an animated hypnogram, a 7-night trend chart, a counting score ring.
+///  • Less owl. It only bookends the reel (intro + outro lockup).
+///  • Big text, few words. Every phase holds long enough to actually read.
+///
+/// Surfaced from Profile → Dev Tools → "Start Marketing Video".
 struct MarketingVideoView: View {
     @Environment(\.dismiss) private var dismiss
 
-    // MARK: - Phase state
-    private enum Phase: Int { case intro, timeline, speedUp, analysis, score, result, outro }
+    private enum Phase: Int, CaseIterable {
+        case intro, hypnogram, trends, score, summary, outro
+    }
     @State private var phase: Phase = .intro
 
-    // Mascot placement
-    @State private var mascotScale: CGFloat = 1.0
-    @State private var mascotOffsetY: CGFloat = 0
-    @State private var mascotOpacity: Double = 1
-
-    // Intro
-    @State private var introTextOpacity: Double = 0
-
-    // Timeline
-    @State private var timelineProgress: CGFloat = 0
-    @State private var event1Visible = false
-    @State private var event2Visible = false
-    @State private var event3Visible = false
-    @State private var event4Visible = false
-
-    // Speed-up
-    @State private var displayedDuration: String = "1h 12m"
-    @State private var allNightOpacity: Double = 0
-
-    // Analysis cards
-    @State private var card1Visible = false
-    @State private var card2Visible = false
-    @State private var card3Visible = false
-    @State private var card4Visible = false
-
-    // Score
+    // Per-phase animation drivers
+    @State private var introIn = false
+    @State private var hypnoProgress: CGFloat = 0
+    @State private var trendsProgress: CGFloat = 0
     @State private var ringProgress: CGFloat = 0
-    @State private var displayedScore: Int = 0
-    @State private var goodSleepOpacity: Double = 0
+    @State private var scoreShown: Int = 0
+    @State private var summaryShown = 0          // how many tiles revealed
+    @State private var outroIn = false
 
-    // Result + outro
-    @State private var resultCardVisible = false
-    @State private var outroOpacity: Double = 0
-
-    // Loop + chrome
+    // Chrome / loop
     @State private var loopTask: Task<Void, Never>? = nil
     @State private var chromeTask: Task<Void, Never>? = nil
     @State private var showChrome = true
 
-    // Sample (fake) data
-    private let sleepStart = "11:42 PM"
-    private let wakeTime = "7:18 AM"
-    private let durationSteps = ["1h 12m", "3h 48m", "6h 20m", "7h 36m"]
-    private let scoreSteps: [Int] = [24, 47, 68, 82]
+    private let bedtime = "11:42 PM"
+    private let waketime = "7:18 AM"
 
-    private var sleepyPet: Pet {
-        var p = Pet()
-        p.name = "SleepOwl"
-        p.species = .owl
-        p.mood = .sleepy
+    private var owlPet: Pet {
+        var p = Pet(); p.name = "SleepOwl"; p.species = .owl; p.mood = .sleepy
         return p
+    }
+
+    // Phases that use the persistent top wordmark (data phases). Intro &
+    // outro carry their own, larger branding.
+    private var showsWordmark: Bool {
+        switch phase {
+        case .intro, .outro: return false
+        default:             return true
+        }
     }
 
     var body: some View {
         ZStack {
-            // Layer 0 — backdrop
             MooniGradient.night.ignoresSafeArea()
-            StarsBackground(count: 80)
-                .ignoresSafeArea()
+            StarsBackground(count: 70).ignoresSafeArea()
 
-            // Layer 1 — mascot persists across phases, repositioned per phase.
-            MarketingMooniMascot(pet: sleepyPet, size: 180)
-                .scaleEffect(mascotScale)
-                .offset(y: mascotOffsetY)
-                .opacity(mascotOpacity)
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
 
-            // Layer 2 — phase-specific content (each gated by opacity for
-            // smooth cross-fades between phases).
-            introContent
-                .opacity(phase == .intro ? 1 : 0)
+                MarketingWordmark()
+                    .opacity(showsWordmark ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.4), value: showsWordmark)
 
-            timelineContent
-                .opacity(phase == .timeline || phase == .speedUp ? 1 : 0)
+                Spacer().frame(height: 22)
 
-            analysisContent
-                .opacity(phase == .analysis ? 1 : 0)
+                // Fixed-height hero — every phase draws inside the SAME box, so
+                // the composition never shifts vertically.
+                ZStack {
+                    introHero.opacity(phase == .intro ? 1 : 0)
+                    hypnoHero.opacity(phase == .hypnogram ? 1 : 0)
+                    trendsHero.opacity(phase == .trends ? 1 : 0)
+                    scoreHero.opacity(phase == .score ? 1 : 0)
+                    summaryHero.opacity(phase == .summary ? 1 : 0)
+                    outroHero.opacity(phase == .outro ? 1 : 0)
+                }
+                .frame(height: 380)
+                .frame(maxWidth: .infinity)
 
-            scoreContent
-                .opacity(phase == .score ? 1 : 0)
+                Spacer().frame(height: 26)
 
-            resultContent
-                .opacity(phase == .result ? 1 : 0)
+                // One big caption line — fixed area so it doesn't reflow.
+                Text(caption)
+                    .font(MooniFont.display(27))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                    .frame(height: 74)
+                    .opacity(caption.isEmpty ? 0 : 1)
+                    .id(phase)
+                    .transition(.opacity)
 
-            outroContent
-                .opacity(phase == .outro ? 1 : 0)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 28)
 
-            // Layer 3 — subtle close chrome that auto-fades during recording
             chrome
         }
         .preferredColorScheme(.dark)
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
-        .animation(.easeInOut(duration: 0.45), value: phase)
+        .animation(.easeInOut(duration: 0.5), value: phase)
         .contentShape(Rectangle())
         .onTapGesture {
             withAnimation(.easeIn(duration: 0.18)) { showChrome = true }
             scheduleChromeFade()
         }
-        .onAppear {
-            scheduleChromeFade()
-            startLoop()
-        }
+        .onAppear { scheduleChromeFade(); startLoop() }
         .onDisappear { stopLoop() }
     }
 
-    // MARK: - Phase content
+    private var caption: String {
+        switch phase {
+        case .intro:     return ""
+        case .hypnogram: return "Every stage, all night."
+        case .trends:    return "See every night add up."
+        case .score:     return ""
+        case .summary:   return "Your night, explained."
+        case .outro:     return ""
+        }
+    }
 
-    private var introContent: some View {
-        VStack {
-            Spacer()
-            Spacer()
+    // MARK: - Heroes
+
+    private var introHero: some View {
+        VStack(spacing: 22) {
+            MarketingOwl(pet: owlPet, size: 168)
+                .scaleEffect(introIn ? 1 : 0.86)
+                .opacity(introIn ? 1 : 0)
             VStack(spacing: 8) {
-                Text("SleepOwl watches your sleep")
-                    .font(MooniFont.display(28))
+                Text("Your sleep,\ndecoded.")
+                    .font(MooniFont.display(40))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("All night, while you rest.")
+                    .lineSpacing(2)
+                Text("Tracked automatically while you rest.")
                     .font(MooniFont.body(15))
                     .foregroundColor(MooniColor.textSecondary)
             }
-            .opacity(introTextOpacity)
-            .padding(.horizontal, 32)
-            .padding(.bottom, 90)
+            .opacity(introIn ? 1 : 0)
+            .offset(y: introIn ? 0 : 14)
         }
     }
 
-    private var timelineContent: some View {
+    private var hypnoHero: some View {
+        MarketingHypnogram(progress: hypnoProgress,
+                           startLabel: bedtime,
+                           endLabel: waketime)
+    }
+
+    private var trendsHero: some View {
+        MarketingTrendChart(progress: trendsProgress)
+    }
+
+    private var scoreHero: some View {
         VStack(spacing: 18) {
-            Text(phase == .speedUp ? "All night, automatically" : "Detecting your night")
-                .font(MooniFont.title(18))
-                .foregroundColor(MooniColor.accentSoft)
-                .opacity(allNightOpacity)
-                .animation(.easeInOut(duration: 0.3), value: allNightOpacity)
+            MarketingRing(progress: ringProgress, score: scoreShown)
+                .frame(width: 248, height: 248)
+            Text("Your sleep score")
+                .font(MooniFont.title(16))
+                .foregroundColor(MooniColor.textSecondary)
+                .tracking(1)
+        }
+    }
 
-            MarketingSleepTimeline(
-                progress: timelineProgress,
-                event1Visible: event1Visible,
-                event2Visible: event2Visible,
-                event3Visible: event3Visible,
-                event4Visible: event4Visible,
-                startLabel: sleepStart,
-                endLabel: wakeTime
-            )
-            .padding(.horizontal, 22)
-
-            if phase == .speedUp {
-                HStack(spacing: 10) {
-                    Image(systemName: "moon.zzz.fill")
-                        .foregroundColor(MooniColor.accentSoft)
-                    Text(displayedDuration)
-                        .font(MooniFont.display(36))
-                        .foregroundColor(MooniColor.textPrimary)
-                        .contentTransition(.numericText())
-                        .monospacedDigit()
-                }
-                .padding(.top, 8)
-                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+    private var summaryHero: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                MarketingStatTile(value: "7h 36m", label: "Time asleep",
+                                  icon: "bed.double.fill", tint: MooniColor.accent,
+                                  visible: summaryShown > 0)
+                MarketingStatTile(value: "82", label: "Sleep score",
+                                  icon: "sparkles", tint: MooniColor.success,
+                                  visible: summaryShown > 1)
+            }
+            HStack(spacing: 12) {
+                MarketingStatTile(value: "74%", label: "Energy",
+                                  icon: "bolt.fill", tint: MooniColor.warning,
+                                  visible: summaryShown > 2)
+                MarketingStatTile(value: "1h 04m", label: "Deep sleep",
+                                  icon: "moon.zzz.fill", tint: MooniColor.accentSoft,
+                                  visible: summaryShown > 3)
             }
         }
-        .padding(.top, 280)
-        .padding(.horizontal, 18)
     }
 
-    private var analysisContent: some View {
-        VStack(spacing: 14) {
-            Text("SleepOwl analyzes everything")
-                .font(MooniFont.display(24))
-                .foregroundColor(MooniColor.textPrimary)
-                .multilineTextAlignment(.center)
-                .padding(.bottom, 6)
+    private var outroHero: some View {
+        VStack(spacing: 18) {
+            MarketingAppIcon(size: 108)
 
-            VStack(spacing: 12) {
-                MarketingAnalysisCard(
-                    icon: "moon.zzz.fill",
-                    title: "Sleep Duration",
-                    value: "7h 36m",
-                    color: MooniColor.accent,
-                    visible: card1Visible
-                )
-                MarketingAnalysisCard(
-                    icon: "waveform.path.ecg",
-                    title: "Sleep Consistency",
-                    value: "Strong",
-                    color: MooniColor.accentSoft,
-                    visible: card2Visible
-                )
-                MarketingAnalysisCard(
-                    icon: "heart.fill",
-                    title: "Recovery",
-                    value: "82%",
-                    color: MooniColor.success,
-                    visible: card3Visible
-                )
-                MarketingAnalysisCard(
-                    icon: "bolt.fill",
-                    title: "Energy",
-                    value: "74%",
-                    color: MooniColor.warning,
-                    visible: card4Visible
-                )
-            }
-            .padding(.horizontal, 28)
-        }
-        .padding(.top, 240)
-    }
-
-    private var scoreContent: some View {
-        VStack(spacing: 22) {
-            Spacer().frame(height: 80)
-            MarketingScoreRing(progress: ringProgress, score: displayedScore)
-                .frame(width: 240, height: 240)
-
-            Text("Good Sleep")
-                .font(MooniFont.display(28))
-                .foregroundColor(MooniColor.success)
-                .opacity(goodSleepOpacity)
-            Spacer()
-        }
-    }
-
-    private var resultContent: some View {
-        VStack {
-            Spacer().frame(height: 60)
-            MarketingResultCard()
-                .padding(.horizontal, 22)
-                .scaleEffect(resultCardVisible ? 1 : 0.92)
-                .opacity(resultCardVisible ? 1 : 0)
-            Spacer()
-        }
-    }
-
-    private var outroContent: some View {
-        VStack {
-            Spacer()
-            VStack(spacing: 12) {
-                Text("Wake up smarter")
-                    .font(MooniFont.display(34))
+            VStack(spacing: 7) {
+                Text("Download SleepOwl")
+                    .font(MooniFont.display(36))
                     .foregroundColor(MooniColor.textPrimary)
-                Text("with SleepOwl")
-                    .font(MooniFont.display(34))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [MooniColor.accentSoft, MooniColor.accent],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                Text("Your sleep, explained.")
-                    .font(MooniFont.body(15))
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                Text("Search \u{201C}SleepOwl\u{201D} on the App Store")
+                    .font(MooniFont.body(16))
                     .foregroundColor(MooniColor.textSecondary)
-                    .padding(.top, 4)
             }
-            .opacity(outroOpacity)
-            Spacer()
-            Spacer()
         }
+        .opacity(outroIn ? 1 : 0)
+        .scaleEffect(outroIn ? 1 : 0.92)
+        .offset(y: outroIn ? 0 : 12)
     }
 
     // MARK: - Chrome
@@ -278,8 +213,7 @@ struct MarketingVideoView: View {
         VStack {
             HStack {
                 Button {
-                    stopLoop()
-                    dismiss()
+                    stopLoop(); dismiss()
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 13, weight: .bold))
@@ -308,7 +242,7 @@ struct MarketingVideoView: View {
         }
     }
 
-    // MARK: - Animation timeline
+    // MARK: - Sequence
 
     private func startLoop() {
         loopTask?.cancel()
@@ -317,268 +251,299 @@ struct MarketingVideoView: View {
                 await runSequence()
                 if Task.isCancelled { break }
                 resetState()
-                try? await Task.sleep(nanoseconds: 120_000_000)
+                try? await Task.sleep(nanoseconds: 250_000_000)
             }
         }
     }
 
     private func stopLoop() {
-        loopTask?.cancel()
-        loopTask = nil
-        chromeTask?.cancel()
-        chromeTask = nil
+        loopTask?.cancel(); loopTask = nil
+        chromeTask?.cancel(); chromeTask = nil
     }
 
-    /// One full ~10s pass.
     private func runSequence() async {
-        // ───── 0.0–1.0s — INTRO ─────
+        // INTRO ─ owl + headline
         phase = .intro
-        withAnimation(.easeOut(duration: 0.55)) { introTextOpacity = 1 }
-        await sleep(seconds: 1.0)
+        withAnimation(.easeOut(duration: 0.7)) { introIn = true }
+        await wait(2.4)
+        withAnimation(.easeIn(duration: 0.3)) { introIn = false }
+        await wait(0.25)
 
-        // ───── 1.0–2.5s — TIMELINE ─────
-        phase = .timeline
-        withAnimation(.easeInOut(duration: 0.45)) {
-            introTextOpacity = 0
-            mascotScale = 0.55
-            mascotOffsetY = -260
-        }
-        await sleep(seconds: 0.18)
-        withAnimation(.easeOut(duration: 1.05)) { timelineProgress = 1 }
-        await sleep(seconds: 0.18)
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) { event1Visible = true }
-        await sleep(seconds: 0.27)
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) { event2Visible = true }
-        await sleep(seconds: 0.27)
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) { event3Visible = true }
-        await sleep(seconds: 0.27)
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) { event4Visible = true }
-        await sleep(seconds: 0.33)
+        // HYPNOGRAM ─ stages draw across the night
+        phase = .hypnogram
+        await wait(0.45)
+        withAnimation(.easeInOut(duration: 1.7)) { hypnoProgress = 1 }
+        await wait(2.6)
 
-        // ───── 2.5–4.0s — SPEED-UP ─────
-        phase = .speedUp
-        withAnimation(.easeOut(duration: 0.3)) { allNightOpacity = 1 }
-        for step in durationSteps {
-            withAnimation(.easeOut(duration: 0.22)) { displayedDuration = step }
-            await sleep(seconds: 0.36)
-        }
-        await sleep(seconds: 0.06)
+        // TRENDS ─ 7-night bars grow up
+        phase = .trends
+        await wait(0.45)
+        withAnimation(.easeOut(duration: 1.25)) { trendsProgress = 1 }
+        await wait(2.3)
 
-        // ───── 4.0–5.8s — ANALYSIS ─────
-        phase = .analysis
-        withAnimation(.easeIn(duration: 0.25)) { allNightOpacity = 0 }
-        withAnimation(.easeInOut(duration: 0.4)) {
-            mascotScale = 0.42
-            mascotOffsetY = -310
-        }
-        await sleep(seconds: 0.12)
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) { card1Visible = true }
-        await sleep(seconds: 0.22)
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) { card2Visible = true }
-        await sleep(seconds: 0.22)
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) { card3Visible = true }
-        await sleep(seconds: 0.22)
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) { card4Visible = true }
-        await sleep(seconds: 0.7)
-
-        // ───── 5.8–7.5s — SCORE ─────
+        // SCORE ─ ring + counting number
         phase = .score
-        withAnimation(.easeOut(duration: 0.4)) {
-            mascotOpacity = 0
-        }
-        withAnimation(.easeOut(duration: 1.1)) { ringProgress = 0.82 }
-        for value in scoreSteps {
-            withAnimation(.easeOut(duration: 0.22)) { displayedScore = value }
-            await sleep(seconds: 0.32)
-        }
-        withAnimation(.easeIn(duration: 0.3)) { goodSleepOpacity = 1 }
-        await sleep(seconds: 0.34)
+        await wait(0.4)
+        withAnimation(.easeOut(duration: 1.5)) { ringProgress = 0.82 }
+        await countUp(to: 82, over: 1.45)
+        await wait(1.5)
 
-        // ───── 7.5–9.0s — RESULT CARD ─────
-        phase = .result
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) { resultCardVisible = true }
-        // Mascot returns subtly (still happy, smaller, near top).
-        withAnimation(.easeOut(duration: 0.5).delay(0.1)) {
-            mascotOpacity = 1
-            mascotScale = 0.4
-            mascotOffsetY = -340
+        // SUMMARY ─ stat tiles
+        phase = .summary
+        await wait(0.4)
+        for i in 1...4 {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) { summaryShown = i }
+            await wait(0.22)
         }
-        await sleep(seconds: 1.5)
+        await wait(1.7)
 
-        // ───── 9.0–10.0s — OUTRO ─────
+        // OUTRO ─ logo lockup
         phase = .outro
-        withAnimation(.easeOut(duration: 0.45)) {
-            resultCardVisible = false
-            outroOpacity = 1
-            mascotScale = 0.6
-            mascotOffsetY = -180
-        }
-        await sleep(seconds: 0.95)
-
-        // Brief crossfade-out before reset
-        withAnimation(.easeIn(duration: 0.2)) { outroOpacity = 0 }
-        await sleep(seconds: 0.2)
+        withAnimation(.easeOut(duration: 0.6)) { outroIn = true }
+        await wait(2.1)
+        withAnimation(.easeIn(duration: 0.3)) { outroIn = false }
+        await wait(0.3)
     }
 
-    private func sleep(seconds: Double) async {
-        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+    /// Smoothly counts an Int up with an ease-out curve.
+    private func countUp(to target: Int, over duration: Double) async {
+        let steps = 30
+        for i in 0...steps {
+            if Task.isCancelled { return }
+            let t = Double(i) / Double(steps)
+            let eased = 1 - pow(1 - t, 2)
+            scoreShown = Int((Double(target) * eased).rounded())
+            try? await Task.sleep(nanoseconds: UInt64(duration / Double(steps) * 1_000_000_000))
+        }
+        scoreShown = target
+    }
+
+    private func wait(_ s: Double) async {
+        try? await Task.sleep(nanoseconds: UInt64(s * 1_000_000_000))
     }
 
     private func resetState() {
-        // Snap (no animation) so the next loop starts visibly fresh.
         phase = .intro
-        introTextOpacity = 0
-        mascotScale = 1.0
-        mascotOffsetY = 0
-        mascotOpacity = 1
-        timelineProgress = 0
-        event1Visible = false
-        event2Visible = false
-        event3Visible = false
-        event4Visible = false
-        displayedDuration = durationSteps.first ?? "1h 12m"
-        allNightOpacity = 0
-        card1Visible = false
-        card2Visible = false
-        card3Visible = false
-        card4Visible = false
+        introIn = false
+        hypnoProgress = 0
+        trendsProgress = 0
         ringProgress = 0
-        displayedScore = 0
-        goodSleepOpacity = 0
-        resultCardVisible = false
-        outroOpacity = 0
+        scoreShown = 0
+        summaryShown = 0
+        outroIn = false
     }
 }
 
-// MARK: - MarketingMooniMascot
+// MARK: - Brand wordmark
 
-private struct MarketingMooniMascot: View {
+private struct MarketingWordmark: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            MarketingAppIcon(size: 30)
+            Text("SleepOwl")
+                .font(MooniFont.title(19))
+                .foregroundColor(MooniColor.textPrimary)
+                .tracking(0.3)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.06))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+    }
+}
+
+/// The real App Store icon, presented the way it appears on a home screen:
+/// the actual `app_icon` artwork clipped to an iOS squircle with a hairline
+/// edge and a soft accent bloom.
+private struct MarketingAppIcon: View {
+    var size: CGFloat = 96
+
+    var body: some View {
+        Image("app_icon")
+            .resizable()
+            .interpolation(.high)
+            .scaledToFill()
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.225, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: size * 0.225, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.28), .clear,
+                                     MooniColor.accent.opacity(0.30)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing),
+                        lineWidth: 1))
+            .shadow(color: MooniColor.accent.opacity(0.45),
+                    radius: size * 0.22, y: size * 0.08)
+    }
+}
+
+// MARK: - Owl with glow
+
+private struct MarketingOwl: View {
     let pet: Pet
-    var size: CGFloat = 180
-
+    var size: CGFloat = 168
     @State private var bob: CGFloat = 0
-    @State private var glowPulse: CGFloat = 0.92
+    @State private var glow: CGFloat = 0.92
+    @State private var aura: Double = 0.4
 
     var body: some View {
         ZStack {
+            // Wide soft halo — breathes slowly.
             Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            MooniColor.accent.opacity(0.55),
-                            MooniColor.accent.opacity(0.18),
-                            .clear
-                        ],
-                        center: .center,
-                        startRadius: 8,
-                        endRadius: size * 1.2
-                    )
-                )
-                .frame(width: size * 2.2, height: size * 2.2)
-                .scaleEffect(glowPulse)
-                .blur(radius: 6)
+                .fill(RadialGradient(
+                    colors: [MooniColor.accent.opacity(0.46 * aura + 0.16),
+                             MooniColor.accent.opacity(0.12), .clear],
+                    center: .center, startRadius: 6, endRadius: size * 1.1))
+                .frame(width: size * 2.1, height: size * 2.1)
+                .scaleEffect(glow)
+                .blur(radius: 10)
+            // Tight inner core glow so the owl reads as lit from within.
+            Circle()
+                .fill(RadialGradient(
+                    colors: [MooniColor.petGlow.opacity(0.32), .clear],
+                    center: .center, startRadius: 2, endRadius: size * 0.55))
+                .frame(width: size * 1.1, height: size * 1.1)
+                .blur(radius: 4)
 
             DreamSpiritView(pet: pet, size: size)
                 .offset(y: bob)
-                .shadow(color: MooniColor.accent.opacity(0.5), radius: 24)
+                .shadow(color: MooniColor.accent.opacity(0.55), radius: 24)
+                .shadow(color: Color.black.opacity(0.30), radius: 10, y: 8)
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 3.2).repeatForever(autoreverses: true)) {
-                bob = -10
-            }
-            withAnimation(.easeInOut(duration: 4.6).repeatForever(autoreverses: true)) {
-                glowPulse = 1.06
-            }
+            withAnimation(.easeInOut(duration: 3.4).repeatForever(autoreverses: true)) { bob = -11 }
+            withAnimation(.easeInOut(duration: 4.6).repeatForever(autoreverses: true)) { glow = 1.07 }
+            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) { aura = 1.0 }
         }
     }
 }
 
-// MARK: - MarketingSleepTimeline
+// MARK: - Hypnogram (the signature "this is a sleep app" chart)
 
-private struct MarketingSleepTimeline: View {
+private struct MarketingHypnogram: View {
     let progress: CGFloat
-    let event1Visible: Bool
-    let event2Visible: Bool
-    let event3Visible: Bool
-    let event4Visible: Bool
     let startLabel: String
     let endLabel: String
 
+    private enum Stage: Int, CaseIterable {
+        case awake = 0, rem, light, deep
+        var label: String {
+            switch self {
+            case .awake: return "Awake"
+            case .rem:   return "REM"
+            case .light: return "Light"
+            case .deep:  return "Deep"
+            }
+        }
+        var color: Color {
+            switch self {
+            case .awake: return MooniColor.danger
+            case .rem:   return MooniColor.warning
+            case .light: return MooniColor.accentSoft
+            case .deep:  return MooniColor.accent
+            }
+        }
+    }
+
+    // A believable night: (endFraction, stage). Each entry runs from the
+    // previous fraction to this one.
+    private let stages: [(end: CGFloat, stage: Stage)] = [
+        (0.05, .awake), (0.13, .light), (0.26, .deep), (0.34, .light),
+        (0.40, .rem),   (0.52, .deep),  (0.60, .light), (0.66, .rem),
+        (0.78, .deep),  (0.85, .light), (0.92, .rem),   (0.97, .light),
+        (1.00, .awake)
+    ]
+
     var body: some View {
-        VStack(spacing: 22) {
-            // Floating events sit *above* the timeline at evenly spaced
-            // positions, fading/popping in one-by-one.
-            HStack(alignment: .bottom, spacing: 0) {
-                FloatingSleepEvent(
-                    label: "Fell asleep",
-                    icon: "moon.fill",
-                    visible: event1Visible
-                )
-                .frame(maxWidth: .infinity)
-
-                FloatingSleepEvent(
-                    label: "Deep sleep",
-                    icon: "moon.zzz.fill",
-                    visible: event2Visible
-                )
-                .frame(maxWidth: .infinity)
-
-                FloatingSleepEvent(
-                    label: "Restless",
-                    icon: "wind",
-                    visible: event3Visible
-                )
-                .frame(maxWidth: .infinity)
-
-                FloatingSleepEvent(
-                    label: "Woke up",
-                    icon: "sunrise.fill",
-                    visible: event4Visible
-                )
-                .frame(maxWidth: .infinity)
-            }
-
-            // Glowing horizontal track
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.10))
-
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [MooniColor.accentSoft, MooniColor.accent],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: geo.size.width * progress)
-                        .shadow(color: MooniColor.accent.opacity(0.7), radius: 14)
-
-                    // Leading dot
-                    Circle()
-                        .fill(MooniColor.accentSoft)
-                        .frame(width: 12, height: 12)
-                        .shadow(color: MooniColor.accentSoft.opacity(0.8), radius: 8)
-
-                    // Travelling dot at the tip of the gradient line
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 14, height: 14)
-                        .shadow(color: MooniColor.accent, radius: 10)
-                        .offset(x: geo.size.width * progress - 7)
-                        .opacity(progress > 0 && progress < 1 ? 1 : 0.85)
+        VStack(spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                // Lane labels
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Stage.allCases, id: \.rawValue) { s in
+                        HStack(spacing: 6) {
+                            Circle().fill(s.color).frame(width: 7, height: 7)
+                            Text(s.label)
+                                .font(MooniFont.caption(11))
+                                .foregroundColor(MooniColor.textSecondary)
+                        }
+                        .frame(height: 62, alignment: .center)
+                    }
                 }
-                .frame(height: 8)
+                .frame(width: 58)
+
+                GeometryReader { geo in
+                    let w = geo.size.width
+                    let laneH = geo.size.height / CGFloat(Stage.allCases.count)
+                    ZStack(alignment: .leading) {
+                        // Lane gridlines
+                        VStack(spacing: 0) {
+                            ForEach(0..<4, id: \.self) { _ in
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.05))
+                                    .frame(height: 1)
+                                    .frame(height: laneH, alignment: .center)
+                            }
+                        }
+
+                        // Stage bars
+                        ZStack(alignment: .leading) {
+                            ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
+                                let x0 = seg.start * w
+                                let x1 = seg.end * w
+                                Capsule()
+                                    .fill(seg.stage.color)
+                                    .frame(width: max(4, x1 - x0), height: 13)
+                                    .position(
+                                        x: (x0 + x1) / 2,
+                                        y: laneH * (CGFloat(seg.stage.rawValue) + 0.5)
+                                    )
+                                    .shadow(color: seg.stage.color.opacity(0.5), radius: 5)
+                            }
+                        }
+                        .mask(
+                            Rectangle()
+                                .frame(width: w * progress)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        )
+
+                        // Scan head
+                        Rectangle()
+                            .fill(LinearGradient(
+                                colors: [.clear, MooniColor.accentSoft],
+                                startPoint: .leading, endPoint: .trailing))
+                            .frame(width: 2, height: geo.size.height)
+                            .position(x: max(1, w * progress), y: geo.size.height / 2)
+                            .opacity(progress > 0.01 && progress < 0.99 ? 1 : 0)
+                            .shadow(color: MooniColor.accentSoft, radius: 8)
+                    }
+                }
+                .frame(height: 248)
             }
-            .frame(height: 8)
 
             HStack {
                 timeChip(icon: "moon.fill", text: startLabel, color: MooniColor.accentSoft)
                 Spacer()
+                Text("Hypnogram")
+                    .font(MooniFont.caption(11))
+                    .tracking(2)
+                    .foregroundColor(MooniColor.textMuted)
+                Spacer()
                 timeChip(icon: "sunrise.fill", text: endLabel, color: MooniColor.warning)
             }
         }
+    }
+
+    private struct Seg { let start: CGFloat; let end: CGFloat; let stage: Stage }
+    private var segments: [Seg] {
+        var out: [Seg] = []
+        var prev: CGFloat = 0
+        for s in stages {
+            out.append(Seg(start: prev, end: s.end, stage: s.stage))
+            prev = s.end
+        }
+        return out
     }
 
     private func timeChip(icon: String, text: String, color: Color) -> some View {
@@ -598,41 +563,101 @@ private struct MarketingSleepTimeline: View {
     }
 }
 
-// MARK: - FloatingSleepEvent
+// MARK: - 7-night trend chart
 
-private struct FloatingSleepEvent: View {
-    let label: String
-    let icon: String
-    let visible: Bool
+private struct MarketingTrendChart: View {
+    let progress: CGFloat
+
+    // Hours slept, last 7 nights. Last value = tonight (highlighted).
+    private let values: [CGFloat] = [6.1, 5.4, 7.0, 6.6, 7.7, 7.1, 7.6]
+    private let days = ["M", "T", "W", "T", "F", "S", "S"]
+    private let goal: CGFloat = 8.0
+    private let maxScale: CGFloat = 9.0
 
     var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(MooniColor.accentSoft)
-                .frame(width: 38, height: 38)
-                .background(
-                    Circle().fill(MooniColor.accent.opacity(0.20))
-                )
-                .overlay(
-                    Circle().stroke(MooniColor.accent.opacity(0.55), lineWidth: 1)
-                )
-                .shadow(color: MooniColor.accent.opacity(0.6), radius: 10)
+        VStack(spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("7-night average")
+                    .font(MooniFont.title(16))
+                    .foregroundColor(MooniColor.textSecondary)
+                Spacer()
+                Text("7h 04m")
+                    .font(MooniFont.display(22))
+                    .foregroundColor(MooniColor.textPrimary)
+            }
 
-            Text(label)
-                .font(MooniFont.caption(11))
-                .foregroundColor(MooniColor.textSecondary)
-                .lineLimit(1)
+            GeometryReader { geo in
+                let w = geo.size.width
+                let h = geo.size.height
+                let slot = w / CGFloat(values.count)
+                let barW = slot * 0.46
+
+                ZStack(alignment: .bottomLeading) {
+                    // Goal line (dashed)
+                    let goalY = h - (goal / maxScale) * h
+                    Path { p in
+                        p.move(to: CGPoint(x: 0, y: goalY))
+                        p.addLine(to: CGPoint(x: w, y: goalY))
+                    }
+                    .stroke(style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                    .foregroundColor(MooniColor.textMuted.opacity(0.7))
+
+                    Text("Goal 8h")
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(MooniColor.textMuted)
+                        .position(x: 34, y: goalY - 9)
+
+                    ForEach(values.indices, id: \.self) { i in
+                        let isToday = i == values.count - 1
+                        let full = (values[i] / maxScale) * h
+                        // Slight left-to-right stagger as the chart grows in.
+                        let local = max(0, min(1, (progress - CGFloat(i) * 0.05) / 0.6))
+                        let barH = full * local
+                        let cx = slot * CGFloat(i) + slot / 2
+
+                        ZStack(alignment: .bottom) {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: isToday
+                                            ? [MooniColor.accentSoft, MooniColor.accent]
+                                            : [MooniColor.accent.opacity(0.35),
+                                               MooniColor.accent.opacity(0.18)],
+                                        startPoint: .top, endPoint: .bottom)
+                                )
+                                .frame(width: barW, height: max(3, barH))
+                                .shadow(color: isToday ? MooniColor.accent.opacity(0.6) : .clear,
+                                        radius: 8)
+                            if isToday {
+                                Text("7.6h")
+                                    .font(MooniFont.caption(11))
+                                    .foregroundColor(MooniColor.textPrimary)
+                                    .offset(y: -(max(3, barH) + 14))
+                                    .opacity(local > 0.9 ? 1 : 0)
+                            }
+                        }
+                        .position(x: cx, y: h - max(3, barH) / 2)
+                    }
+                }
+            }
+            .frame(height: 230)
+
+            HStack(spacing: 0) {
+                ForEach(days.indices, id: \.self) { i in
+                    Text(days[i])
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(i == days.count - 1
+                                         ? MooniColor.accentSoft : MooniColor.textMuted)
+                        .frame(maxWidth: .infinity)
+                }
+            }
         }
-        .opacity(visible ? 1 : 0)
-        .scaleEffect(visible ? 1 : 0.55)
-        .offset(y: visible ? 0 : 14)
     }
 }
 
-// MARK: - MarketingScoreRing
+// MARK: - Score ring
 
-private struct MarketingScoreRing: View {
+private struct MarketingRing: View {
     let progress: CGFloat
     let score: Int
 
@@ -640,156 +665,67 @@ private struct MarketingScoreRing: View {
         ZStack {
             Circle()
                 .stroke(Color.white.opacity(0.08), lineWidth: 18)
-
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
                     AngularGradient(
-                        colors: [
-                            MooniColor.accentSoft,
-                            MooniColor.accent,
-                            MooniColor.accentSoft
-                        ],
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: 18, lineCap: .round)
-                )
+                        colors: [MooniColor.accentSoft, MooniColor.accent,
+                                 MooniColor.success, MooniColor.accentSoft],
+                        center: .center),
+                    style: StrokeStyle(lineWidth: 18, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .shadow(color: MooniColor.accent.opacity(0.55), radius: 18)
-
-            VStack(spacing: 4) {
+            VStack(spacing: 2) {
                 Text("\(score)")
-                    .font(MooniFont.display(78))
+                    .font(MooniFont.display(92))
                     .foregroundColor(MooniColor.textPrimary)
-                    .contentTransition(.numericText())
                     .monospacedDigit()
-                Text("SLEEP SCORE")
-                    .font(MooniFont.caption(11))
-                    .tracking(2.4)
-                    .foregroundColor(MooniColor.textSecondary)
+                    .contentTransition(.numericText())
+                Text("/ 100")
+                    .font(MooniFont.title(15))
+                    .foregroundColor(MooniColor.textMuted)
             }
         }
     }
 }
 
-// MARK: - MarketingAnalysisCard
+// MARK: - Stat tile
 
-private struct MarketingAnalysisCard: View {
-    let icon: String
-    let title: String
+private struct MarketingStatTile: View {
     let value: String
-    let color: Color
+    let label: String
+    let icon: String
+    let tint: Color
     let visible: Bool
 
     var body: some View {
-        HStack(spacing: 14) {
+        VStack(alignment: .leading, spacing: 8) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .bold))
-                .foregroundColor(color)
-                .frame(width: 40, height: 40)
-                .background(color.opacity(0.18))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            Text(title)
-                .font(MooniFont.title(16))
-                .foregroundColor(MooniColor.textPrimary)
-
-            Spacer()
-
+                .foregroundColor(tint)
+                .frame(width: 38, height: 38)
+                .background(tint.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             Text(value)
-                .font(MooniFont.title(17))
-                .foregroundColor(color)
+                .font(MooniFont.display(30))
+                .foregroundColor(MooniColor.textPrimary)
+                .monospacedDigit()
+            Text(label)
+                .font(MooniFont.caption(12))
+                .foregroundColor(MooniColor.textSecondary)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white.opacity(0.07))
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.white.opacity(0.06))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(color.opacity(0.32), lineWidth: 1)
-                )
-                .shadow(color: color.opacity(0.25), radius: 16)
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(tint.opacity(0.28), lineWidth: 1))
         )
         .opacity(visible ? 1 : 0)
-        .scaleEffect(visible ? 1 : 0.85)
-        .offset(x: visible ? 0 : -30)
-    }
-}
-
-// MARK: - MarketingResultCard
-
-private struct MarketingResultCard: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("SLEEP SCORE")
-                        .font(MooniFont.caption(11))
-                        .tracking(2)
-                        .foregroundColor(MooniColor.textSecondary)
-                    Text("82")
-                        .font(MooniFont.display(56))
-                        .foregroundColor(MooniColor.textPrimary)
-                        .monospacedDigit()
-                }
-                Spacer()
-                Text("Good Sleep")
-                    .font(MooniFont.title(14))
-                    .foregroundColor(MooniColor.success)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(MooniColor.success.opacity(0.16))
-                    .clipShape(Capsule())
-            }
-
-            Rectangle()
-                .fill(Color.white.opacity(0.10))
-                .frame(height: 1)
-
-            VStack(spacing: 12) {
-                MetricRow(icon: "bed.double.fill", label: "Asleep",  value: "7h 36m",  color: MooniColor.accent)
-                MetricRow(icon: "moon.fill",       label: "Bedtime", value: "11:42 PM", color: MooniColor.accentSoft)
-                MetricRow(icon: "sunrise.fill",    label: "Wake",    value: "7:18 AM",  color: MooniColor.warning)
-                MetricRow(icon: "bolt.fill",       label: "Energy",  value: "74%",      color: MooniColor.success)
-            }
-        }
-        .padding(22)
-        .background(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(MooniColor.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-                .shadow(color: MooniColor.accent.opacity(0.35), radius: 30, y: 12)
-        )
-    }
-
-    private struct MetricRow: View {
-        let icon: String
-        let label: String
-        let value: String
-        let color: Color
-
-        var body: some View {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(color)
-                    .frame(width: 32, height: 32)
-                    .background(color.opacity(0.16))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text(label)
-                    .font(MooniFont.body(15))
-                    .foregroundColor(MooniColor.textSecondary)
-                Spacer()
-                Text(value)
-                    .font(MooniFont.title(16))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .monospacedDigit()
-            }
-        }
+        .scaleEffect(visible ? 1 : 0.9)
+        .offset(y: visible ? 0 : 14)
     }
 }
 

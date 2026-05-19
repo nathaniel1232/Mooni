@@ -8,33 +8,58 @@ import UIKit
 /// into Apple sign-in if they already have an account on another device.
 struct WelcomeScreen: View {
     @State private var glow: Bool = false
+    @State private var float: Bool = false
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 30) {
             Spacer(minLength: 24)
 
             ZStack {
+                // Layered bloom — wide soft halo + a tighter core glow that
+                // breathes, so the icon feels lit from within.
                 Circle()
-                    .fill(MooniColor.accent.opacity(glow ? 0.40 : 0.22))
-                    .frame(width: 240, height: 240)
-                    .blur(radius: 36)
+                    .fill(RadialGradient(
+                        colors: [MooniColor.accent.opacity(glow ? 0.42 : 0.26),
+                                 MooniColor.accent.opacity(0.10), .clear],
+                        center: .center, startRadius: 6, endRadius: 190))
+                    .frame(width: 320, height: 320)
+                    .blur(radius: 22)
+                    .scaleEffect(glow ? 1.06 : 0.94)
 
-                Image("spirit_awake")
+                Image("app_icon")
                     .resizable()
-                    .scaledToFit()
-                    .frame(width: 170, height: 170)
-                    .shadow(color: MooniColor.accent.opacity(0.55), radius: 20)
+                    .interpolation(.high)
+                    .scaledToFill()
+                    .frame(width: 156, height: 156)
+                    .clipShape(RoundedRectangle(cornerRadius: 36, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 36, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.30), .clear,
+                                             MooniColor.accent.opacity(0.30)],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing),
+                                lineWidth: 1)
+                    )
+                    .shadow(color: MooniColor.accent.opacity(0.55), radius: 26, y: 10)
+                    .shadow(color: Color.black.opacity(0.35), radius: 10, y: 6)
+                    .offset(y: float ? -7 : 7)
             }
             .onAppear {
-                withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                withAnimation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true)) {
                     glow = true
+                }
+                withAnimation(.easeInOut(duration: 4.2).repeatForever(autoreverses: true)) {
+                    float = true
                 }
             }
 
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 Text("SleepOwl")
-                    .font(MooniFont.display(40))
-                    .foregroundColor(MooniColor.textPrimary)
+                    .font(MooniFont.display(42))
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.textPrimary, MooniColor.accentSoft],
+                        startPoint: .leading, endPoint: .trailing))
                     .tracking(0.5)
                 Text("Sleep better. Grow stronger.")
                     .font(MooniFont.body(16))
@@ -44,7 +69,7 @@ struct WelcomeScreen: View {
 
             Spacer()
         }
-        .padding(.horizontal, 28)
+        .onboardingEdge()
     }
 }
 
@@ -188,7 +213,7 @@ struct BenefitScreen: View {
 
             Spacer(minLength: 8)
         }
-        .padding(.horizontal, 24)
+        .onboardingEdge()
         .onAppear {
             heroIn = false
             copyIn = false
@@ -401,7 +426,7 @@ struct RateAppScreen: View {
 
             Spacer(minLength: 8)
         }
-        .padding(.horizontal, 24)
+        .onboardingEdge()
     }
 }
 
@@ -468,7 +493,7 @@ struct SignInScreen: View {
 
             Spacer(minLength: 8)
         }
-        .padding(.horizontal, 24)
+        .onboardingEdge()
     }
 
     private func signInBenefitRow(icon: String, text: String) -> some View {
@@ -586,7 +611,7 @@ struct AudioInsightScreen: View {
 
             Spacer(minLength: 8)
         }
-        .padding(.horizontal, 22)
+        .onboardingEdge()
         .onAppear {
             pulse = true
             withAnimation(.easeOut(duration: 0.5)) { titleIn = true }
@@ -755,7 +780,7 @@ struct YAMNetScreen: View {
 
             Spacer(minLength: 8)
         }
-        .padding(.horizontal, 22)
+        .onboardingEdge()
         .onAppear {
             logoIn = false
             stat1In = false; stat2In = false; stat3In = false
@@ -806,7 +831,7 @@ struct YAMNetScreen: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
+        .onboardingEdge()
         .padding(.vertical, 12)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -895,7 +920,7 @@ struct EfficiencyFormulaScreen: View {
 
             Spacer(minLength: 8)
         }
-        .padding(.horizontal, 22)
+        .onboardingEdge()
         .onAppear {
             withAnimation(.easeOut(duration: 0.45)) { titleIn = true }
             Haptics.medium()
@@ -1217,7 +1242,7 @@ struct OnDevicePrivacyScreen: View {
 
             Spacer(minLength: 8)
         }
-        .padding(.horizontal, 22)
+        .onboardingEdge()
         .onAppear {
             Haptics.medium()
             withAnimation(.spring(response: 0.65, dampingFraction: 0.7)) { phoneIn = true }
@@ -1304,7 +1329,7 @@ struct ProPromiseScreen: View {
 
             Spacer(minLength: 4)
         }
-        .padding(.horizontal, 22)
+        .onboardingEdge()
         .onAppear {
             withAnimation(.easeOut(duration: 0.45)) { headIn = true }
             Haptics.success()

@@ -36,8 +36,8 @@ struct FallAsleepView: View {
                     .padding(20)
                 }
             }
-            .navigationTitle("Fall asleep")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .onChange(of: volume) { _, newValue in

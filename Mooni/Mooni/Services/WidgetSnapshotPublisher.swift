@@ -5,12 +5,14 @@ import WidgetKit
 /// `MooniSleepWidget` can render real numbers instead of the bundled sample.
 ///
 /// The widget extension and host app both reach into
-/// `UserDefaults(suiteName: "group.com.sabaiduka.mooni")` using the same key
-/// and JSON shape. The mirror struct here is intentionally a 1:1 copy of
-/// `SleepWidgetData` in the widget target — both encode the same JSON, so
-/// either side can decode the other's payload.
+/// `UserDefaults(suiteName: "group.com.nathanielfiskaa.sleepowl")` using the
+/// same key and JSON shape. This MUST match the App Group declared in both
+/// `Mooni.entitlements` and `MooniSleepWidget.entitlements` and the id read by
+/// `WidgetDataStore` in the widget target — otherwise `UserDefaults(suiteName:)`
+/// returns nil, every publish is silently dropped, and the widget is stuck on
+/// the bundled sample (always score 76 / placeholder "…").
 enum WidgetSnapshotPublisher {
-    private static let appGroupIdentifier = "group.com.sabaiduka.mooni"
+    private static let appGroupIdentifier = "group.com.nathanielfiskaa.sleepowl"
     private static let storageKey = "mooni.widget.latestSleep"
 
     private struct Snapshot: Codable {

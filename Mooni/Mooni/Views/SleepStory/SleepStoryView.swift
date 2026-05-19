@@ -777,7 +777,7 @@ private struct ShareCard: View {
     var body: some View {
         VStack(spacing: 16) {
             HStack(spacing: 8) {
-                Text("🦉").font(.system(size: 18))
+                EmojiIcon(emoji: "🦉", size: 18)
                 Text("SleepOwl").font(MooniFont.title(16)).foregroundColor(.white)
             }
             ZStack {

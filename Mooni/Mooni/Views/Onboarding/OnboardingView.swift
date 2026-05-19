@@ -80,12 +80,6 @@ struct OnboardingView: View {
         case hero                     // S1 emotional hook
         case sleepImpactStat          // S2 relatable pain
         case identityDamage           // S3 connects sleep → daily identity
-        // Outcome vision — Cali-style: show the user their transformed life
-        // (the result, not the features) before they invest in the flow.
-        case outcomeImagine           // before → after "you", 2 weeks from now
-        case outcomeMornings          // what your mornings become
-        case outcomeDays              // what your days become
-        case outcomeFuture            // aspirational close — "this is the you we build"
         case emotionalDiscomfort      // S4 "your body remembers every late night"
         case hopeTransformation       // S5 brighter hope visual
         // Benefit reel — what better sleep gives you. Kept tight (6 screens)
@@ -173,6 +167,12 @@ struct OnboardingView: View {
         case scienceArchitecture      // Hypnogram — REM/Deep/Light per minute
         case scienceOnDevice          // 0 bytes uploaded — Apple Neural Engine
         case scienceProPromise        // Bridge to Pro: snore/wake-cause/architecture
+        // Outcome vision — Cali-style: paint the transformed life late, right
+        // before the commitment ask (sign-in → pre-paywall → paywall).
+        case outcomeImagine           // before → after "you", 2 weeks from now
+        case outcomeMornings          // what your mornings become
+        case outcomeDays              // what your days become
+        case outcomeFuture            // aspirational close — "this is the you we build"
         case signIn                   // Sign in with Apple → Supabase — moved to live
                                       //   right before paywall so the user is fully
                                       //   bought in before being asked to authenticate.
@@ -219,20 +219,20 @@ struct OnboardingView: View {
                         .padding(.horizontal, 20)
                         .padding(.top, 14)
 
-                    // GeometryReader lets us give the ScrollView's content a
-                    // minHeight just under the visible area. With center
-                    // alignment, content sits in the upper-center band —
-                    // closer to the progress bar than to the footer — which
-                    // feels more "purposeful" than dead-center on tall phones.
-                    // Oversize content still scrolls naturally.
+                    // ONE consistent rule for every screen: the content block
+                    // is vertically CENTERED in the band between the progress
+                    // bar and the footer, with symmetric padding. This is what
+                    // keeps all ~79 screens aligned the same way regardless of
+                    // whether a given screen uses its own Spacers internally —
+                    // nothing sits "too high" or "too low" anymore. Content
+                    // taller than the band still scrolls naturally.
                     GeometryReader { geo in
                         ScrollView(showsIndicators: false) {
                             content
-                                .padding(.top, 16)
-                                .padding(.bottom, 28)
+                                .padding(.vertical, 20)
                                 .frame(maxWidth: .infinity)
-                                .frame(minHeight: geo.size.height * 0.92,
-                                       alignment: .top)
+                                .frame(minHeight: geo.size.height,
+                                       alignment: .center)
                                 .id(step)
                                 .transition(transition)
                         }
@@ -443,7 +443,7 @@ struct OnboardingView: View {
                 selection: $selWindDown)
         case .personalizingReveal:
             PersonalizingRevealScreen(
-                goals: orderedSelectedGoals,
+                items: revealItems,
                 pickCount: selectedGoals.count + selBlockers.count
                     + selImpacts.count + selTried.count + selWindDown.count)
         case .sleepGoal:           GoalScreen(selection: $sleepGoal)
@@ -913,11 +913,9 @@ struct OnboardingView: View {
         // ── Health perm deferred (can request inside app) ──────────────
         case .healthPerm:
             return true
-        // ── scienceTrust still cut (formula explainer); credibility wall
-        //    is visible — the cofounder asked for more "backed by science" —
-        //    so we keep `scienceCredibility` and let it carry that weight.
-        case .scienceTrust:
-            return true
+        // ── scienceTrust (formula explainer) is back IN: the cofounder wants
+        //    more "backed by science" weight — the YAMNet / lab-accuracy /
+        //    on-device sequence plus this formula page all stay visible.
         // ── Rate prompt is back in (non-skippable "Leave a rating" gate, per
         //    glam-up-style onboarding). firstQuest still hidden (post-paywall).
         case .firstQuest:
@@ -1032,6 +1030,31 @@ struct OnboardingView: View {
         SleepGoal.allCases.filter { selectedGoals.contains($0) }
     }
 
+    /// What the "Building your plan" reveal lists back to the user. Pulls from
+    /// EVERY answered category — not just the goal subset — so the user sees a
+    /// handful of the things they actually told us and feels heard. Capped so
+    /// it stays a curated 3–4, never a single lonely line or a giant dump.
+    private var revealItems: [(icon: String, title: String)] {
+        var items: [(String, String)] = []
+        for g in orderedSelectedGoals { items.append((g.icon, g.title)) }
+        for b in OnboardingProfile.SleepBlocker.allCases where selBlockers.contains(b) {
+            items.append((b.icon, b.label))
+        }
+        for i in OnboardingProfile.SleepImpact.allCases where selImpacts.contains(i) {
+            items.append((i.icon, i.label))
+        }
+        for w in OnboardingProfile.WindDownPref.allCases where selWindDown.contains(w) {
+            items.append((w.icon, w.label))
+        }
+        for t in OnboardingProfile.TriedBefore.allCases where selTried.contains(t) {
+            items.append((t.icon, t.label))
+        }
+        // De-dupe by title, keep first occurrence, cap at 4.
+        var seen = Set<String>()
+        let unique = items.filter { seen.insert($0.1).inserted }
+        return Array(unique.prefix(4)).map { (icon: $0.0, title: $0.1) }
+    }
+
     /// Lightly tailored to what the user already told us earlier in the flow.
     private var blockersSubtitle: String {
         if profile.racingThoughtsAtNight == true {
@@ -1090,30 +1113,19 @@ private struct QuestionScaffold<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        VStack(spacing: 20) {
-            Spacer(minLength: 4)
-
-            VStack(spacing: 8) {
-                Text(title)
-                    .font(MooniFont.display(26))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(2)
-                    .padding(.horizontal, 16)
+        // Same atoms + edge as OnboardingScaffold so question screens and
+        // content screens are pixel-identical across the whole flow.
+        VStack(spacing: 22) {
+            VStack(spacing: 12) {
+                OBTitle(title)
                 if let s = subtitle {
-                    Text(s)
-                        .font(MooniFont.body(14))
-                        .foregroundColor(MooniColor.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
+                    OBSubtitle(s)
                 }
             }
-
             content()
-                .padding(.horizontal, 20)
-
-            Spacer(minLength: 8)
         }
+        .frame(maxWidth: .infinity)
+        .onboardingEdge()
     }
 }
 
@@ -1235,26 +1247,23 @@ private struct HeroScreen: View {
     @State private var fadeIn = false
 
     var body: some View {
-        VStack(spacing: 30) {
-            Spacer(minLength: 8)
-
+        VStack(spacing: 26) {
             ZStack {
                 Circle()
                     .fill(RadialGradient(
-                        colors: [Color.black.opacity(0.55), .clear],
-                        center: .center, startRadius: 4, endRadius: 220))
-                    .frame(width: 340, height: 340)
+                        colors: [Color.black.opacity(0.5), .clear],
+                        center: .center, startRadius: 4, endRadius: 200))
+                    .frame(width: 300, height: 300)
 
-                DreamSpiritView(pet: tiredPet, size: 190)
+                DreamSpiritView(pet: tiredPet, size: 178)
                     .saturation(0.55)
                     .opacity(dim ? 0.75 : 0.95)
                     .animation(.easeInOut(duration: 3.6).repeatForever(autoreverses: true), value: dim)
 
-                // Sleepy "Zzz" floating above
                 Text("z z Z")
-                    .font(.system(size: 24, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.accentSoft.opacity(0.7))
-                    .offset(x: 70, y: -90)
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
+                    .foregroundColor(OnboardingLayout.accent.opacity(0.7))
+                    .offset(x: 62, y: -82)
                     .opacity(dim ? 0.85 : 0.4)
                     .animation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true), value: dim)
             }
@@ -1263,24 +1272,15 @@ private struct HeroScreen: View {
                 withAnimation(.easeOut(duration: 0.55).delay(0.15)) { fadeIn = true }
             }
 
-            VStack(spacing: 14) {
-                Text("You're tired.\nWe'll show you why.")
-                    .font(MooniFont.display(32))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-
-                Text("It takes 2 minutes.")
-                    .font(MooniFont.body(16))
-                    .foregroundColor(MooniColor.textSecondary)
+            VStack(spacing: 12) {
+                OBTitle("You're tired.\nWe'll show you why.")
+                OBSubtitle("It takes 2 minutes.")
             }
             .opacity(fadeIn ? 1 : 0)
             .offset(y: fadeIn ? 0 : 12)
-
-            Spacer(minLength: 12)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 6)
+        .frame(maxWidth: .infinity)
+        .onboardingEdge()
     }
 
     private var tiredPet: Pet {
@@ -1294,84 +1294,38 @@ private struct HeroScreen: View {
 /// 4 BIG emoji cards — each one immediate, no icon-system noise.
 /// Reveal one-by-one with haptics so it feels alive.
 private struct SleepImpactStatScreen: View {
-    @State private var revealedCount: Int = 0
-    @State private var titleIn = false
+    @State private var revealed = 0
 
-    private let pains: [(emoji: String, label: String, tint: Color)] = [
-        ("🧠", "Brain fog",     MooniColor.warning),
-        ("🔋", "No energy",     MooniColor.danger),
-        ("😤", "Bad mood",      Color.pink),
-        ("🎯", "Can't focus",   MooniColor.accent)
+    private let pains: [(String, String)] = [
+        ("🧠", "Brain fog"),
+        ("🔋", "No energy"),
+        ("😤", "Bad mood"),
+        ("🎯", "Can't focus"),
+        ("🍔", "Belly fat & bloating")
     ]
 
     var body: some View {
-        VStack(spacing: 26) {
-            Spacer(minLength: 8)
-
-            VStack(spacing: 10) {
-                Text.iconHeader("😴", "SOUND FAMILIAR?")
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.warning)
-                    .tracking(2)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(MooniColor.warning.opacity(0.16))
-                    .clipShape(Capsule())
-
-                Text("Bad sleep does\nthis to you.")
-                    .font(MooniFont.display(30))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(2)
-            }
-            .opacity(titleIn ? 1 : 0)
-            .offset(y: titleIn ? 0 : 8)
-
+        OnboardingScaffold(
+            eyebrow: ("😴", "Sound familiar?"),
+            title: "Bad sleep does\nthis to you."
+        ) {
             VStack(spacing: 12) {
-                ForEach(Array(pains.enumerated()), id: \.offset) { idx, item in
-                    painCard(emoji: item.emoji, label: item.label, tint: item.tint,
-                             visible: idx < revealedCount)
+                ForEach(Array(pains.enumerated()), id: \.offset) { idx, p in
+                    OBCard(emoji: p.0, title: p.1, visible: idx < revealed)
                 }
             }
-
-            Spacer(minLength: 8)
         }
-        .padding(.horizontal, 22)
         .onAppear {
-            withAnimation(.easeOut(duration: 0.45)) { titleIn = true }
             Haptics.medium()
             for i in 0..<pains.count {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 + 0.18 * Double(i)) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3 + 0.16 * Double(i)) {
                     withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
-                        revealedCount = i + 1
+                        revealed = i + 1
                     }
                     Haptics.tick()
                 }
             }
         }
-    }
-
-    private func painCard(emoji: String, label: String, tint: Color, visible: Bool) -> some View {
-        HStack(spacing: 16) {
-            EmojiIcon(emoji: emoji, size: 26, tint: tint)
-                .frame(width: 56, height: 56)
-                .background(tint.opacity(0.18))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            Text(label)
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
-                .foregroundColor(MooniColor.textPrimary)
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(tint.opacity(0.22), lineWidth: 1)
-        )
-        .opacity(visible ? 1 : 0)
-        .offset(x: visible ? 0 : -16)
     }
 }
 
@@ -1926,77 +1880,65 @@ private struct GoalsMultiScreen: View {
 /// The payoff beat: echoes the user's own goals back and counts every choice
 /// they made so the whole block feels like it's actively shaping the plan.
 private struct PersonalizingRevealScreen: View {
-    let goals: [SleepGoal]
+    let items: [(icon: String, title: String)]
     let pickCount: Int
 
     @State private var revealed = 0
-    @State private var headerIn = false
     private let timer = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 22) {
-            Spacer(minLength: 12)
-
             ZStack {
                 Circle()
-                    .fill(MooniColor.accent.opacity(0.22))
-                    .frame(width: 180, height: 180)
-                    .blur(radius: 34)
+                    .fill(OnboardingLayout.accent.opacity(0.20))
+                    .frame(width: 148, height: 148)
+                    .blur(radius: 30)
                 Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 56, weight: .bold))
-                    .foregroundStyle(LinearGradient(
-                        colors: [.white, MooniColor.accentSoft],
-                        startPoint: .top, endPoint: .bottom))
+                    .font(.system(size: 50, weight: .bold))
+                    .foregroundColor(OnboardingLayout.accent)
             }
 
-            VStack(spacing: 8) {
-                Text("Building your plan")
-                    .font(MooniFont.display(26))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .opacity(headerIn ? 1 : 0)
-
-                Text("Tailored from your \(pickCount) answers. We'll focus on:")
-                    .font(MooniFont.body(15))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .opacity(headerIn ? 1 : 0)
+            VStack(spacing: 12) {
+                OBTitle("Building your plan")
+                OBSubtitle("Tailored from your \(pickCount) answers. We'll focus on:")
             }
 
             VStack(spacing: 10) {
-                ForEach(Array(goals.enumerated()), id: \.element) { idx, goal in
+                ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
                     HStack(spacing: 12) {
-                        Image(systemName: goal.icon)
+                        Image(systemName: item.icon)
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(MooniColor.accent)
+                            .foregroundColor(OnboardingLayout.accent)
                             .frame(width: 34, height: 34)
-                            .background(MooniColor.accent.opacity(0.16))
+                            .background(OnboardingLayout.accent.opacity(0.16))
                             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                        Text(goal.title)
+                        Text(item.title)
                             .font(MooniFont.title(15))
                             .foregroundColor(MooniColor.textPrimary)
-                        Spacer()
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 8)
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(MooniColor.accent)
+                            .foregroundColor(OnboardingLayout.accent)
                             .font(.system(size: 18))
                     }
                     .padding(13)
-                    .background(Color.white.opacity(0.07))
-                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.white.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(OnboardingLayout.accent.opacity(0.18), lineWidth: 1)
+                    )
                     .opacity(idx < revealed ? 1 : 0)
                     .offset(y: idx < revealed ? 0 : 8)
                 }
             }
-            .padding(.horizontal, 4)
-
-            Spacer(minLength: 8)
         }
-        .padding(.horizontal, 24)
-        .onAppear {
-            withAnimation(.easeOut(duration: 0.4)) { headerIn = true }
-        }
+        .frame(maxWidth: .infinity)
+        .onboardingEdge()
         .onReceive(timer) { _ in
-            if revealed < goals.count {
+            if revealed < items.count {
                 withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
                     revealed += 1
                 }
@@ -2015,21 +1957,15 @@ private struct PersonalizeScreen: View {
     @State private var glow = false
 
     var body: some View {
-        VStack(spacing: 22) {
-            Spacer(minLength: 16)
-
+        VStack(spacing: 24) {
             ZStack {
                 Circle()
-                    .fill(MooniColor.accent.opacity(glow ? 0.40 : 0.20))
-                    .frame(width: 200, height: 200)
-                    .blur(radius: 32)
-
+                    .fill(OnboardingLayout.accent.opacity(glow ? 0.36 : 0.18))
+                    .frame(width: 180, height: 180)
+                    .blur(radius: 30)
                 Image(systemName: "wand.and.stars")
-                    .font(.system(size: 64, weight: .bold))
-                    .foregroundStyle(LinearGradient(
-                        colors: [.white, MooniColor.accentSoft],
-                        startPoint: .top, endPoint: .bottom))
-                    .shadow(color: MooniColor.accent.opacity(0.55), radius: 14)
+                    .font(.system(size: 58, weight: .bold))
+                    .foregroundColor(OnboardingLayout.accent)
             }
             .onAppear {
                 withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
@@ -2037,22 +1973,13 @@ private struct PersonalizeScreen: View {
                 }
             }
 
-            VStack(spacing: 10) {
-                Text("Personalize SleepOwl")
-                    .font(MooniFont.display(28))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-
-                Text("Use your answers to tailor your plan, recommendations and nightly advice. Your data stays private.")
-                    .font(MooniFont.body(15))
-                    .foregroundColor(MooniColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
+            VStack(spacing: 12) {
+                OBTitle("Personalize SleepOwl")
+                OBSubtitle("Use your answers to tailor your plan, recommendations and nightly advice. Your data stays private.")
             }
-
-            Spacer(minLength: 8)
         }
-        .padding(.horizontal, 24)
+        .frame(maxWidth: .infinity)
+        .onboardingEdge()
     }
 }
 
@@ -3781,7 +3708,7 @@ private struct WidgetPreviewScreen: View {
         ShareLink(
             item: URL(string: "https://apps.apple.com/app/sleepowl/id6740000000")!,
             subject: Text("Sleep better with me on SleepOwl"),
-            message: Text("I'm using SleepOwl to track my sleep and beat sleep debt — join my Sleep Circle so we can compare nights. \(petName) is waiting 🦉")
+            message: Text("I'm using SleepOwl to track my sleep and beat sleep debt — join my Sleep Circle so we can compare nights. \(petName) is waiting.")
         ) {
             HStack(spacing: 8) {
                 Image(systemName: "person.crop.circle.badge.plus")
@@ -4714,19 +4641,26 @@ private struct GeneratingPlanScreen: View {
                     .background(MooniColor.accent.opacity(0.16))
                     .clipShape(Capsule())
                 let msg = msgs[min(messageIndex, msgs.count - 1)]
-                HStack(spacing: 10) {
-                    EmojiIcon(emoji: msg.emoji, size: 22, tint: MooniColor.accentSoft)
+                VStack(spacing: 14) {
+                    EmojiIcon(emoji: msg.emoji, size: 26, tint: MooniColor.accentSoft)
+                        .frame(width: 58, height: 58)
+                        .background(MooniColor.accent.opacity(0.16))
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(MooniColor.accent.opacity(0.24), lineWidth: 1))
                     Text(msg.text)
-                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .font(.system(size: 21, weight: .heavy, design: .rounded))
                         .foregroundColor(MooniColor.textPrimary)
                         .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.horizontal, 24)
                 .id(messageIndex)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
                 .animation(.easeInOut(duration: 0.45), value: messageIndex)
             }
-            .frame(minHeight: 90)
+            .frame(minHeight: 132)
 
             // Slim progress strip with no number — feels less mechanical.
             GeometryReader { geo in
@@ -7048,8 +6982,11 @@ private struct OutcomeFutureScreen: View {
                     .frame(width: 280, height: 280)
                     .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true),
                                value: glow)
-                Text("🦉")
-                    .font(.system(size: 96))
+                Image("owl_base")
+                    .resizable()
+                    .renderingMode(.original)
+                    .scaledToFit()
+                    .frame(width: 132, height: 132)
                     .scaleEffect(glow ? 1.04 : 0.98)
                     .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true),
                                value: glow)
@@ -7123,54 +7060,31 @@ private struct OutcomeRow: View {
 /// impact stated plainly — no "quietly bleeds" copy.
 private struct IdentityDamageScreen: View {
     @State private var revealed = 0
-    @State private var titleIn = false
 
-    private let items: [(emoji: String, title: String, line: String, tint: Color)] = [
-        ("⚡", "Energy",  "You crash every afternoon",  MooniColor.warning),
-        ("💪", "Workouts","Gains take twice as long",   MooniColor.danger),
-        ("🧠", "Work",    "30-min tasks turn into 90",  MooniColor.accent),
-        ("😠", "Mood",    "Small things set you off",   Color.pink)
+    private let items: [(String, String, String)] = [
+        ("⚡", "Energy",   "You crash every afternoon"),
+        ("💪", "Workouts", "Gains take twice as long"),
+        ("🧠", "Work",     "30-min tasks turn into 90"),
+        ("😠", "Mood",     "Small things set you off"),
+        ("🍔", "Weight",   "Belly fat & bloating creep in")
     ]
 
     var body: some View {
-        VStack(spacing: 26) {
-            Spacer(minLength: 8)
-
-            VStack(spacing: 10) {
-                Text.iconHeader("⚠️", "IT'S NOT JUST NIGHTS")
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.warning)
-                    .tracking(2)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(MooniColor.warning.opacity(0.16))
-                    .clipShape(Capsule())
-
-                Text("Bad sleep ruins\nyour whole day.")
-                    .font(MooniFont.display(30))
-                    .foregroundColor(MooniColor.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(2)
-            }
-            .opacity(titleIn ? 1 : 0)
-            .offset(y: titleIn ? 0 : 8)
-
+        OnboardingScaffold(
+            eyebrow: ("⚠️", "It's not just nights"),
+            title: "Bad sleep ruins\nyour whole day."
+        ) {
             VStack(spacing: 10) {
                 ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
-                    damageCard(emoji: item.emoji, title: item.title,
-                               line: item.line, tint: item.tint,
-                               visible: idx < revealed)
+                    OBCard(emoji: item.0, title: item.1, subtitle: item.2,
+                           visible: idx < revealed)
                 }
             }
-
-            Spacer(minLength: 8)
         }
-        .padding(.horizontal, 22)
         .onAppear {
-            withAnimation(.easeOut(duration: 0.45)) { titleIn = true }
             Haptics.medium()
             for i in 0..<items.count {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 + 0.18 * Double(i)) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3 + 0.16 * Double(i)) {
                     withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
                         revealed = i + 1
                     }
@@ -7178,35 +7092,6 @@ private struct IdentityDamageScreen: View {
                 }
             }
         }
-    }
-
-    private func damageCard(emoji: String, title: String, line: String,
-                            tint: Color, visible: Bool) -> some View {
-        HStack(spacing: 14) {
-            EmojiIcon(emoji: emoji, size: 24, tint: tint)
-                .frame(width: 54, height: 54)
-                .background(tint.opacity(0.18))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 16, weight: .heavy, design: .rounded))
-                    .foregroundColor(tint)
-                Text(line)
-                    .font(MooniFont.body(13))
-                    .foregroundColor(MooniColor.textSecondary)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(tint.opacity(0.22), lineWidth: 1)
-        )
-        .opacity(visible ? 1 : 0)
-        .offset(x: visible ? 0 : -16)
     }
 }
 

@@ -16,11 +16,26 @@ struct EmojiIcon: View {
     var tint: Color? = nil
 
     var body: some View {
-        Image(systemName: Self.symbolName(for: emoji))
-            .font(.system(size: size, weight: .semibold))
-            .foregroundStyle(tint ?? MooniColor.textPrimary)
-            .symbolRenderingMode(.hierarchical)
-            .frame(minWidth: size, minHeight: size)
+        if Self.isOwl(emoji) {
+            // The owl is the brand mascot — never the Apple owl emoji or a
+            // generic SF Symbol. Always render the bundled artwork.
+            Image("owl_base")
+                .resizable()
+                .renderingMode(.original)
+                .scaledToFit()
+                .frame(width: size * 1.15, height: size * 1.15)
+        } else {
+            Image(systemName: Self.symbolName(for: emoji))
+                .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(tint ?? MooniColor.textPrimary)
+                .symbolRenderingMode(.hierarchical)
+                .frame(minWidth: size, minHeight: size)
+        }
+    }
+
+    /// True for the owl mascot glyph (with or without variation selectors).
+    static func isOwl(_ emoji: String) -> Bool {
+        emoji.unicodeScalars.contains { $0.value == 0x1F989 }
     }
 
     /// Maps a known emoji to its closest SF Symbol. Unknown emoji fall through
