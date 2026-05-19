@@ -137,7 +137,7 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
         let now = Date()
         let bed = cal.date(bySettingHour: bH, minute: bM, second: 0, of: now) ?? now
         let wake = cal.date(bySettingHour: wH, minute: wM, second: 0, of: now) ?? now
-        var name = "Mooni"
+        var name = "SleepOwl"
         if let data = d.data(forKey: "mooni.pet"),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let n = obj["name"] as? String, !n.isEmpty {

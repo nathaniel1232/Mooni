@@ -178,7 +178,7 @@ struct HomeView: View {
                     .background(MooniColor.warning.opacity(0.16))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(appState.hasUnconfirmedNight ? "Confirm last night's sleep" : "Mooni missed last night")
+                    Text(appState.hasUnconfirmedNight ? "Confirm last night's sleep" : "SleepOwl missed last night")
                         .font(MooniFont.title(14))
                         .foregroundColor(MooniColor.textPrimary)
                     Text("Add the times you slept so your streak and score stay accurate.")

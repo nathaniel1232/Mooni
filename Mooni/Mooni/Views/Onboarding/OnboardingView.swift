@@ -80,6 +80,12 @@ struct OnboardingView: View {
         case hero                     // S1 emotional hook
         case sleepImpactStat          // S2 relatable pain
         case identityDamage           // S3 connects sleep → daily identity
+        // Outcome vision — Cali-style: show the user their transformed life
+        // (the result, not the features) before they invest in the flow.
+        case outcomeImagine           // before → after "you", 2 weeks from now
+        case outcomeMornings          // what your mornings become
+        case outcomeDays              // what your days become
+        case outcomeFuture            // aspirational close — "this is the you we build"
         case emotionalDiscomfort      // S4 "your body remembers every late night"
         case hopeTransformation       // S5 brighter hope visual
         // Benefit reel — what better sleep gives you. Kept tight (6 screens)
@@ -378,6 +384,10 @@ struct OnboardingView: View {
         case .hero:                HeroScreen(species: species)
         case .sleepImpactStat:     SleepImpactStatScreen()
         case .identityDamage:      IdentityDamageScreen()
+        case .outcomeImagine:      OutcomeImagineScreen()
+        case .outcomeMornings:     OutcomeMorningsScreen()
+        case .outcomeDays:         OutcomeDaysScreen()
+        case .outcomeFuture:       OutcomeFutureScreen()
         case .emotionalDiscomfort: EmotionalDiscomfortScreen()
         case .hopeTransformation:  HopeTransformationScreen()
         case .benefitEnergy:       BenefitScreen(spec: .energy)
@@ -649,6 +659,10 @@ struct OnboardingView: View {
         case .hero:               return "Show me what's happening"
         case .sleepImpactStat:    return "Yeah, that's me"
         case .identityDamage:     return "I want to fix this"
+        case .outcomeImagine:     return "I want that"
+        case .outcomeMornings:    return "Continue"
+        case .outcomeDays:        return "Continue"
+        case .outcomeFuture:      return "Let's build it"
         case .emotionalDiscomfort:return "Continue"
         case .hopeTransformation: return "I'm in"
         case .petAttachment:      return "Meet your sleep pet"
@@ -6803,6 +6817,303 @@ private struct EnvironmentFactScreen: View {
                 .frame(height: 8)
             }
         }
+    }
+}
+
+// MARK: - Outcome vision (Cali-style: show the transformed YOU, not features)
+
+/// Before → after "you". Big emotional payoff, two-week framing. Sells the
+/// outcome, never the mechanism.
+private struct OutcomeImagineScreen: View {
+    @State private var titleIn = false
+    @State private var afterIn = false
+    @State private var glow = false
+
+    var body: some View {
+        VStack(spacing: 26) {
+            Spacer(minLength: 8)
+
+            VStack(spacing: 10) {
+                Text.iconHeader("✨", "TWO WEEKS FROM NOW")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.accent)
+                    .tracking(2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(MooniColor.accent.opacity(0.16))
+                    .clipShape(Capsule())
+
+                Text("Imagine waking up\nactually rested.")
+                    .font(MooniFont.display(30))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            }
+            .opacity(titleIn ? 1 : 0)
+            .offset(y: titleIn ? 0 : 8)
+
+            HStack(spacing: 14) {
+                outcomeFace(emoji: "😩", label: "Today", tint: MooniColor.danger,
+                            highlighted: false, visible: titleIn)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .opacity(afterIn ? 1 : 0)
+                outcomeFace(emoji: "🤩", label: "In 2 weeks", tint: MooniColor.success,
+                            highlighted: true, visible: afterIn)
+            }
+
+            Text("Not the app — *you*. This is what changes.")
+                .font(MooniFont.body(14))
+                .foregroundColor(MooniColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+                .opacity(afterIn ? 1 : 0)
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.45)) { titleIn = true }
+            Haptics.medium()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { afterIn = true }
+                Haptics.tick()
+            }
+            glow = true
+        }
+    }
+
+    private func outcomeFace(emoji: String, label: String, tint: Color,
+                             highlighted: Bool, visible: Bool) -> some View {
+        VStack(spacing: 10) {
+            Text(emoji)
+                .font(.system(size: 52))
+                .frame(width: 104, height: 104)
+                .background(tint.opacity(highlighted ? 0.22 : 0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(tint.opacity(highlighted ? 0.55 : 0.2),
+                                lineWidth: highlighted ? 2 : 1)
+                )
+                .shadow(color: highlighted ? tint.opacity(glow ? 0.5 : 0.2) : .clear,
+                        radius: highlighted ? 18 : 0)
+                .animation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true),
+                           value: glow)
+            Text(label)
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundColor(highlighted ? tint : MooniColor.textSecondary)
+        }
+        .opacity(visible ? 1 : 0)
+        .scaleEffect(visible ? 1 : 0.85)
+    }
+}
+
+/// Outcome — your mornings. Each row is a *result the user lives*, not a feature.
+private struct OutcomeMorningsScreen: View {
+    @State private var titleIn = false
+    @State private var revealed = 0
+
+    private let wins: [(String, String, Color)] = [
+        ("⏰", "Up before the alarm",      MooniColor.accent),
+        ("🛌", "No more snooze battles",   MooniColor.success),
+        ("🧠", "Clear head in minutes",    MooniColor.warning),
+        ("☀️", "Out the door, awake",      Color.orange)
+    ]
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer(minLength: 8)
+
+            VStack(spacing: 10) {
+                Text.iconHeader("🌅", "WHAT YOU GET BACK")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.accent)
+                    .tracking(2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(MooniColor.accent.opacity(0.16))
+                    .clipShape(Capsule())
+
+                Text("Your mornings,\nrebuilt.")
+                    .font(MooniFont.display(30))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            }
+            .opacity(titleIn ? 1 : 0)
+            .offset(y: titleIn ? 0 : 8)
+
+            VStack(spacing: 12) {
+                ForEach(Array(wins.enumerated()), id: \.offset) { idx, w in
+                    OutcomeRow(emoji: w.0, label: w.1, tint: w.2,
+                               visible: idx < revealed)
+                }
+            }
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.45)) { titleIn = true }
+            Haptics.medium()
+            for i in 0..<wins.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 + 0.18 * Double(i)) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                        revealed = i + 1
+                    }
+                    Haptics.tick()
+                }
+            }
+        }
+    }
+}
+
+/// Outcome — your days. The downstream payoff of the rebuilt mornings.
+private struct OutcomeDaysScreen: View {
+    @State private var titleIn = false
+    @State private var revealed = 0
+
+    private let wins: [(String, String, Color)] = [
+        ("🔋", "Energy that lasts till night", MooniColor.success),
+        ("🎯", "Locked-in focus",              MooniColor.accent),
+        ("😄", "Lighter, steadier mood",       Color.pink),
+        ("🫶", "Present with people you love", MooniColor.warning)
+    ]
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer(minLength: 8)
+
+            VStack(spacing: 10) {
+                Text.iconHeader("🌤️", "AND IT KEEPS GOING")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.success)
+                    .tracking(2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(MooniColor.success.opacity(0.16))
+                    .clipShape(Capsule())
+
+                Text("Your days,\nrecharged.")
+                    .font(MooniFont.display(30))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            }
+            .opacity(titleIn ? 1 : 0)
+            .offset(y: titleIn ? 0 : 8)
+
+            VStack(spacing: 12) {
+                ForEach(Array(wins.enumerated()), id: \.offset) { idx, w in
+                    OutcomeRow(emoji: w.0, label: w.1, tint: w.2,
+                               visible: idx < revealed)
+                }
+            }
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 22)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.45)) { titleIn = true }
+            Haptics.medium()
+            for i in 0..<wins.count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 + 0.18 * Double(i)) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                        revealed = i + 1
+                    }
+                    Haptics.tick()
+                }
+            }
+        }
+    }
+}
+
+/// Aspirational close — names the transformed self and ties it to SleepOwl,
+/// then commits: it starts tonight.
+private struct OutcomeFutureScreen: View {
+    @State private var glow = false
+    @State private var textIn = false
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer(minLength: 8)
+
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [MooniColor.accent.opacity(glow ? 0.45 : 0.2), .clear],
+                        center: .center, startRadius: 4, endRadius: 180))
+                    .frame(width: 280, height: 280)
+                    .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true),
+                               value: glow)
+                Text("🦉")
+                    .font(.system(size: 96))
+                    .scaleEffect(glow ? 1.04 : 0.98)
+                    .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true),
+                               value: glow)
+            }
+
+            VStack(spacing: 12) {
+                Text("This is the you\nSleepOwl builds.")
+                    .font(MooniFont.display(30))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+
+                Text("Rested. Sharp. Present.")
+                    .font(MooniFont.title(16))
+                    .foregroundColor(MooniColor.accent)
+
+                Text("And it starts tonight.")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            .opacity(textIn ? 1 : 0)
+            .offset(y: textIn ? 0 : 10)
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 24)
+        .onAppear {
+            glow = true
+            withAnimation(.easeOut(duration: 0.55).delay(0.2)) { textIn = true }
+            Haptics.medium()
+        }
+    }
+}
+
+private struct OutcomeRow: View {
+    let emoji: String
+    let label: String
+    let tint: Color
+    let visible: Bool
+
+    var body: some View {
+        HStack(spacing: 16) {
+            EmojiIcon(emoji: emoji, size: 26, tint: tint)
+                .frame(width: 56, height: 56)
+                .background(tint.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            Text(label)
+                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                .foregroundColor(MooniColor.textPrimary)
+            Spacer()
+            Image(systemName: "checkmark")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(tint)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(tint.opacity(0.22), lineWidth: 1)
+        )
+        .opacity(visible ? 1 : 0)
+        .offset(x: visible ? 0 : -16)
     }
 }
 

@@ -17,32 +17,48 @@ enum MooniFont {
     private static var cache: [String: Font] = [:]
 
     private static func outfit(_ size: CGFloat, weight: Font.Weight) -> Font {
-        guard isOutfitAvailable else {
-            return .system(size: size, weight: weight, design: .rounded)
-        }
-        let name: String
-        switch weight {
-        case .bold, .heavy, .black: name = "Outfit-Bold"
-        case .semibold:             name = "Outfit-SemiBold"
-        case .medium:               name = "Outfit-Medium"
-        default:                    name = "Outfit-Regular"
-        }
-
-        let key = "\(name)-\(size)"
+        let key = "\(weight)-\(size)"
         if let cached = cache[key] { return cached }
 
-        guard let base = UIFont(name: name, size: size),
-              let emoji = UIFont(name: "AppleColorEmoji", size: size) else {
-            let fallback = Font.custom(name, size: size)
-            cache[key] = fallback
-            return fallback
+        let psName: String
+        let uiWeight: UIFont.Weight
+        switch weight {
+        case .black:    psName = "Outfit-Bold"; uiWeight = .black
+        case .heavy:    psName = "Outfit-Bold"; uiWeight = .heavy
+        case .bold:     psName = "Outfit-Bold"; uiWeight = .bold
+        case .semibold: psName = "Outfit-SemiBold"; uiWeight = .semibold
+        case .medium:   psName = "Outfit-Medium"; uiWeight = .medium
+        default:        psName = "Outfit-Regular"; uiWeight = .regular
         }
 
+        // Base = Outfit at this weight when it loaded; otherwise the system
+        // font at the matching weight. We NEVER return Font.custom(_:) here:
+        // Font.custom ignores cascade lists, which is exactly what made emoji
+        // (especially ZWJ sequences like "😵‍💫" and variation-selector forms
+        // like "☀️") render as a missing-glyph "?" box. Building the font from
+        // a UIFontDescriptor with an explicit AppleColorEmoji cascade — plus a
+        // system-font cascade as a final safety net — guarantees every emoji
+        // renders in colour no matter the iOS version or which weights loaded.
+        let systemFallback: UIFont = {
+            let sys = UIFont.systemFont(ofSize: size, weight: uiWeight)
+            if let rounded = sys.fontDescriptor.withDesign(.rounded) {
+                return UIFont(descriptor: rounded, size: size)
+            }
+            return sys
+        }()
+        let base = (isOutfitAvailable ? UIFont(name: psName, size: size) : nil)
+            ?? systemFallback
+
+        var cascade: [UIFontDescriptor] = []
+        if let emoji = UIFont(name: "AppleColorEmoji", size: size) {
+            cascade.append(emoji.fontDescriptor)
+        }
+        cascade.append(UIFont.systemFont(ofSize: size, weight: uiWeight).fontDescriptor)
+
         let descriptor = base.fontDescriptor.addingAttributes([
-            .cascadeList: [emoji.fontDescriptor]
+            .cascadeList: cascade
         ])
-        let composed = UIFont(descriptor: descriptor, size: size)
-        let font = Font(composed)
+        let font = Font(UIFont(descriptor: descriptor, size: size))
         cache[key] = font
         return font
     }
