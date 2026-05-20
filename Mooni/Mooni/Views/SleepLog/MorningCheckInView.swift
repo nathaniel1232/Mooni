@@ -5,7 +5,9 @@ import SwiftUI
 /// captures the data we need to refine last night's score.
 struct MorningCheckInView: View {
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var subscriptionManager: SubscriptionManager
     @Environment(\.dismiss) private var dismiss
+    @State private var showPaywall = false
 
     /// When set, this entry replaces `appState.entryNeedingMorningCheckIn`
     /// as the subject of the flow — used when the user re-opens the
@@ -158,6 +160,7 @@ struct MorningCheckInView: View {
         }
         .interactiveDismissDisabled(scene != .reveal)
         .onAppear(perform: setupInitialTimes)
+        .mooniPaywall(isPresented: $showPaywall)
         .fullScreenCover(isPresented: $showStory) {
             if let entry = savedEntry ?? entryOverride ?? appState.entryNeedingMorningCheckIn {
                 SleepStoryView(
@@ -978,10 +981,14 @@ struct MorningCheckInView: View {
 
                 Button {
                     Haptics.tap()
-                    showStory = true
+                    if subscriptionManager.isPro {
+                        showStory = true
+                    } else {
+                        showPaywall = true
+                    }
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
+                        Image(systemName: subscriptionManager.isPro ? "sparkles" : "lock.fill")
                             .font(.system(size: 13, weight: .bold))
                         Text("See your sleep story")
                             .font(MooniFont.title(15))

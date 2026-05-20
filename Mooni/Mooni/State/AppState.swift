@@ -1015,7 +1015,13 @@ final class AppState: ObservableObject {
 
     /// Pulls recent sleep samples from HealthKit. Falls back to activity-based
     /// estimation when HealthKit is unavailable, denied, or simply empty.
+    ///
+    /// Auto-tracking (both HealthKit import and activity-based estimation) is
+    /// a Pro feature. Free users log nights manually — this no-ops for them.
     func importHealthKitSleep() async {
+        let isPro = await MainActor.run { SubscriptionManager.shared.isPro }
+        guard isPro else { return }
+
         let healthIntervals = await HealthKitManager.shared.fetchNightlySleep(days: 14)
         if !healthIntervals.isEmpty {
             insertImportedIntervals(

@@ -8,7 +8,12 @@ import AVFoundation
 /// and only one sound plays at a time so it doesn't turn into noise.
 struct FallAsleepView: View {
     @StateObject private var player = AmbientSoundPlayer.shared
+    @EnvironmentObject var subscriptionManager: SubscriptionManager
     @State private var volume: Double = 0.7
+    @State private var showPaywall = false
+
+    /// Sound IDs that are free; everything else requires Pro.
+    private static let freeSoundIDs: Set<String> = ["rain", "ocean"]
     // Default to 30 minutes so a user who falls asleep with the phone
     // doesn't have ambient sound playing all night. They can still extend
     // to 1h or disable from the timer card.
@@ -61,6 +66,7 @@ struct FallAsleepView: View {
             }
         }
         .onAppear { player.setVolume(Float(volume)) }
+        .mooniPaywall(isPresented: $showPaywall)
     }
 
     private var header: some View {
@@ -85,12 +91,19 @@ struct FallAsleepView: View {
     private var soundsGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
             ForEach(AmbientSound.catalog) { sound in
+                let isFree = Self.freeSoundIDs.contains(sound.id)
+                let locked = !isFree && !subscriptionManager.isPro
                 SoundTile(
                     sound: sound,
                     isPlaying: player.current?.id == sound.id,
-                    isAvailable: AmbientSoundPlayer.isBundled(sound)
+                    isAvailable: AmbientSoundPlayer.isBundled(sound),
+                    isLocked: locked
                 ) {
-                    player.toggle(sound)
+                    if locked {
+                        showPaywall = true
+                    } else {
+                        player.toggle(sound)
+                    }
                 }
             }
         }
@@ -174,10 +187,11 @@ private struct SoundTile: View {
     let sound: AmbientSound
     let isPlaying: Bool
     let isAvailable: Bool
+    let isLocked: Bool
     let action: () -> Void
 
     var body: some View {
-        Button(action: { if isAvailable { action() } }) {
+        Button(action: { if isAvailable || isLocked { action() } }) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     ZStack {
@@ -189,7 +203,14 @@ private struct SoundTile: View {
                             .font(.system(size: 18, weight: .semibold))
                     }
                     Spacer()
-                    if !isAvailable {
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(MooniColor.warning)
+                            .padding(7)
+                            .background(MooniColor.warning.opacity(0.18))
+                            .clipShape(Circle())
+                    } else if !isAvailable {
                         Text("Soon")
                             .font(MooniFont.caption(10))
                             .foregroundColor(MooniColor.textMuted)
@@ -225,7 +246,7 @@ private struct SoundTile: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(isPlaying ? sound.tint.opacity(0.55) : Color.white.opacity(0.06), lineWidth: 1)
             )
-            .opacity(isAvailable ? 1 : 0.55)
+            .opacity(isAvailable ? (isLocked ? 0.75 : 1) : 0.55)
         }
         .buttonStyle(.plain)
     }

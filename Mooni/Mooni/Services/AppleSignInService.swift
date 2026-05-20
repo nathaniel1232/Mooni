@@ -3,6 +3,7 @@ import AuthenticationServices
 import CryptoKit
 import Supabase
 import UIKit
+import RevenueCat
 
 /// Native Sign in with Apple → Supabase OIDC exchange.
 ///
@@ -59,6 +60,23 @@ final class AppleSignInService: NSObject {
                 nonce: nonce
             )
         )
+
+        // Tie RevenueCat to the Supabase user. Without this, RevenueCat keeps
+        // a device-bound anonymous ID and a reinstall would orphan the user's
+        // entitlement. With this, signing in with Apple on a new install
+        // automatically re-attaches the existing entitlement.
+        if let uid = Supa.currentUserID {
+            _ = try? await Purchases.shared.logIn(uid.uuidString)
+            await SubscriptionManager.shared.refreshCustomerInfo()
+        }
+    }
+
+    /// Call from sign-out paths so the next anonymous user (or a different
+    /// signed-in user) doesn't inherit the previous user's entitlement.
+    func signOut() async {
+        try? await Supa.client.auth.signOut()
+        _ = try? await Purchases.shared.logOut()
+        await SubscriptionManager.shared.refreshCustomerInfo()
     }
 
     /// Wraps the delegate-based ASAuthorizationController in async/await.

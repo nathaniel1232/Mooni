@@ -30,7 +30,9 @@ struct ProfileView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         lunaSummaryCard
-                        sleepStoryPreviewCard
+                        if subscriptionManager.isPro {
+                            sleepStoryPreviewCard
+                        }
                         levelCard
                         sleepGoalCard
                         progressCard
@@ -296,7 +298,16 @@ struct ProfileView: View {
                     .font(MooniFont.title(20))
                     .foregroundColor(MooniColor.textPrimary)
 
-                settingsButton(icon: "heart.text.square.fill", title: "Apple Health", value: healthStatusText) {
+                settingsButton(
+                    icon: "heart.text.square.fill",
+                    title: "Apple Health",
+                    value: subscriptionManager.isPro ? healthStatusText : "Pro feature",
+                    locked: !subscriptionManager.isPro
+                ) {
+                    if !subscriptionManager.isPro {
+                        showPaywall = true
+                        return
+                    }
                     Task {
                         _ = await healthKit.requestAuthorization()
                         await appState.importHealthKitSleep()
@@ -454,9 +465,10 @@ struct ProfileView: View {
         isDeleting = true
         defer { isDeleting = false }
         do {
-            // Best-effort Supabase sign-out + delete; failures don't block
-            // local wipe — Apple still requires the local data to be removed.
-            try? await Supa.client.auth.signOut()
+            // Best-effort Supabase sign-out (also unlinks RevenueCat user);
+            // failures don't block local wipe — Apple still requires the
+            // local data to be removed.
+            await AppleSignInService.shared.signOut()
             appState.eraseAllUserData()
             deleteError = nil
         } catch {
@@ -489,7 +501,13 @@ struct ProfileView: View {
         .padding(.vertical, 4)
     }
 
-    private func settingsButton(icon: String, title: String, value: String, action: @escaping () -> Void) -> some View {
+    private func settingsButton(
+        icon: String,
+        title: String,
+        value: String,
+        locked: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
@@ -503,11 +521,17 @@ struct ProfileView: View {
                     .font(MooniFont.body(15))
                     .foregroundColor(MooniColor.textPrimary)
 
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(MooniColor.warning)
+                }
+
                 Spacer()
 
                 Text(value)
                     .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.textSecondary)
+                    .foregroundColor(locked ? MooniColor.warning : MooniColor.textSecondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
 

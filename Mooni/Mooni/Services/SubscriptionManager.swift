@@ -40,7 +40,17 @@ final class SubscriptionManager: ObservableObject {
         Purchases.logLevel = .error
         Purchases.configure(withAPIKey: "appl_NHazhFbSVJwZapxrWPhcOVfrGma")
         Purchases.shared.delegate = MooniPurchasesDelegate.shared
-        Task { await refreshAll() }
+        Task {
+            // If we already have a persisted Supabase session from a prior
+            // launch, re-attach RevenueCat to that user ID before fetching
+            // entitlements. Without this, a reinstall on the same device
+            // would briefly run as anonymous and miss the user's purchases
+            // until they signed in again.
+            if let uid = Supa.currentUserID {
+                _ = try? await Purchases.shared.logIn(uid.uuidString)
+            }
+            await refreshAll()
+        }
     }
 
     // MARK: - Data loading

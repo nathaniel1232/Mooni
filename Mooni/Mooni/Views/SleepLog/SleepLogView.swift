@@ -2,7 +2,13 @@ import SwiftUI
 
 struct SleepLogView: View {
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var subscriptionManager: SubscriptionManager
     @State private var showLogSheet = false
+    @State private var showPaywall = false
+
+    /// Free users see only the most recent 3 nights; older nights are hidden
+    /// behind a Pro upsell card. Pro users see everything.
+    private static let freeHistoryLimit = 3
 
     var body: some View {
         NavigationStack {
@@ -22,6 +28,7 @@ struct SleepLogView: View {
             .sheet(isPresented: $showLogSheet) {
                 LogSleepSheet()
             }
+            .mooniPaywall(isPresented: $showPaywall)
         }
     }
 
@@ -59,17 +66,55 @@ struct SleepLogView: View {
                 }
             }
         } else {
+            let sorted = appState.entries.sorted(by: { $0.wakeTime > $1.wakeTime })
+            let visible: [SleepEntry] = subscriptionManager.isPro
+                ? sorted
+                : Array(sorted.prefix(Self.freeHistoryLimit))
+            let hiddenCount = max(0, sorted.count - visible.count)
+
             VStack(alignment: .leading, spacing: 10) {
                 Text("Your nights")
                     .font(MooniFont.title(17))
                     .foregroundColor(MooniColor.textPrimary)
                     .padding(.leading, 6)
 
-                ForEach(appState.entries.sorted(by: { $0.wakeTime > $1.wakeTime })) { entry in
+                ForEach(visible) { entry in
                     NightRow(entry: entry)
+                }
+
+                if !subscriptionManager.isPro && hiddenCount > 0 {
+                    historyUpsell(hiddenCount: hiddenCount)
                 }
             }
         }
+    }
+
+    private func historyUpsell(hiddenCount: Int) -> some View {
+        Button { showPaywall = true } label: {
+            MooniCard {
+                HStack(spacing: 14) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(MooniColor.warning)
+                        .frame(width: 36, height: 36)
+                        .background(MooniColor.warning.opacity(0.16))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(hiddenCount) more night\(hiddenCount == 1 ? "" : "s") locked")
+                            .font(MooniFont.title(15))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Text("Unlock full history with SleepOwl Pro")
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.textSecondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(MooniColor.accent)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

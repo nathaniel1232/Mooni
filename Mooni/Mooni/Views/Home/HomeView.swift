@@ -342,14 +342,26 @@ struct HomeView: View {
                              label: "Wake", color: MooniColor.accent)
                 }
 
-                Button { showSleepStory = true } label: {
-                    Text("See your sleep story")
-                        .font(MooniFont.title(15))
-                        .foregroundColor(MooniColor.background)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(MooniColor.accent)
-                        .clipShape(Capsule())
+                Button {
+                    if subscriptionManager.isPro {
+                        showSleepStory = true
+                    } else {
+                        showPaywall = true
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("See your sleep story")
+                            .font(MooniFont.title(15))
+                        if !subscriptionManager.isPro {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                    }
+                    .foregroundColor(MooniColor.background)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(MooniColor.accent)
+                    .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
