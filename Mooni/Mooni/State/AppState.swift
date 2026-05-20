@@ -29,7 +29,6 @@ final class AppState: ObservableObject {
         static let appOpenedAfterWakeAt = "mooni.appOpenedAfterWakeAt"
         static let lastSystemTaskShown = "mooni.lastSystemTaskShownAt"
         static let lastSystemTaskIndex = "mooni.lastSystemTaskIndex"
-        static let devForcePro = "mooni.devForcePro"
     }
 
     // MARK: - Published state
@@ -1189,22 +1188,3 @@ extension AppState {
     }
 }
 
-#if DEBUG
-extension AppState {
-    @discardableResult
-    func simulateCompletedNightEndingNow() -> SleepEntry {
-        let wakeTime = Date()
-        let testHours = min(max(goalHours, 2), 10)
-        let bedtime = wakeTime.addingTimeInterval(-testHours * 3600)
-
-        return logSleep(
-            bedtime: bedtime,
-            wakeTime: wakeTime,
-            quality: .good,
-            mood: .energized,
-            notes: "Developer test: simulated night",
-            routineCompleted: !routine.completedToday.isEmpty
-        )
-    }
-}
-#endif

@@ -161,8 +161,6 @@ struct OnboardingView: View {
         case featureTour              // Quick "what unlocks tonight" tour
         // ── Pre-paywall science sequence (6 screens) ──────────────────────
         // Final credibility hit before sign-in / paywall. Every claim cited.
-        case scienceAudioHook         // "Your phone hears more than you think"
-        case scienceYAMNet            // Google Research's YAMNet
         case scienceEfficiency        // Sleep Efficiency formula (AASM)
         case scienceArchitecture      // Hypnogram — REM/Deep/Light per minute
         case scienceOnDevice          // 0 bytes uploaded — Apple Neural Engine
@@ -502,8 +500,6 @@ struct OnboardingView: View {
         case .soundsDemo:          SoundscapePreviewScreen(petName: petName)
         case .soundscapePreview:   WidgetPreviewScreen(petName: petName, page: $widgetPage)
         case .featureTour:         FeatureTourScreen(petName: petName, page: $sleepCirclePage)
-        case .scienceAudioHook:    AudioInsightScreen()
-        case .scienceYAMNet:       YAMNetScreen()
         case .scienceEfficiency:   EfficiencyFormulaScreen()
         case .scienceArchitecture: SleepArchitectureScreen()
         case .scienceOnDevice:     OnDevicePrivacyScreen()
@@ -731,8 +727,6 @@ struct OnboardingView: View {
             return widgetPage < WidgetPreviewScreen.pageCount - 1 ? "See next widget" : "I want these"
         case .featureTour:
             return sleepCirclePage < FeatureTourScreen.pageCount - 1 ? "Continue" : "Show me the science"
-        case .scienceAudioHook:   return "How does it work?"
-        case .scienceYAMNet:      return "What's in my score?"
         case .scienceEfficiency:  return "Show me my night"
         case .scienceArchitecture:return "Is my data safe?"
         case .scienceOnDevice:    return "What do I get?"
@@ -3532,9 +3526,9 @@ private struct ScienceCredibilityScreen: View {
     @State private var titleIn = false
 
     private let logos: [(emoji: String, name: String, blurb: String, tint: Color)] = [
-        ("🏥", "AASM",   "The medical sleep standard",     MooniColor.accent),
-        ("🤖", "Google", "AI that listens to your night",  MooniColor.success),
-        ("🍎", "Apple",  "Your data stays on your phone",  MooniColor.accentSoft)
+        ("📚", "Research", "Built using sleep science research", MooniColor.accent),
+        ("🤖", "AI",       "AI-based sleep stage estimation",    MooniColor.success),
+        ("🍎", "Apple",    "Your data stays on your phone",      MooniColor.accentSoft)
     ]
 
     var body: some View {
@@ -4757,7 +4751,7 @@ private struct SocialProofScreen: View {
                     Text("4.9")
                         .font(.system(size: 56, weight: .heavy, design: .rounded))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text("on the App Store")
+                    Text("average rating")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundColor(MooniColor.textSecondary)
                 }
@@ -5765,7 +5759,7 @@ private struct AutoTrackAccuracyScreen: View {
         VStack(spacing: 24) {
             Spacer(minLength: 8)
 
-            Text.iconHeader("🏆", "MOST ACCURATE")
+            Text.iconHeader("🏆", "WEARABLE-LEVEL INSIGHT")
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.success)
                 .tracking(2)
@@ -5774,7 +5768,7 @@ private struct AutoTrackAccuracyScreen: View {
                 .background(MooniColor.success.opacity(0.16))
                 .clipShape(Capsule())
 
-            Text("We beat the wearables.\nNo wristband needed.")
+            Text("Designed to rival\nwearable sleep tracking.")
                 .font(MooniFont.display(26))
                 .foregroundColor(MooniColor.textPrimary)
                 .multilineTextAlignment(.center)
@@ -5789,7 +5783,7 @@ private struct AutoTrackAccuracyScreen: View {
             .opacity(headIn ? 1 : 0)
             .offset(y: headIn ? 0 : 8)
 
-            Text("Smaller error = more accurate")
+            Text("Many users find it comparable to wearable trackers")
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundColor(MooniColor.textMuted)
                 .tracking(1.2)

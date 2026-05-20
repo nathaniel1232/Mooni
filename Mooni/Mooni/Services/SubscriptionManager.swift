@@ -9,9 +9,8 @@ final class SubscriptionManager: ObservableObject {
 
     // MARK: - Published
 
-    /// Sourced from RevenueCat at launch (with the `devForcePro` override
-    /// taking precedence). Intentionally not persisted — entitlement status
-    /// is the source of truth and is re-fetched on app start.
+    /// Sourced from RevenueCat at launch. Intentionally not persisted —
+    /// entitlement status is the source of truth and is re-fetched on app start.
     @Published var isPro: Bool = false
     @Published var currentOffering: Offering?
     @Published var discountOffering: Offering?
@@ -31,20 +30,8 @@ final class SubscriptionManager: ObservableObject {
     /// one, which would charge full price while showing a discount.
     private static let discountOfferingID = "discount"
 
-    /// Local override that flips the app into Pro for testing without a sandbox
-    /// purchase. Persisted across launches so the rest of the app behaves
-    /// exactly as if the user owns the entitlement.
-    @Published var devForcePro: Bool {
-        didSet {
-            UserDefaults.standard.set(devForcePro, forKey: "mooni.devForcePro")
-            if devForcePro { isPro = true }
-            else { Task { await refreshCustomerInfo() } }
-        }
-    }
-
     private init() {
-        self.devForcePro = UserDefaults.standard.bool(forKey: "mooni.devForcePro")
-        if self.devForcePro { self.isPro = true }
+        UserDefaults.standard.removeObject(forKey: "mooni.devForcePro")
     }
 
     // MARK: - Configuration
@@ -66,7 +53,6 @@ final class SubscriptionManager: ObservableObject {
     }
 
     func refreshCustomerInfo() async {
-        if devForcePro { isPro = true; return }
         do {
             let info = try await Purchases.shared.customerInfo()
             isPro = Self.hasProEntitlement(in: info)

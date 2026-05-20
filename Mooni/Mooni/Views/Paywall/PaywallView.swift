@@ -260,7 +260,7 @@ struct PaywallView: View {
 
     private var titleBlock: some View {
         VStack(spacing: 6) {
-            Text(plan == .annual ? "How your free trial works" : "Unlock SleepOwl Pro")
+            Text(plan == .annual && trialDays != nil ? "How your free trial works" : "Unlock SleepOwl Pro")
                 .font(MooniFont.display(24))
                 .foregroundStyle(LinearGradient(
                     colors: [MooniColor.textPrimary, MooniColor.accentSoft],
@@ -278,7 +278,7 @@ struct PaywallView: View {
     private var planSubtitle: String {
         if plan == .annual {
             guard let pkg = annualPackage else {
-                return "First 7 days free, then yearly. Cancel anytime."
+                return "Yearly subscription. Cancel anytime."
             }
             let price = pkg.storeProduct.localizedPriceString
             let weeklyEquiv = (pkg.storeProduct.price as Decimal) / 52
@@ -286,7 +286,10 @@ struct PaywallView: View {
             let weeklyStr = String(format: "%@%.2f/week",
                                    symbol,
                                    NSDecimalNumber(decimal: weeklyEquiv).floatValue)
-            return "First 7 days free, then \(price) (\(weeklyStr))"
+            if let days = trialDays {
+                return "First \(days) day\(days == 1 ? "" : "s") free, then \(price) (\(weeklyStr))"
+            }
+            return "\(price) per year (\(weeklyStr)) · cancel anytime"
         } else {
             guard let pkg = shortPackage else {
                 return "Billed \(shortPeriodLabel.lowercased()). Cancel anytime."
@@ -303,6 +306,29 @@ struct PaywallView: View {
         return "\(pkg.storeProduct.localizedPriceString)/yr"
     }
 
+    /// Number of trial days configured on the annual product in StoreKit, or
+    /// nil if the product has no intro offer. We render the trial timeline
+    /// from this so changing the trial length in App Store Connect does NOT
+    /// require a code change.
+    private var trialDays: Int? {
+        guard let intro = annualPackage?.storeProduct.introductoryDiscount else { return nil }
+        let value = intro.subscriptionPeriod.value
+        switch intro.subscriptionPeriod.unit {
+        case .day:   return value
+        case .week:  return value * 7
+        case .month: return value * 30
+        case .year:  return value * 365
+        @unknown default: return value
+        }
+    }
+
+    /// Day the reminder fires — 2 days before the trial ends, or day 1 for
+    /// very short trials so the timeline still reads in order.
+    private var reminderDay: Int {
+        guard let total = trialDays, total > 1 else { return 1 }
+        return max(1, total - 2)
+    }
+
     private var shortPriceLabel: String {
         guard let pkg = shortPackage else { return "" }
         let unit = pkg.packageType == .weekly ? "wk" : "mo"
@@ -311,7 +337,7 @@ struct PaywallView: View {
 
     private var planToggle: some View {
         HStack(spacing: 0) {
-            toggleSegment(title: "Annual", subtitle: "Free trial", price: annualPriceLabel, value: .annual)
+            toggleSegment(title: "Annual", subtitle: trialDays != nil ? "Free trial" : "Best value", price: annualPriceLabel, value: .annual)
             toggleSegment(title: shortPeriodLabel, subtitle: "No trial", price: shortPriceLabel, value: .short)
         }
         .padding(4)
@@ -359,32 +385,41 @@ struct PaywallView: View {
 
     // MARK: - Annual: trial timeline
 
+    @ViewBuilder
     private var timeline: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            timelineRow(
-                icon: "lock.open.fill",
-                tint: MooniColor.accent,
-                title: "Today",
-                body: "Unlock the full SleepOwl library — meditations, sleep sounds, deep insights & every spirit colour.",
-                showConnector: true,
-                connectorFill: 1.0
-            )
-            timelineRow(
-                icon: "bell.fill",
-                tint: MooniColor.accentSoft,
-                title: "In 5 days",
-                body: "We'll send a gentle reminder that your trial is ending soon — no surprises.",
-                showConnector: true,
-                connectorFill: 0.35
-            )
-            timelineRow(
-                icon: "star.fill",
-                tint: MooniColor.warning,
-                title: "In 7 days",
-                body: "Your subscription begins. Cancel anytime before then and you won't be charged.",
-                showConnector: false,
-                connectorFill: 0.0
-            )
+        if let totalDays = trialDays {
+            let reminder = reminderDay
+            let connectorFill = totalDays > 1 ? Double(totalDays - reminder) / Double(totalDays) : 0.0
+            VStack(alignment: .leading, spacing: 0) {
+                timelineRow(
+                    icon: "lock.open.fill",
+                    tint: MooniColor.accent,
+                    title: "Today",
+                    body: "Unlock the full SleepOwl library — meditations, sleep sounds, deep insights & every spirit colour.",
+                    showConnector: true,
+                    connectorFill: 1.0
+                )
+                timelineRow(
+                    icon: "bell.fill",
+                    tint: MooniColor.accentSoft,
+                    title: reminder == 1 ? "Tomorrow" : "In \(reminder) day\(reminder == 1 ? "" : "s")",
+                    body: "We'll send a gentle reminder that your trial is ending soon — no surprises.",
+                    showConnector: true,
+                    connectorFill: connectorFill
+                )
+                timelineRow(
+                    icon: "star.fill",
+                    tint: MooniColor.warning,
+                    title: "In \(totalDays) day\(totalDays == 1 ? "" : "s")",
+                    body: "Your subscription begins. Cancel anytime before then and you won't be charged.",
+                    showConnector: false,
+                    connectorFill: 0.0
+                )
+            }
+        } else {
+            // Fallback when annual product has no intro offer configured:
+            // show the same benefit list the monthly tab uses.
+            monthlyBenefits
         }
     }
 
@@ -515,8 +550,11 @@ struct PaywallView: View {
 
     private var ctaText: String {
         if plan == .annual {
-            guard let pkg = annualPackage else { return "Start Free Trial" }
-            return "Try Free · \(pkg.storeProduct.localizedPriceString)/yr after"
+            guard let pkg = annualPackage else { return "Continue" }
+            if trialDays != nil {
+                return "Try Free · \(pkg.storeProduct.localizedPriceString)/yr after"
+            }
+            return "Continue — \(pkg.storeProduct.localizedPriceString)/yr"
         }
         guard let pkg = shortPackage else { return "Continue" }
         return "Continue — \(pkg.storeProduct.localizedPriceString)\(shortPerLabel)"
@@ -568,12 +606,12 @@ struct PaywallView: View {
     private var footerLinks: some View {
         HStack(spacing: 14) {
             Link("Terms",
-                 destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                 destination: URL(string: "https://sleepowlapp.vercel.app/terms")!)
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundColor(MooniColor.textMuted)
                 .underline()
             Link("Privacy",
-                 destination: URL(string: "https://nathanielfiskaa.github.io/sleepowl-privacy/")!)
+                 destination: URL(string: "https://sleepowlapp.vercel.app/privacy")!)
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundColor(MooniColor.textMuted)
                 .underline()

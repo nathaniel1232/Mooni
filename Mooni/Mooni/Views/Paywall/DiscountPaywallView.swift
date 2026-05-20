@@ -274,9 +274,9 @@ struct DiscountPaywallView: View {
 
                             HStack(spacing: 14) {
                                 Link("Terms",
-                                     destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                                     destination: URL(string: "https://sleepowlapp.vercel.app/terms")!)
                                 Link("Privacy",
-                                     destination: URL(string: "https://nathanielfiskaa.github.io/sleepowl-privacy/")!)
+                                     destination: URL(string: "https://sleepowlapp.vercel.app/privacy")!)
                             }
                             .font(.system(size: 10, weight: .medium, design: .rounded))
                             .foregroundColor(.white.opacity(0.40))

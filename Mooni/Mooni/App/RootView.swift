@@ -144,20 +144,6 @@ struct SleepingOverlay: View {
                                 .foregroundColor(MooniColor.textMuted)
                                 .textCase(.uppercase)
                         }
-                        #if DEBUG
-                        Button {
-                            appState.wakeUpFromSleepMode()
-                        } label: {
-                            Text("Dev: exit sleep mode")
-                                .font(MooniFont.caption(11))
-                                .foregroundColor(MooniColor.danger)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(Color.white.opacity(0.06))
-                                .clipShape(Capsule())
-                                .overlay(Capsule().stroke(MooniColor.danger.opacity(0.4), lineWidth: 1))
-                        }
-                        #endif
                     }
                     .padding(.bottom, 36)
                 }

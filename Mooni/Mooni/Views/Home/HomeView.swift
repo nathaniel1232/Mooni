@@ -1317,13 +1317,6 @@ private struct StartSleepSheet: View {
                         dismiss()
                     }
 
-                    #if DEBUG
-                    SecondaryButton(title: "DEV: Simulate morning now", icon: "forward.end.fill") {
-                        appState.simulateCompletedNightEndingNow()
-                        dismiss()
-                    }
-                    #endif
-
                     Spacer()
                 }
                 .padding(20)

@@ -21,11 +21,6 @@ struct ProfileView: View {
     @AppStorage(Haptics.hapticsKey) private var hapticsOn = true
     @AppStorage(Haptics.soundKey) private var soundOn = true
 
-    #if DEBUG
-    @State private var showMarketingVideo = false
-    @State private var showMarketingPoster = false
-    #endif
-
     var body: some View {
         NavigationStack {
             ZStack {
@@ -46,10 +41,6 @@ struct ProfileView: View {
                         if !subscriptionManager.isPro {
                             upgradeCard
                         }
-
-                        #if DEBUG
-                        devTools
-                        #endif
                     }
                     .padding(20)
                     .padding(.bottom, 96)
@@ -72,14 +63,6 @@ struct ProfileView: View {
                 healthKit.refreshAuthState()
                 await notifications.refreshAuthState()
             }
-            #if DEBUG
-            .fullScreenCover(isPresented: $showMarketingVideo) {
-                MarketingVideoView()
-            }
-            .fullScreenCover(isPresented: $showMarketingPoster) {
-                MarketingPosterView()
-            }
-            #endif
         }
     }
 
@@ -352,7 +335,7 @@ struct ProfileView: View {
 
                 Divider().background(Color.white.opacity(0.08))
 
-                Link(destination: URL(string: "https://nathanielfiskaa.github.io/sleepowl-privacy/")!) {
+                Link(destination: URL(string: "https://sleepowlapp.vercel.app/privacy")!) {
                     HStack(spacing: 12) {
                         Image(systemName: "hand.raised.fill")
                             .font(.system(size: 15, weight: .semibold))
@@ -384,16 +367,23 @@ struct ProfileView: View {
                     .font(MooniFont.title(20))
                     .foregroundColor(MooniColor.textPrimary)
 
-                Link(destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!) {
+                Link(destination: URL(string: "https://sleepowlapp.vercel.app/terms")!) {
                     accountRow(icon: "doc.text.fill", color: MooniColor.accent,
                                title: "Terms of Use (EULA)", trailing: "arrow.up.right")
                 }
 
                 Divider().background(Color.white.opacity(0.08))
 
-                Link(destination: URL(string: "https://nathanielfiskaa.github.io/sleepowl-privacy/")!) {
+                Link(destination: URL(string: "https://sleepowlapp.vercel.app/privacy")!) {
                     accountRow(icon: "lock.shield.fill", color: MooniColor.accentSoft,
                                title: "Privacy Policy", trailing: "arrow.up.right")
+                }
+
+                Divider().background(Color.white.opacity(0.08))
+
+                Link(destination: URL(string: "https://sleepowlapp.vercel.app/support")!) {
+                    accountRow(icon: "lifepreserver", color: MooniColor.accent,
+                               title: "Support", trailing: "arrow.up.right")
                 }
 
                 Divider().background(Color.white.opacity(0.08))
@@ -588,231 +578,6 @@ struct ProfileView: View {
         case .notDetermined: return "Set up"
         }
     }
-
-    // MARK: - DEBUG
-
-    #if DEBUG
-    private var devTools: some View {
-        VStack(spacing: 10) {
-            Divider().background(Color.white.opacity(0.1))
-            Text("DEV TOOLS")
-                .font(MooniFont.caption(11))
-                .foregroundColor(MooniColor.textMuted)
-                .textCase(.uppercase)
-                .padding(.top, 4)
-
-            // Hidden marketing-video launcher. Distinct visual style so it's
-            // easy to find when recording TikTok / Reels demos.
-            Button {
-                showMarketingVideo = true
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 14, weight: .bold))
-                    Text("Start Marketing Video")
-                        .font(MooniFont.title(14))
-                    Spacer()
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 12, weight: .bold))
-                }
-                .foregroundColor(MooniColor.background)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 14)
-                .background(
-                    LinearGradient(
-                        colors: [MooniColor.accentSoft, MooniColor.accent],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            // Static, screenshot-ready promo poster for App Store / video stills.
-            Button {
-                showMarketingPoster = true
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 14, weight: .bold))
-                    Text("Marketing Poster")
-                        .font(MooniFont.title(14))
-                    Spacer()
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 12, weight: .bold))
-                }
-                .foregroundColor(MooniColor.accentSoft)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(MooniColor.accent.opacity(0.5), lineWidth: 1)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(MooniColor.accent.opacity(0.12))
-                        )
-                )
-            }
-            .buttonStyle(.plain)
-
-            devButton("Skip Onboarding", icon: "fast.forward.fill") {
-                appState.hasCompletedOnboarding = true
-            }
-
-            devButton("Reset All Data", icon: "trash.fill", color: MooniColor.danger) {
-                appState.hasCompletedOnboarding = false
-                appState.pet = Pet()
-                appState.entries = []
-                appState.routine = Routine()
-                appState.dreamStars = 0
-            }
-
-            devButton("Log Sleep (8h tonight)", icon: "moon.zzz.fill") {
-                let bed = appState.targetBedtime
-                let wake = Calendar.current.date(byAdding: .hour, value: 8, to: bed) ?? bed
-                _ = appState.logSleep(
-                    bedtime: bed,
-                    wakeTime: wake,
-                    quality: .great,
-                    mood: .energized,
-                    notes: "[DEV]",
-                    routineCompleted: true
-                )
-            }
-
-            HStack(spacing: 8) {
-                devButton("Growth +1", icon: "plus.circle.fill", width: nil) {
-                    var p = appState.pet
-                    p.dreamEnergy += p.energyForNextLevel
-                    while p.dreamEnergy >= p.energyForNextLevel {
-                        p.dreamEnergy -= p.energyForNextLevel
-                        p.level += 1
-                    }
-                    for item in UnlockableItem.catalog where item.requiredLevel <= p.level {
-                        p.unlockedItems.insert(item.id)
-                    }
-                    appState.pet = p
-                }
-
-                devButton("Unlock All", icon: "lock.open.fill", width: nil) {
-                    var p = appState.pet
-                    p.unlockedItems = Set(UnlockableItem.catalog.map { $0.id })
-                    appState.pet = p
-                }
-            }
-
-            devButton("Clear Sleep Logs", icon: "xmark.circle.fill", color: MooniColor.danger) {
-                appState.entries = []
-            }
-
-            devButton("Cycle Mood", icon: "face.smiling.fill") {
-                let moods: [Pet.Mood] = [.energized, .cozy, .calm, .sleepy, .groggy, .restless]
-                let current = appState.pet.mood
-                let nextIndex = (moods.firstIndex(of: current) ?? -1) + 1
-                var p = appState.pet
-                p.mood = moods[nextIndex % moods.count]
-                appState.pet = p
-            }
-
-            devButton("Add Dream Stars (100)", icon: "sparkles") {
-                appState.dreamStars += 100
-            }
-
-            devButton(
-                subscriptionManager.devForcePro ? "Disable forced Pro" : "Force Pro on",
-                icon: subscriptionManager.devForcePro ? "lock.fill" : "sparkles",
-                color: subscriptionManager.devForcePro ? MooniColor.warning : MooniColor.success
-            ) {
-                subscriptionManager.devForcePro.toggle()
-            }
-
-            devButton("Trigger sleep mode", icon: "moon.fill") {
-                appState.enterSleepMode()
-            }
-
-            devButton("Preview morning check-in", icon: "sun.max.fill") {
-                seedDevEntryIfNeeded()
-                appState.showMorningCheckIn = true
-            }
-        }
-        .padding(14)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(MooniColor.danger.opacity(0.3), lineWidth: 1)
-        )
-    }
-
-    /// Seed a synthetic last-night entry so the morning check-in flow has
-    /// something to display — bypasses the "still settling in" wait so we
-    /// can preview the full check-in any time during development.
-    private func seedDevEntryIfNeeded() {
-        guard appState.entryNeedingMorningCheckIn == nil else { return }
-
-        let cal = Calendar.current
-        let now = Date()
-        let wake = cal.date(bySettingHour: 7, minute: 12, second: 0, of: now) ?? now
-        let bed = cal.date(byAdding: .hour, value: -7, to: wake) ?? now.addingTimeInterval(-7 * 3600)
-
-        // Replace any existing same-day entry so the preview always shows
-        // fresh "needs check-in" state.
-        if let idx = appState.entries.firstIndex(where: { $0.dayKey == wake.dayKey }) {
-            appState.entries.remove(at: idx)
-        }
-        MorningCheckInStore.clear(for: wake.dayKey)
-
-        var entry = SleepEntry(
-            bedtime: bed,
-            wakeTime: wake,
-            quality: .good,
-            mood: .okay,
-            notes: "[DEV preview]",
-            routineCompleted: false,
-            isEstimated: false,
-            timeInBed: wake.timeIntervalSince(bed),
-            source: .appActivityEstimate
-        )
-        SleepScoringManager.update(
-            entry: &entry,
-            goalHours: appState.goalHours,
-            targetBedtime: appState.targetBedtime,
-            consistencyDays: appState.bedtimeConsistencyDays,
-            checkIn: nil,
-            age: appState.profile.age
-        )
-        appState.entries.append(entry)
-    }
-
-    private func devButton(
-        _ label: String,
-        icon: String,
-        color: Color = MooniColor.accent,
-        width: CGFloat? = .infinity,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 18)
-                Text(label)
-                    .font(MooniFont.caption(12))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Spacer()
-            }
-            .foregroundColor(color)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 10)
-            .background(color.opacity(0.10))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .frame(maxWidth: width)
-        }
-        .buttonStyle(.plain)
-    }
-    #endif
 }
 
 #Preview {

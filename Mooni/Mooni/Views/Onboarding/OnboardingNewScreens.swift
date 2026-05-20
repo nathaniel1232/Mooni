@@ -859,7 +859,7 @@ struct EfficiencyFormulaScreen: View {
             Spacer(minLength: 8)
 
             VStack(spacing: 10) {
-                Text("LAB-GRADE TRACKING")
+                Text("SLEEP INSIGHTS")
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(MooniColor.success)
                     .tracking(2)
@@ -868,13 +868,13 @@ struct EfficiencyFormulaScreen: View {
                     .background(MooniColor.success.opacity(0.16))
                     .clipShape(Capsule())
 
-                Text("As accurate as\na $1,000 sleep lab.")
+                Text("AI-based sleep\nstage estimation.")
                     .font(MooniFont.display(30))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
 
-                Text("We measured it against the medical gold standard.")
+                Text("Built using sleep science research.")
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)
@@ -885,12 +885,12 @@ struct EfficiencyFormulaScreen: View {
             // Two giant bars — Sleep Lab vs SleepOwl. Same height. That IS the claim.
             VStack(spacing: 14) {
                 accuracyBar(
-                    label: "Hospital sleep lab",
-                    sublabel: "Polysomnography · $1,000 / night",
+                    label: "Wearable trackers",
+                    sublabel: "Wristband · charged nightly",
                     fill: labFill,
                     percent: 100,
                     tint: MooniColor.accentSoft,
-                    icon: "building.2.fill"
+                    icon: "applewatch"
                 )
                 accuracyBar(
                     label: "SleepOwl on your phone",
@@ -907,7 +907,7 @@ struct EfficiencyFormulaScreen: View {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.seal.fill")
                     .foregroundColor(MooniColor.success)
-                Text("Within **5%** of medical-grade results")
+                Text("Tracks trends in REM, deep, and light sleep")
                     .font(MooniFont.body(13))
                     .foregroundColor(MooniColor.textPrimary)
             }
