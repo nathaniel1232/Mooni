@@ -202,15 +202,15 @@ struct OnboardingView: View {
             StarsBackground(count: 80)
 
             if step == .prePaywall {
-                // Pre-paywall takes over the screen — its own progress dots,
-                // its own footer, no outer onboarding chrome.
-                PrePaywallView(
-                    petName: petName,
-                    species: species,
-                    profile: profile,
-                    onContinue: { paywallSheet = .main }
-                )
-                .transition(.opacity)
+                // Terminal step: open the real paywall sheet directly, skipping
+                // the 3-stage emotional pre-paywall. Keeps onboarding short for
+                // App Store review (Guideline 4.0).
+                Color.clear
+                    .onAppear {
+                        if paywallSheet == nil {
+                            paywallSheet = .main
+                        }
+                    }
             } else {
                 VStack(spacing: 0) {
                     topBar
@@ -851,69 +851,72 @@ struct OnboardingView: View {
     /// answered the bigger question. Keeps the flow honest: if you said
     /// "no phone in bed", we don't ask "how long on your phone in bed".
     private func shouldSkip(_ s: Step) -> Bool {
-        // 27-screen optimised flow:
-        //   Scarcity → Personalization → Bad-news reveal → App credibility → Commitment
-        // Everything below is permanently removed from the visible path.
+        // Trimmed flow for App Store review (Guideline 4.0 — long setup at launch).
+        // Target: ~25 visible screens.
+        //   Hook → Pet → Profile Qs → Personalize → Reveal → Trust → Plan → Paywall
         switch s {
-        // ── Opening fat removed ────────────────────────────────────────
-        case .emotionalDiscomfort,
-             .hopeTransformation:
+        // Emotional/hook fat
+        case .sleepImpactStat, .identityDamage,
+             .emotionalDiscomfort, .hopeTransformation:
             return true
-        // ── Benefit reel removed (shown via goalStudy instead) ─────────
+        // Benefit reel
         case .benefitEnergy, .benefitFocus, .benefitBody,
              .benefitMood, .benefitLooks, .benefitLongevity:
             return true
-        // ── Pet ceremony trimmed ───────────────────────────────────────
+        // Pet ceremony trimmed to namePet only
         case .petAttachment, .bondMessage, .demo:
             return true
-        // ── Sleep Circle / friends tour hidden — backend isn't built yet.
-        //    Re-enable once friend invites + score sharing actually work.
+        // Sleep Circle / friends tour (backend not ready)
         case .featureTour:
             return true
-        // ── Bio questions: age kept (used to set ideal sleep hours +
-        //    personalized fact screens). Gender/height/weight still skipped —
-        //    we use defaults for those in scoring.
+        // Bio: age only — gender/height/weight aren't used in scoring
         case .genderQuestion, .heightQuestion, .weightQuestion:
             return true
-        // ── Auto-track REM kept in flow (key credibility hit) ──────────
-        // (autoTrackRem stays visible alongside autoTrackIntro + autoTrackAccuracy
-        //  to push the automatic-tracking story harder, per cofounder feedback)
-        // ── Goal studies trimmed to 1 ──────────────────────────────────
-        case .goalStudy2, .goalStudy3, .goalStudy4, .goalStudy5:
+        // Auto-track pitch screens — product marketing, cut
+        case .autoTrackIntro, .autoTrackRem, .autoTrackAccuracy:
             return true
-        // ── Question screens are back in: motivation + struggleDuration drive
-        //    personalised analysis and TopIssues. Only biggestProblem stays
-        //    skipped (it duplicates sleepGoal's answer set).
-        case .biggestProblem:
+        // Expert quote screens — feel forced; trust delivered via scienceCredibility
+        case .expertSleepTimes, .expertGoalFocus, .expertWakeInertia:
             return true
-        // ── Phone fact chart stays hidden; the question is back in.
-        case .phoneFact:
+        // Fact-chart intros — keep the question, drop the lecture
+        case .bodyFact, .sleepDebtFact,
+             .phoneFact, .caffeineFact, .stressFact,
+             .dayCycleFact, .environmentFact:
             return true
-        // ── Caffeine fact chart stays hidden; caffeineCutoff question is back.
-        case .caffeineFact:
+        // Extra questions that duplicate or pad
+        case .struggleDuration, .biggestProblem,
+             .motivationQuestion, .pseudoAnalysis,
+             .phoneScreenTime, .racingThoughts, .energyDip:
             return true
-        // ── Stress fact chart stays hidden; questions are back.
-        case .stressFact:
+        // Goal studies — all cut (was 1 kept; now 0)
+        case .goalStudy1, .goalStudy2, .goalStudy3, .goalStudy4, .goalStudy5:
             return true
-        // ── dayCycleFact still hidden; energyDip + napsDay questions back in.
-        case .dayCycleFact:
-            return true
-        // ── environmentFact chart stays hidden; roomEnvironment question back.
-        case .environmentFact:
-            return true
-        // ── Scheduling ceremony trimmed ────────────────────────────────
+        // Schedule ceremony trimmed
         case .reflection, .roomPicker, .anticipation:
             return true
-        // ── Health perm deferred (can request inside app) ──────────────
+        // Personalize block: keep goals + blockers + impact, cut the rest
+        case .personalizeTried, .personalizeWindDown, .personalizingReveal:
+            return true
+        // Health perm deferred to in-app
         case .healthPerm:
             return true
-        // ── scienceTrust (formula explainer) is back IN: the cofounder wants
-        //    more "backed by science" weight — the YAMNet / lab-accuracy /
-        //    on-device sequence plus this formula page all stay visible.
-        // ── Rate prompt is back in (non-skippable "Leave a rating" gate, per
-        //    glam-up-style onboarding). firstQuest still hidden (post-paywall).
-        case .firstQuest:
+        // Heavy science block — keep scienceCredibility + scienceOnDevice only
+        case .bodyStudies, .scienceTrust,
+             .scienceEfficiency, .scienceArchitecture, .scienceProPromise:
             return true
+        // Social proof (looks AI-generated) + in-onboarding rate prompt
+        case .socialProof, .rateApp:
+            return true
+        // Result/demo/feature filler before paywall
+        case .simulatedResult, .firstQuest,
+             .soundsDemo, .soundscapePreview:
+            return true
+        // Outcome aspirational reel
+        case .outcomeImagine, .outcomeMornings,
+             .outcomeDays, .outcomeFuture:
+            return true
+        // prePaywall: rendered specially to auto-open the real paywall sheet —
+        // do NOT skip it here (it's the terminal step that triggers paywall).
         default:
             return false
         }
