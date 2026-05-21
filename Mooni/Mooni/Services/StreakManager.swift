@@ -160,30 +160,28 @@ struct StreakFlameChip: View {
     let freezes: Int
 
     var body: some View {
-        HStack(spacing: 8) {
-            ZStack {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(current > 0 ? MooniColor.warning : MooniColor.textMuted)
-            }
+        HStack(spacing: 6) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(current > 0 ? MooniColor.warning : MooniColor.textMuted)
             Text("\(current)")
-                .font(MooniFont.display(24))
+                .font(MooniFont.display(18))
                 .foregroundColor(MooniColor.textPrimary)
                 .lineLimit(1)
             if freezes > 0 {
                 HStack(spacing: 3) {
                     Image(systemName: "snowflake")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundColor(MooniColor.accentSoft)
                     Text("\(freezes)")
-                        .font(MooniFont.caption(13))
+                        .font(MooniFont.display(18))
                         .foregroundColor(MooniColor.textSecondary)
                 }
-                .padding(.leading, 3)
+                .padding(.leading, 4)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
         .background(Color.white.opacity(0.08))
         .clipShape(Capsule())
         .overlay(
@@ -192,5 +190,6 @@ struct StreakFlameChip: View {
                 lineWidth: 1
             )
         )
+        .fixedSize()
     }
 }

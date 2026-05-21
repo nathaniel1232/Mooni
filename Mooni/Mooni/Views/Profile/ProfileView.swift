@@ -186,17 +186,14 @@ struct ProfileView: View {
                 HStack(spacing: 14) {
                     ZStack {
                         Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [MooniColor.warning, MooniColor.accent],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                            .fill(MooniColor.accent.opacity(0.18))
+                            .frame(width: 52, height: 52)
+                        Circle()
+                            .stroke(MooniColor.accent.opacity(0.45), lineWidth: 1.5)
                             .frame(width: 52, height: 52)
                         Text("\(p.level)")
-                            .font(MooniFont.title(22))
-                            .foregroundColor(MooniColor.background)
+                            .font(MooniFont.display(22))
+                            .foregroundColor(MooniColor.accentSoft)
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Level \(p.level)")

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import Combine
 
 /// Extended high-converting onboarding flow.
@@ -11,7 +12,6 @@ import Combine
 /// 5. Convert with the main paywall (hidden X) → discount paywall fallback
 struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var health = HealthKitManager.shared
     @StateObject private var notifications = NotificationManager.shared
 
     // MARK: - Wizard state
@@ -43,21 +43,7 @@ struct OnboardingView: View {
     // Onboarding profile (the new personalization data)
     @State private var profile: OnboardingProfile = OnboardingProfile()
 
-    // Demo screen state
-    @State private var demoStage: Int = 0   // 0 short / 1 long / 2 consistent
-
-    // Tap-driven page index for the widgets showcase (Small → Medium → Sleep Circle).
-    @State private var widgetPage: Int = 0
-    // Tap-driven page index for the Sleep Circle / friends showcase.
-    @State private var sleepCirclePage: Int = 0
-    // Tap-driven page index for the body-studies showcase (hormones / growth / etc).
-    @State private var bodyStudyPage: Int = 0
-    // Tap-driven page index for the sleep-debt showcase (hours / money / experiences / growth).
-    @State private var sleepDebtPage: Int = 0
-
-    // Loading screens
-    @State private var planMessageIndex: Int = 0
-    @State private var planProgress: Double = 0
+    // Loading screen state — drives planComputing's main ring + sub-bars.
     @State private var analyzingProgress: Double = 0
     @State private var analyzingStep: Int = 0
 
@@ -73,108 +59,89 @@ struct OnboardingView: View {
     @State private var authErrorMessage: String? = nil
 
     enum Step: Int, CaseIterable {
-        // Emotional priming sequence — designed to make the user
-        // self-identify with the problem and feel hope before any
-        // questions or commitments.
-        case welcome                  // S0 Get Started / Log In gate
-        case hero                     // S1 emotional hook
-        case sleepImpactStat          // S2 relatable pain
-        case identityDamage           // S3 connects sleep → daily identity
-        case emotionalDiscomfort      // S4 "your body remembers every late night"
-        case hopeTransformation       // S5 brighter hope visual
-        // Benefit reel — what better sleep gives you. Kept tight (6 screens)
-        // so the wins land without bloating completion.
-        case benefitEnergy
-        case benefitFocus
-        case benefitBody
-        case benefitMood
-        case benefitLooks
-        case benefitLongevity
-        case petAttachment            // S6 healthy vs exhausted pet
-        case namePet
-        case bondMessage              // emotional copy after naming
-        case demo
+        // ─ Hook ───────────────────────────────────────────────────────────
+        case welcome
+
+        // ─ Warmup questions (3) ───────────────────────────────────────────
         case ageQuestion
         case genderQuestion
-        case heightQuestion
-        case weightQuestion
-        case typicalSleepHours        // collected BEFORE bodyFact / sleepDebtFact reference it
-        case expertSleepTimes         // Phyllis Zee quote — promoted from inline
-        case autoTrackIntro           // "no manual logging" hook
-        case autoTrackRem             // REM + deep sleep accuracy claim
-        case autoTrackAccuracy        // vs-lab accuracy comparison
-        case bodyFact                 // animated chart: how body shapes sleep needs
-        case sleepGoal
-        case expertGoalFocus          // Dr. Colleen Carney quote — promoted from inline
-        case goalStudy1               // 5 personalized research screens
-        case goalStudy2               // tailored to the sleepGoal the user
-        case goalStudy3               // just selected — real-feeling
-        case goalStudy4               // citations, data, before/after.
-        case goalStudy5
-        case motivationQuestion
-        case pseudoAnalysis           // S8 "users like you tend to…"
-        case struggleDuration
-        case biggestProblem
-        case sleepDebtFact            // animated chart: sleep debt accumulating
-        case phoneBeforeBed
-        case phoneScreenTime
-        case phoneFact                // animated melatonin/blue-light chart
-        case caffeineCutoff
-        case caffeineFact             // animated half-life decay chart
-        case stressLevel
-        case racingThoughts
-        case stressFact               // animated cortisol curve
+        case typicalSleepHours
+
+        // ─ Story moment 1 — life turnaround timeline ──────────────────────
+        case lifeTimeline
+
+        // ─ Pet (light touch) ──────────────────────────────────────────────
+        case namePet
+
+        // ─ Identity questions (10) ────────────────────────────────────────
         case wakeFeeling
-        case expertWakeInertia        // Dr. Kenneth Wright quote — promoted from inline
         case energyDip
         case napsDay
-        case dayCycleFact             // circadian rhythm animation
+        case racingThoughts
+        case phoneBeforeBed
+        case caffeineCutoff
+        case stressLevel
+        case struggleDuration
+        case biggestProblem
         case roomEnvironment
-        case environmentFact          // light/noise impact mini-chart
+
+        // ─ Schedule basics ────────────────────────────────────────────────
         case schedule
-        case reflection
-        case roomPicker
-        case anticipation             // S9 "let's discover how your sleep affects your days"
-        case personalize              // "Let's personalize" intro — tap to begin
-        // ── Post-personalize multi-select block (tailored to prior answers) ──
-        case personalizeGoals         // what to improve (multi)
-        case personalizeBlockers      // what keeps you up (multi)
-        case personalizeImpact        // how poor sleep hits you (multi)
-        case personalizeTried         // what you've already tried (multi)
-        case personalizeWindDown      // what helps you relax (multi)
-        case personalizingReveal      // payoff — echoes picks, "building your plan"
-        case notificationPerm
-        case healthPerm
-        case analyzingAnswers         // loading 1 (long, variable)
-        case sleepScoreReveal
-        case topIssues
-        case bodyStudies              // tap-through: hormones / growth / brain / heart / immunity / quality
-        case scienceCredibility       // research + expert-panel credibility
-        case scienceTrust             // formula + phone fallback before plan generation
-        case generatingPlan           // loading 2 (long, variable)
-        case socialProof
-        case rateApp                  // ask for App Store rating after social proof
-        case simulatedResult
-        case firstQuest
-        case soundsDemo               // interactive ambient-sound preview — mirrors the Sounds tab
-        case soundscapePreview        // interactive rainforest/rain sound demo
-        case featureTour              // Quick "what unlocks tonight" tour
-        // ── Pre-paywall science sequence (6 screens) ──────────────────────
-        // Final credibility hit before sign-in / paywall. Every claim cited.
-        case scienceEfficiency        // Sleep Efficiency formula (AASM)
-        case scienceArchitecture      // Hypnogram — REM/Deep/Light per minute
-        case scienceOnDevice          // 0 bytes uploaded — Apple Neural Engine
-        case scienceProPromise        // Bridge to Pro: snore/wake-cause/architecture
-        // Outcome vision — Cali-style: paint the transformed life late, right
-        // before the commitment ask (sign-in → pre-paywall → paywall).
-        case outcomeImagine           // before → after "you", 2 weeks from now
-        case outcomeMornings          // what your mornings become
-        case outcomeDays              // what your days become
-        case outcomeFuture            // aspirational close — "this is the you we build"
-        case signIn                   // Sign in with Apple → Supabase — moved to live
-                                      //   right before paywall so the user is fully
-                                      //   bought in before being asked to authenticate.
-        case prePaywall               // 3-stage emotional pre-paywall
+
+        // ─ Goal hours (commit BEFORE targetReachable so we can quote it) ──
+        case sleepGoal
+
+        // ─ Personalize questions (5) ──────────────────────────────────────
+        case personalizeGoals
+        case personalizeBlockers
+        case personalizeImpact
+        case personalizeTried
+        case personalizeWindDown
+
+        // ─ Story moment 2 — manual vs Mooni tracking ──────────────────────
+        case trackingCompare
+
+        // ─ Story moment 3 — 90% of users hit the goal they just set ──────
+        case targetReachable
+
+        // ─ Story moment 4 — what we actually track for you ────────────────
+        case sleepMetricsTease
+
+        // ─ In-app "Allow notifications" mock that triggers the real prompt ─
+        case notifAllowMock
+
+        // ─ Rating (no skip — only path forward is "I rated it") ───────────
+        case ratingPledge
+
+        // ─ Sign in ────────────────────────────────────────────────────────
+        case signIn
+
+        // ─ "You're ready" emotional beat ──────────────────────────────────
+        case commitReady
+
+        // ─ 12-second layered loading ──────────────────────────────────────
+        case planComputing
+
+        // ─ Personalized plan reveal — previews real home analytics UI ─────
+        case planReveal
+
+        // ─ Widget showcase (Small + Medium) ───────────────────────────────
+        case widgetSmall
+        case widgetMedium
+
+        // ─ Soft bridge: "Here's how your plan works" ──────────────────────
+        case planWalkthrough
+
+        // ─ Auto-tracking pitch (3) ────────────────────────────────────────
+        case autoTrackStoneAge
+        case autoTrackHow
+        case autoTrackAccuracy
+
+        // ─ Signature pledge ceremony ──────────────────────────────────────
+        case signaturePledge
+
+        // ─ Paywall (terminal) ─────────────────────────────────────────────
+        case prePaywall
 
         var index: Int {
             Step.allCases.firstIndex(of: self) ?? 0
@@ -199,7 +166,8 @@ struct OnboardingView: View {
             // Single, calm constant background everywhere — no per-screen swaps.
             MooniColor.background
                 .ignoresSafeArea()
-            StarsBackground(count: 80)
+            StarsBackground(count: 28)
+            ShootingStarsOverlay()
 
             if step == .prePaywall {
                 // Terminal step: open the real paywall sheet directly, skipping
@@ -227,7 +195,8 @@ struct OnboardingView: View {
                     GeometryReader { geo in
                         ScrollView(showsIndicators: false) {
                             content
-                                .padding(.vertical, 20)
+                                .padding(.top, 4)
+                                .padding(.bottom, 56)
                                 .frame(maxWidth: .infinity)
                                 .frame(minHeight: geo.size.height,
                                        alignment: .center)
@@ -297,6 +266,16 @@ struct OnboardingView: View {
                 )
             }
         }
+        // Bridges from screens that own their own primary action (the in-app
+        // notification "Allow" mock, and the signature-pledge hold button).
+        .onReceive(NotificationCenter.default
+            .publisher(for: .onboardingNotifAllowTapped)) { _ in
+            if step == .notifAllowMock { advance() }
+        }
+        .onReceive(NotificationCenter.default
+            .publisher(for: .onboardingSignatureCommitted)) { _ in
+            if step == .signaturePledge { advance() }
+        }
     }
 
     // MARK: - Transition
@@ -327,30 +306,43 @@ struct OnboardingView: View {
 
     private var topBarContent: some View {
         HStack(spacing: 12) {
-            if step.index > 0 && !isLoadingScreen {
-                Button {
-                    goBack()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(MooniColor.textSecondary)
-                        .padding(8)
-                        .background(Color.white.opacity(0.10))
-                        .clipShape(Circle())
-                }
-                .transition(.opacity)
-            } else {
-                Spacer().frame(width: 32, height: 32)
-            }
-
-            // Title slot — keeps the eye anchored at the top while the
-            // progress lives in the right-aligned circle. We deliberately
-            // don't surface the screen count: it primes "ugh, X to go."
-            Spacer(minLength: 0)
-
-            CircularProgressIndicator(progress: progressFraction)
-                .frame(width: 32, height: 32)
+            backChevron
+            linearProgressBar
         }
+        .frame(height: 28)
+    }
+
+    @ViewBuilder
+    private var backChevron: some View {
+        if step.index > 0 && !isLoadingScreen {
+            Button {
+                goBack()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .transition(.opacity)
+        } else {
+            // Reserve space so the bar position never jumps between screens.
+            Color.clear.frame(width: 28, height: 28)
+        }
+    }
+
+    private var linearProgressBar: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.white.opacity(0.16))
+                Capsule()
+                    .fill(Color.white)
+                    .frame(width: geo.size.width * CGFloat(progressFraction))
+                    .animation(.easeInOut(duration: 0.35), value: progressFraction)
+            }
+        }
+        .frame(height: 4)
     }
 
     /// Linear progress 0–1 across the *known* sequence. Capped just below 1
@@ -362,7 +354,7 @@ struct OnboardingView: View {
     }
 
     private var isLoadingScreen: Bool {
-        step == .analyzingAnswers || step == .generatingPlan
+        step == .planComputing
     }
 
     /// Welcome and sign-in are presented as fullscreen-ish moments without the
@@ -378,35 +370,27 @@ struct OnboardingView: View {
     @ViewBuilder
     private var content: some View {
         switch step {
-        case .welcome:             WelcomeScreen()
-        case .hero:                HeroScreen(species: species)
-        case .sleepImpactStat:     SleepImpactStatScreen()
-        case .identityDamage:      IdentityDamageScreen()
-        case .outcomeImagine:      OutcomeImagineScreen()
-        case .outcomeMornings:     OutcomeMorningsScreen()
-        case .outcomeDays:         OutcomeDaysScreen()
-        case .outcomeFuture:       OutcomeFutureScreen()
-        case .emotionalDiscomfort: EmotionalDiscomfortScreen()
-        case .hopeTransformation:  HopeTransformationScreen()
-        case .benefitEnergy:       BenefitScreen(spec: .energy)
-        case .benefitFocus:        BenefitScreen(spec: .focus)
-        case .benefitBody:         BenefitScreen(spec: .body)
-        case .benefitMood:         BenefitScreen(spec: .mood)
-        case .benefitLooks:        BenefitScreen(spec: .looks)
-        case .benefitLongevity:    BenefitScreen(spec: .longevity)
-        case .rateApp:             RateAppScreen()
-        case .signIn:              SignInScreen(state: authState, errorMessage: authErrorMessage)
-        case .petAttachment:       PetAttachmentScreen(species: species)
-        case .namePet:             NamePetScreen(species: species, name: $petName)
-        case .bondMessage:         BondMessageScreen(petName: petName, species: species)
-        case .demo:                DemoScreen(species: species, stage: $demoStage)
-        case .ageQuestion:         AgeScreen(profile: $profile)
-        case .genderQuestion:      GenderScreen(profile: $profile)
-        case .heightQuestion:      HeightScreen(profile: $profile)
-        case .weightQuestion:      WeightScreen(profile: $profile)
-        case .bodyFact:            BodyFactScreen(profile: profile)
-        case .personalize:         PersonalizeScreen()
-        case .personalizeGoals:    GoalsMultiScreen(selection: $selectedGoals)
+        case .welcome:              WelcomeScreen()
+        case .ageQuestion:          AgeScreen(profile: $profile)
+        case .genderQuestion:       GenderScreen(profile: $profile)
+        case .typicalSleepHours:    TypicalSleepHoursScreen(profile: $profile)
+        case .lifeTimeline:         LifeTimelineScreen()
+        case .namePet:              NamePetScreen(species: species, name: $petName)
+        case .wakeFeeling:          WakeFeelingScreen(profile: $profile)
+        case .energyDip:            EnergyDipScreen(profile: $profile)
+        case .napsDay:              NapsScreen(profile: $profile)
+        case .racingThoughts:       RacingThoughtsScreen(profile: $profile, petName: petName)
+        case .phoneBeforeBed:       PhoneBeforeBedScreen(profile: $profile)
+        case .caffeineCutoff:       CaffeineCutoffScreen(profile: $profile)
+        case .stressLevel:          StressLevelScreen(profile: $profile)
+        case .struggleDuration:     StruggleDurationScreen(profile: $profile)
+        case .biggestProblem:       BiggestProblemScreen(profile: $profile)
+        case .roomEnvironment:      RoomEnvironmentScreen(profile: $profile)
+        case .schedule:             ScheduleScreen(bedtime: $bedtime, wakeTime: $wakeTime,
+                                                   separateWeekends: $separateWeekends, weekendWake: $weekendWake)
+        case .trackingCompare:      TrackingCompareScreen()
+        case .targetReachable:      TargetReachableScreen(wakeTime: wakeTime)
+        case .personalizeGoals:     GoalsMultiScreen(selection: $selectedGoals)
         case .personalizeBlockers:
             MultiSelectScreen(
                 title: "What keeps you from good sleep?",
@@ -439,72 +423,31 @@ struct OnboardingView: View {
                     ($0, $0.label, $0.icon)
                 },
                 selection: $selWindDown)
-        case .personalizingReveal:
-            PersonalizingRevealScreen(
-                items: revealItems,
-                pickCount: selectedGoals.count + selBlockers.count
-                    + selImpacts.count + selTried.count + selWindDown.count)
-        case .sleepGoal:           GoalScreen(selection: $sleepGoal)
-        case .expertGoalFocus:     ExpertQuoteScreen(quote: .goalFocus)
-        case .goalStudy1:          GoalStudyScreen(goal: sleepGoal, index: 0)
-        case .goalStudy2:          GoalStudyScreen(goal: sleepGoal, index: 1)
-        case .goalStudy3:          GoalStudyScreen(goal: sleepGoal, index: 2)
-        case .goalStudy4:          GoalStudyScreen(goal: sleepGoal, index: 3)
-        case .goalStudy5:          GoalStudyScreen(goal: sleepGoal, index: 4)
-        case .motivationQuestion:  MotivationScreen(profile: $profile)
-        case .pseudoAnalysis:      PseudoAnalysisScreen(profile: profile, petName: petName)
-        case .struggleDuration:    StruggleDurationScreen(profile: $profile)
-        case .biggestProblem:      BiggestProblemScreen(profile: $profile)
-        case .typicalSleepHours:   TypicalSleepHoursScreen(profile: $profile)
-        case .expertSleepTimes:    ExpertQuoteScreen(quote: .sleepTimes)
-        case .autoTrackIntro:      AutoTrackIntroScreen()
-        case .autoTrackRem:        AutoTrackRemScreen()
-        case .autoTrackAccuracy:   AutoTrackAccuracyScreen()
-        case .sleepDebtFact:       SleepDebtFactScreen(profile: profile, page: $sleepDebtPage)
-        case .phoneBeforeBed:      PhoneBeforeBedScreen(profile: $profile)
-        case .phoneScreenTime:     PhoneScreenTimeScreen(profile: $profile)
-        case .phoneFact:           PhoneFactScreen(profile: profile)
-        case .caffeineCutoff:      CaffeineCutoffScreen(profile: $profile)
-        case .caffeineFact:        CaffeineFactScreen()
-        case .stressLevel:         StressLevelScreen(profile: $profile)
-        case .racingThoughts:      RacingThoughtsScreen(profile: $profile, petName: petName)
-        case .stressFact:          StressFactScreen()
-        case .wakeFeeling:         WakeFeelingScreen(profile: $profile)
-        case .expertWakeInertia:   ExpertQuoteScreen(quote: .wakeInertia)
-        case .energyDip:           EnergyDipScreen(profile: $profile)
-        case .napsDay:             NapsScreen(profile: $profile)
-        case .dayCycleFact:        DayCycleFactScreen()
-        case .roomEnvironment:     RoomEnvironmentScreen(profile: $profile)
-        case .environmentFact:     EnvironmentFactScreen(profile: profile)
-        case .schedule:            ScheduleScreen(bedtime: $bedtime, wakeTime: $wakeTime,
-                                                  separateWeekends: $separateWeekends, weekendWake: $weekendWake)
-        case .reflection:          ReflectionScreen(petName: petName, bedtime: bedtime, wakeTime: wakeTime)
-        case .roomPicker:          RoomPickerScreen(species: species, name: petName, selection: $room)
-        case .anticipation:        AnticipationScreen(petName: petName)
-        case .notificationPerm:    NotificationPermissionScreen(petName: petName, state: notifications.authState)
-        case .healthPerm:          HealthPermissionScreen(petName: petName, state: health.authState)
-        case .analyzingAnswers:
-            AnalyzingAnswersScreen(progress: $analyzingProgress, currentStep: $analyzingStep, petName: petName)
+        case .sleepGoal:            GoalScreen(selection: $sleepGoal)
+        case .targetReachable:      TargetReachableScreen(sleepGoal: sleepGoal)
+        case .sleepMetricsTease:    SleepMetricsTeaseScreen()
+        case .notifAllowMock:       NotifAllowMockScreen(petName: petName,
+                                                         state: notifications.authState)
+        case .ratingPledge:         RatingPledgeScreen()
+        case .signIn:               SignInScreen(state: authState, errorMessage: authErrorMessage)
+        case .commitReady:          CommitReadyScreen(petName: petName)
+        case .planComputing:
+            PlanComputingScreen(progress: $analyzingProgress, currentStep: $analyzingStep)
                 .onAppear { runAnalyzingAnimation() }
-        case .sleepScoreReveal:    SleepScoreRevealScreen(profile: profile, petName: petName)
-        case .topIssues:           TopIssuesScreen(profile: profile)
-        case .bodyStudies:         BodyStudiesScreen(page: $bodyStudyPage)
-        case .scienceCredibility:   ScienceCredibilityScreen()
-        case .scienceTrust:         ScienceFormulaScreen(profile: profile)
-        case .generatingPlan:
-            GeneratingPlanScreen(progress: $planProgress, messageIndex: $planMessageIndex, petName: petName)
-                .onAppear { runGeneratingAnimation() }
-        case .socialProof:         SocialProofScreen()
-        case .simulatedResult:     SimulatedResultScreen(species: species, name: petName)
-        case .firstQuest:          FirstQuestScreen(petName: petName, bedtime: bedtime, wakeTime: wakeTime)
-        case .soundsDemo:          SoundscapePreviewScreen(petName: petName)
-        case .soundscapePreview:   WidgetPreviewScreen(petName: petName, page: $widgetPage)
-        case .featureTour:         FeatureTourScreen(petName: petName, page: $sleepCirclePage)
-        case .scienceEfficiency:   EfficiencyFormulaScreen()
-        case .scienceArchitecture: SleepArchitectureScreen()
-        case .scienceOnDevice:     OnDevicePrivacyScreen()
-        case .scienceProPromise:   ProPromiseScreen()
-        case .prePaywall:          EmptyView()    // rendered full-screen above; never reaches here
+        case .planReveal:
+            PlanRevealScreen(
+                profile: profile,
+                bedtime: bedtime,
+                wakeTime: wakeTime,
+                petName: petName)
+        case .widgetSmall:          WidgetShowcaseScreen(kind: .small)
+        case .widgetMedium:         WidgetShowcaseScreen(kind: .medium)
+        case .planWalkthrough:      PlanWalkthroughScreen(petName: petName)
+        case .autoTrackStoneAge:    AutoTrackStoneAgeScreen()
+        case .autoTrackHow:         AutoTrackHowScreen()
+        case .autoTrackAccuracy:    AutoTrackPhoneOnlyScreen()
+        case .signaturePledge:      SignaturePledgeScreen(petName: petName)
+        case .prePaywall:           EmptyView()    // rendered full-screen above; never reaches here
         }
     }
 
@@ -515,7 +458,7 @@ struct OnboardingView: View {
             switch step {
             case .welcome:
                 VStack(spacing: 10) {
-                    PrimaryButton(title: "Get Started", icon: "sparkles") {
+                    PrimaryButton(title: "Get Started", variant: .white) {
                         advance()
                     }
                     Button {
@@ -545,7 +488,8 @@ struct OnboardingView: View {
                 VStack(spacing: 10) {
                     PrimaryButton(
                         title: authState == .signedIn ? "Continue" : "Sign in with Apple",
-                        icon: authState == .signedIn ? "checkmark.seal.fill" : "applelogo"
+                        icon: authState == .signedIn ? "checkmark.seal.fill" : "applelogo",
+                        variant: .white
                     ) {
                         if authState == .signedIn {
                             advance()
@@ -569,16 +513,18 @@ struct OnboardingView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 12)
                 }
-            case .rateApp:
-                // No skip. The big button opens the App Store prompt; the only
-                // way forward is the small "I rated it" link. Apple gives no
-                // callback on SKStoreReviewController, so this is the standard
-                // (unverifiable) pattern — we trust the tap.
+            case .ratingPledge:
+                // No skip. Big button opens the App Store sheet; "I rated it"
+                // only appears 5 s after the tap so the user can't dismiss
+                // and bounce instantly — they have to actually engage with
+                // the system sheet (or wait it out).
                 VStack(spacing: 14) {
-                    PrimaryButton(title: "Leave a rating", icon: "star.fill") {
+                    PrimaryButton(title: "Leave a rating", icon: "star.fill", variant: .white) {
                         OnboardingRatingPrompt.request()
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            ratePromptShown = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                ratePromptShown = true
+                            }
                         }
                     }
                     if ratePromptShown {
@@ -586,55 +532,24 @@ struct OnboardingView: View {
                             advance()
                         } label: {
                             Text("I rated it")
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
                                 .underline()
-                                .foregroundColor(MooniColor.textMuted)
-                                .padding(.vertical, 4)
+                                .foregroundColor(.white.opacity(0.85))
+                                .padding(.vertical, 6)
                         }
-                        .transition(.opacity)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
-            case .personalize:
-                PrimaryButton(title: "Personalize my plan", icon: "wand.and.stars") {
-                    profile.personalizationOptIn = true
-                    advance()
-                }
-            case .notificationPerm:
-                VStack(spacing: 10) {
-                    PrimaryButton(title: "Yes, remind me", icon: "bell.fill") {
-                        Task {
-                            if notifications.authState == .notDetermined {
-                                _ = await notifications.requestAuthorization()
-                            }
-                            advance()
-                        }
-                    }
-                    SecondaryButton(title: "Not now") { advance() }
-                }
-            case .healthPerm:
-                VStack(spacing: 10) {
-                    PrimaryButton(
-                        title: health.authState == .authorized ? "Continue" : "Connect Apple Health",
-                        icon: health.authState == .authorized ? "checkmark.seal.fill" : "heart.text.square.fill"
-                    ) {
-                        Task {
-                            if health.authState == .notDetermined && health.isAvailable {
-                                _ = await health.requestAuthorization()
-                                if health.authState == .authorized {
-                                    await appState.importHealthKitSleep()
-                                }
-                            }
-                            advance()
-                        }
-                    }
-                    if health.authState != .authorized {
-                        SecondaryButton(title: "I'll add sleep manually") { advance() }
-                    }
-                }
-            case .analyzingAnswers, .generatingPlan, .prePaywall:
+            case .notifAllowMock, .signaturePledge:
+                // No footer — these screens own their own primary action
+                // (faux Allow tap / hold-to-commit signature). They post a
+                // NotificationCenter event when the user completes the
+                // action, and the OnboardingView listener advances.
+                EmptyView()
+            case .planComputing, .prePaywall:
                 EmptyView()
             default:
-                PrimaryButton(title: primaryTitle) { advance() }
+                PrimaryButton(title: primaryTitle, variant: .white) { advance() }
                     .disabled(!canAdvance)
                     .opacity(canAdvance ? 1 : 0.55)
             }
@@ -643,120 +558,67 @@ struct OnboardingView: View {
 
     private var primaryTitle: String {
         switch step {
-        case .welcome:            return "Get Started"
-        case .signIn:             return "Sign in with Apple"
-        case .rateApp:            return "Rate SleepOwl"
-        case .benefitEnergy,
-             .benefitFocus,
-             .benefitBody,
-             .benefitMood,
-             .benefitLooks:       return "Continue"
-        case .benefitLongevity:   return "I want all of this"
-        case .hero:               return "Show me what's happening"
-        case .sleepImpactStat:    return "Yeah, that's me"
-        case .identityDamage:     return "I want to fix this"
-        case .outcomeImagine:     return "I want that"
-        case .outcomeMornings:    return "Continue"
-        case .outcomeDays:        return "Continue"
-        case .outcomeFuture:      return "Let's build it"
-        case .emotionalDiscomfort:return "Continue"
-        case .hopeTransformation: return "I'm in"
-        case .petAttachment:      return "Meet your sleep pet"
-        case .pseudoAnalysis:     return "Continue"
-        case .anticipation:       return "Let's go"
-        case .namePet:            return "\(petName.isEmpty ? species.defaultName : petName) is officially yours"
-        case .bondMessage:        return "Continue"
-        case .demo:               return demoStage < 2 ? "Continue" : "I get it"
-        case .ageQuestion:        return profile.age == nil ? "Pick an age" : "Continue"
-        case .genderQuestion:     return "Continue"
-        case .heightQuestion:     return profile.heightCm == nil ? "Set your height" : "Continue"
-        case .weightQuestion:     return profile.weightKg == nil ? "Set your weight" : "Continue"
-        case .bodyFact:           return "Got it"
+        case .welcome:             return "Get Started"
+        case .ageQuestion:         return profile.age == nil ? "Pick an age" : "Continue"
+        case .genderQuestion:      return "Continue"
+        case .typicalSleepHours:   return "Continue"
+        case .lifeTimeline:        return "Show me how"
+        case .namePet:             return petName.trimmingCharacters(in: .whitespaces).isEmpty
+            ? "Give them a name"
+            : "Continue"
+        case .wakeFeeling:         return profile.wakeFeeling == nil ? "Pick one to continue" : "Continue"
+        case .energyDip:           return profile.energyDip == nil ? "Pick one to continue" : "Continue"
+        case .napsDay:             return "Continue"
+        case .racingThoughts:      return "Continue"
+        case .phoneBeforeBed:      return "Continue"
+        case .caffeineCutoff:      return profile.caffeineCutoff == nil ? "Pick one to continue" : "Continue"
+        case .stressLevel:         return "Continue"
+        case .struggleDuration:    return profile.struggleDuration == nil ? "Pick one to continue" : "Continue"
+        case .biggestProblem:      return profile.biggestProblem == nil ? "Pick one to continue" : "Continue"
+        case .roomEnvironment:     return "Continue"
+        case .schedule:            return "Continue"
+        case .trackingCompare:     return "I want this"
+        case .targetReachable:     return "Continue"
         case .personalizeGoals:    return selectedGoals.isEmpty ? "Pick at least one" : "Continue"
         case .personalizeBlockers: return selBlockers.isEmpty ? "Pick at least one" : "Continue"
         case .personalizeImpact:   return selImpacts.isEmpty ? "Pick at least one" : "Continue"
         case .personalizeTried:    return selTried.isEmpty ? "Pick at least one" : "Continue"
         case .personalizeWindDown: return selWindDown.isEmpty ? "Pick at least one" : "Continue"
-        case .personalizingReveal: return "Continue"
-        case .sleepGoal:          return sleepGoal == nil ? "Pick one to continue" : "Continue"
-        case .goalStudy1:         return "Next study"
-        case .goalStudy2:         return "Next study"
-        case .goalStudy3:         return "Next study"
-        case .goalStudy4:         return "Next study"
-        case .goalStudy5:         return "I'm convinced"
-        case .motivationQuestion: return profile.motivation == nil ? "Pick one to continue" : "Continue"
-        case .struggleDuration:   return profile.struggleDuration == nil ? "Pick one to continue" : "Continue"
-        case .biggestProblem:     return profile.biggestProblem == nil ? "Pick one to continue" : "Continue"
-        case .typicalSleepHours:  return "Continue"
-        case .expertSleepTimes:   return "Got it"
-        case .expertGoalFocus:    return "Makes sense"
-        case .expertWakeInertia:  return "Continue"
-        case .autoTrackIntro:     return "How accurate is it?"
-        case .autoTrackRem:       return "Tell me more"
-        case .autoTrackAccuracy:  return "Got it"
-        case .sleepDebtFact:
-            return sleepDebtPage < SleepDebtFactScreen.pageCount - 1 ? "Continue" : "I want to fix this"
-        case .phoneBeforeBed:     return "Continue"
-        case .phoneScreenTime:    return "Continue"
-        case .phoneFact:          return "I get it"
-        case .caffeineCutoff:     return profile.caffeineCutoff == nil ? "Pick one to continue" : "Continue"
-        case .caffeineFact:       return "Wow, continue"
-        case .stressLevel:        return "Continue"
-        case .racingThoughts:     return "Continue"
-        case .stressFact:         return "Continue"
-        case .wakeFeeling:        return profile.wakeFeeling == nil ? "Pick one to continue" : "Continue"
-        case .energyDip:          return profile.energyDip == nil ? "Pick one to continue" : "Continue"
-        case .napsDay:            return "Continue"
-        case .dayCycleFact:       return "Continue"
-        case .roomEnvironment:    return "Continue"
-        case .environmentFact:    return "Continue"
-        case .schedule:           return "Continue"
-        case .reflection:         return "Continue"
-        case .roomPicker:         return "Build \(petName)'s room"
-        case .sleepScoreReveal:   return "Show me the issues"
-        case .topIssues:          return "Show me what's at stake"
-        case .bodyStudies:
-            return bodyStudyPage < BodyStudiesScreen.pageCount - 1 ? "Next study" : "Show me the science"
-        case .scienceCredibility:  return "Show me the formula"
-        case .scienceTrust:       return "Build my plan"
-        case .socialProof:        return "Continue"
-        case .simulatedResult:    return "See how it works"
-        case .firstQuest:         return "Accept tonight's quest"
-        case .soundsDemo:         return "I like these sounds"
-        case .soundscapePreview:
-            return widgetPage < WidgetPreviewScreen.pageCount - 1 ? "See next widget" : "I want these"
-        case .featureTour:
-            return sleepCirclePage < FeatureTourScreen.pageCount - 1 ? "Continue" : "Show me the science"
-        case .scienceEfficiency:  return "Show me my night"
-        case .scienceArchitecture:return "Is my data safe?"
-        case .scienceOnDevice:    return "What do I get?"
-        case .scienceProPromise:  return "I'm in"
-        default:                  return "Continue"
+        case .sleepGoal:           return sleepGoal == nil ? "Pick one to continue" : "Set my goal"
+        case .sleepMetricsTease:   return "Show me my plan"
+        case .signIn:              return "Sign in with Apple"
+        case .commitReady:         return "I'm in"
+        case .planReveal:          return "See my widgets"
+        case .widgetSmall:         return "Next widget"
+        case .widgetMedium:        return "Got it"
+        case .planWalkthrough:     return "Let's set it up"
+        case .autoTrackStoneAge:   return "Tell me how"
+        case .autoTrackHow:        return "How accurate?"
+        case .autoTrackAccuracy:   return "Got it"
+        case .signaturePledge:     return "Make it official"
+        default:                   return "Continue"
         }
     }
 
     private var canAdvance: Bool {
         switch step {
-        case .namePet:            return !petName.trimmingCharacters(in: .whitespaces).isEmpty
-        case .ageQuestion:        return profile.age != nil
-        case .heightQuestion:     return profile.heightCm != nil
-        case .weightQuestion:     return profile.weightKg != nil
+        case .namePet:             return !petName.trimmingCharacters(in: .whitespaces).isEmpty
+        case .ageQuestion:         return profile.age != nil
         case .personalizeGoals:    return !selectedGoals.isEmpty
         case .personalizeBlockers: return !selBlockers.isEmpty
         case .personalizeImpact:   return !selImpacts.isEmpty
         case .personalizeTried:    return !selTried.isEmpty
         case .personalizeWindDown: return !selWindDown.isEmpty
-        case .sleepGoal:          return sleepGoal != nil
-        case .motivationQuestion: return profile.motivation != nil
-        case .struggleDuration:   return profile.struggleDuration != nil
-        case .biggestProblem:     return profile.biggestProblem != nil
-        case .phoneBeforeBed:     return profile.usesPhoneBeforeBed != nil
-        case .caffeineCutoff:     return profile.caffeineCutoff != nil
-        case .racingThoughts:     return profile.racingThoughtsAtNight != nil
-        case .wakeFeeling:        return profile.wakeFeeling != nil
-        case .energyDip:          return profile.energyDip != nil
-        case .napsDay:            return profile.napsDuringDay != nil
-        default:                  return true
+        case .sleepGoal:           return sleepGoal != nil
+        case .struggleDuration:    return profile.struggleDuration != nil
+        case .biggestProblem:      return profile.biggestProblem != nil
+        case .phoneBeforeBed:      return profile.usesPhoneBeforeBed != nil
+        case .caffeineCutoff:      return profile.caffeineCutoff != nil
+        case .racingThoughts:      return profile.racingThoughtsAtNight != nil
+        case .wakeFeeling:         return profile.wakeFeeling != nil
+        case .energyDip:           return profile.energyDip != nil
+        case .napsDay:             return profile.napsDuringDay != nil
+        default:                   return true
         }
     }
 
@@ -764,39 +626,6 @@ struct OnboardingView: View {
 
     private func advance() {
         Haptics.medium()
-        // Demo screen has 3 sub-stages
-        if step == .demo && demoStage < 2 {
-            withAnimation(.easeInOut) { demoStage += 1 }
-            return
-        }
-        // Widgets showcase pages through 3 widget mocks before advancing
-        if step == .soundscapePreview && widgetPage < WidgetPreviewScreen.pageCount - 1 {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
-                widgetPage += 1
-            }
-            return
-        }
-        // Sleep Circle / friends showcase pages through its substages
-        if step == .featureTour && sleepCirclePage < FeatureTourScreen.pageCount - 1 {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
-                sleepCirclePage += 1
-            }
-            return
-        }
-        // Body-studies showcase (hormones / growth / etc) pages through its cards
-        if step == .bodyStudies && bodyStudyPage < BodyStudiesScreen.pageCount - 1 {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
-                bodyStudyPage += 1
-            }
-            return
-        }
-        // Sleep-debt showcase (hours → money → experiences → growth)
-        if step == .sleepDebtFact && sleepDebtPage < SleepDebtFactScreen.pageCount - 1 {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
-                sleepDebtPage += 1
-            }
-            return
-        }
         var nextIndex = step.index + 1
         while nextIndex < Step.total && shouldSkip(Step.allCases[nextIndex]) {
             nextIndex += 1
@@ -805,37 +634,11 @@ struct OnboardingView: View {
         transitionDirection = .forward
         withAnimation(.easeInOut(duration: 0.35)) {
             step = Step.allCases[nextIndex]
-            // Reset paged-screen indices on entry so the user always starts
-            // at page 0 when (re)visiting them.
-            if step == .soundscapePreview { widgetPage = 0 }
-            if step == .featureTour { sleepCirclePage = 0 }
-            if step == .bodyStudies { bodyStudyPage = 0 }
-            if step == .sleepDebtFact { sleepDebtPage = 0 }
         }
     }
 
     private func goBack() {
         Haptics.tap()
-        if step == .demo && demoStage > 0 {
-            withAnimation(.easeInOut) { demoStage -= 1 }
-            return
-        }
-        if step == .soundscapePreview && widgetPage > 0 {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { widgetPage -= 1 }
-            return
-        }
-        if step == .featureTour && sleepCirclePage > 0 {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { sleepCirclePage -= 1 }
-            return
-        }
-        if step == .bodyStudies && bodyStudyPage > 0 {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { bodyStudyPage -= 1 }
-            return
-        }
-        if step == .sleepDebtFact && sleepDebtPage > 0 {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { sleepDebtPage -= 1 }
-            return
-        }
         var prevIndex = step.index - 1
         while prevIndex >= 0 && shouldSkip(Step.allCases[prevIndex]) {
             prevIndex -= 1
@@ -847,79 +650,12 @@ struct OnboardingView: View {
         }
     }
 
-    /// Conditional screens — hidden when their predicate question already
-    /// answered the bigger question. Keeps the flow honest: if you said
-    /// "no phone in bed", we don't ask "how long on your phone in bed".
+    /// Reserved for future conditional question chains (e.g. "did you say
+    /// you drink caffeine? then ask cutoff"). For the current flow every
+    /// step is shown — the new Step enum is already the visible sequence,
+    /// not a superset.
     private func shouldSkip(_ s: Step) -> Bool {
-        // Trimmed flow for App Store review (Guideline 4.0 — long setup at launch).
-        // Target: ~25 visible screens.
-        //   Hook → Pet → Profile Qs → Personalize → Reveal → Trust → Plan → Paywall
-        switch s {
-        // Emotional/hook fat
-        case .sleepImpactStat, .identityDamage,
-             .emotionalDiscomfort, .hopeTransformation:
-            return true
-        // Benefit reel
-        case .benefitEnergy, .benefitFocus, .benefitBody,
-             .benefitMood, .benefitLooks, .benefitLongevity:
-            return true
-        // Pet ceremony trimmed to namePet only
-        case .petAttachment, .bondMessage, .demo:
-            return true
-        // Sleep Circle / friends tour (backend not ready)
-        case .featureTour:
-            return true
-        // Bio: age only — gender/height/weight aren't used in scoring
-        case .genderQuestion, .heightQuestion, .weightQuestion:
-            return true
-        // Auto-track pitch screens — product marketing, cut
-        case .autoTrackIntro, .autoTrackRem, .autoTrackAccuracy:
-            return true
-        // Expert quote screens — feel forced; trust delivered via scienceCredibility
-        case .expertSleepTimes, .expertGoalFocus, .expertWakeInertia:
-            return true
-        // Fact-chart intros — keep the question, drop the lecture
-        case .bodyFact, .sleepDebtFact,
-             .phoneFact, .caffeineFact, .stressFact,
-             .dayCycleFact, .environmentFact:
-            return true
-        // Extra questions that duplicate or pad
-        case .struggleDuration, .biggestProblem,
-             .motivationQuestion, .pseudoAnalysis,
-             .phoneScreenTime, .racingThoughts, .energyDip:
-            return true
-        // Goal studies — all cut (was 1 kept; now 0)
-        case .goalStudy1, .goalStudy2, .goalStudy3, .goalStudy4, .goalStudy5:
-            return true
-        // Schedule ceremony trimmed
-        case .reflection, .roomPicker, .anticipation:
-            return true
-        // Personalize block: keep goals + blockers + impact, cut the rest
-        case .personalizeTried, .personalizeWindDown, .personalizingReveal:
-            return true
-        // Health perm deferred to in-app
-        case .healthPerm:
-            return true
-        // Heavy science block — keep scienceCredibility + scienceOnDevice only
-        case .bodyStudies, .scienceTrust,
-             .scienceEfficiency, .scienceArchitecture, .scienceProPromise:
-            return true
-        // Social proof (looks AI-generated) + in-onboarding rate prompt
-        case .socialProof, .rateApp:
-            return true
-        // Result/demo/feature filler before paywall
-        case .simulatedResult, .firstQuest,
-             .soundsDemo, .soundscapePreview:
-            return true
-        // Outcome aspirational reel
-        case .outcomeImagine, .outcomeMornings,
-             .outcomeDays, .outcomeFuture:
-            return true
-        // prePaywall: rendered specially to auto-open the real paywall sheet —
-        // do NOT skip it here (it's the terminal step that triggers paywall).
-        default:
-            return false
-        }
+        false
     }
 
     // MARK: - Loading animations
@@ -940,18 +676,6 @@ struct OnboardingView: View {
         (1.00, 0.3)
     ]
 
-    private static let generatingScript: [(Double, Double)] = [
-        (0.07, 0.4),
-        (0.18, 0.6),   // building bedtime quest
-        (0.30, 0.4),
-        (0.44, 0.7),   // tuning wake-up window
-        (0.57, 0.4),
-        (0.68, 0.6),   // composing wind-down breath
-        (0.79, 0.4),
-        (0.90, 0.5),
-        (1.00, 0.3)
-    ]
-
     private func runAnalyzingAnimation() {
         analyzingProgress = 0
         analyzingStep = 0
@@ -959,19 +683,7 @@ struct OnboardingView: View {
             Self.analyzingScript,
             progress: { v in analyzingProgress = v },
             stepIndex: { i in analyzingStep = i },
-            messageGroups: AnalyzingAnswersScreen.stepBoundaries,
-            onDone: { advance() }
-        )
-    }
-
-    private func runGeneratingAnimation() {
-        planProgress = 0
-        planMessageIndex = 0
-        runScript(
-            Self.generatingScript,
-            progress: { v in planProgress = v },
-            stepIndex: { i in planMessageIndex = i },
-            messageGroups: GeneratingPlanScreen.stepBoundaries,
+            messageGroups: PlanComputingScreen.stepBoundaries,
             onDone: { advance() }
         )
     }
@@ -1336,58 +1048,54 @@ private struct NamePetScreen: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(spacing: focused ? 12 : 20) {
-            Spacer().frame(height: focused ? 2 : 12)
+        VStack(spacing: 22) {
+            Spacer(minLength: 4)
 
-            if !focused {
-                DreamSpiritView(pet: previewPet, size: 150)
-                    .transition(.scale.combined(with: .opacity))
-            } else {
-                Image("spirit_awake")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 46, height: 46)
-                    .padding(10)
-                    .background(MooniColor.accent.opacity(0.12))
-                    .clipShape(Circle())
-                    .transition(.scale.combined(with: .opacity))
-            }
+            // Simple silhouette — not focal. The screen is about the input.
+            DreamSpiritView(pet: previewPet, size: 96)
+                .opacity(0.85)
 
-            VStack(spacing: 8) {
-                Text("What should we call them?")
-                    .font(MooniFont.title(20))
-                    .foregroundColor(MooniColor.textPrimary)
+            VStack(spacing: 10) {
+                Text("Give your sleep companion a name")
+                    .font(MooniFont.display(26))
+                    .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                if !focused {
-                    Text("This is the name you'll see every night.")
-                        .font(MooniFont.caption(13))
-                        .foregroundColor(MooniColor.textMuted)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                        .transition(.opacity)
-                }
+                    .lineSpacing(2)
+                    .padding(.horizontal, 8)
+
+                Text("You'll see them every night. Pick something that feels yours.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(.white.opacity(0.6))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
             }
 
-            TextField("", text: $name,
-                      prompt: Text(species.defaultName).foregroundColor(MooniColor.textMuted))
-                .font(MooniFont.title(22))
-                .multilineTextAlignment(.center)
-                .foregroundColor(MooniColor.textPrimary)
-                .padding(.vertical, 16)
-                .padding(.horizontal, 20)
-                .background(Color.white.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(species.tint.opacity(0.45), lineWidth: 1)
-                )
-                .padding(.horizontal, 32)
-                .focused($focused)
-                .submitLabel(.done)
-                .onSubmit { focused = false }
+            TextField(
+                "",
+                text: $name,
+                prompt: Text(species.defaultName)
+                    .foregroundColor(.white.opacity(0.35))
+            )
+            .font(.system(size: 22, weight: .semibold, design: .rounded))
+            .multilineTextAlignment(.center)
+            .foregroundColor(.white)
+            .padding(.vertical, 18)
+            .padding(.horizontal, 20)
+            .background(Color.white.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(focused ? 0.5 : 0.16), lineWidth: 1)
+            )
+            .padding(.horizontal, 24)
+            .focused($focused)
+            .submitLabel(.done)
+            .onSubmit { focused = false }
+
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)
-        .animation(.spring(response: 0.42, dampingFraction: 0.84), value: focused)
+        .animation(.easeInOut(duration: 0.2), value: focused)
     }
 
     private var previewPet: Pet {
@@ -1759,45 +1467,59 @@ private struct GoalScreen: View {
     @Binding var selection: SleepGoal?
 
     var body: some View {
-        QuestionScaffold(
-            title: "What do you want help with most?",
-            subtitle: "We'll personalize your plan around this."
-        ) {
-            VStack(spacing: 10) {
+        VStack(spacing: 18) {
+            VStack(spacing: 8) {
+                Text("What do you want help with most?")
+                    .font(MooniFont.display(24))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                Text("We'll personalize your plan around this.")
+                    .font(MooniFont.body(13))
+                    .foregroundColor(.white.opacity(0.6))
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 12)
+
+            VStack(spacing: 7) {
                 ForEach(SleepGoal.allCases) { goal in
                     Button {
-                        withAnimation(.spring(response: 0.3)) { selection = goal }
+                        withAnimation(.spring(response: 0.28)) { selection = goal }
+                        Haptics.tap()
                     } label: {
                         let isSelected = selection == goal
-                        HStack(spacing: 14) {
+                        HStack(spacing: 12) {
                             Image(systemName: goal.icon)
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(isSelected ? MooniColor.accent : MooniColor.accentSoft)
-                                .frame(width: 38, height: 38)
-                                .background((isSelected ? MooniColor.accent : MooniColor.accentSoft).opacity(0.16))
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(isSelected ? .black : .white)
+                                .frame(width: 30, height: 30)
+                                .background(isSelected ? Color.white : Color.white.opacity(0.10))
+                                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                             Text(goal.title)
-                                .font(MooniFont.title(15))
-                                .foregroundColor(MooniColor.textPrimary)
-                                .multilineTextAlignment(.leading)
-                            Spacer()
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                            Spacer(minLength: 0)
                             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(isSelected ? MooniColor.accent : MooniColor.textMuted)
-                                .font(.system(size: 20))
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(isSelected ? .white : .white.opacity(0.25))
                         }
-                        .padding(14)
-                        .background(Color.white.opacity(isSelected ? 0.13 : 0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(Color.white.opacity(isSelected ? 0.10 : 0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.10),
-                                        lineWidth: isSelected ? 1.5 : 1)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.white.opacity(isSelected ? 0.5 : 0.10),
+                                        lineWidth: 1)
                         )
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
+        .padding(.horizontal, 20)
     }
 }
 
@@ -1814,47 +1536,63 @@ private struct MultiSelectScreen<T: Hashable>: View {
     @Binding var selection: Set<T>
 
     var body: some View {
-        QuestionScaffold(title: title, subtitle: subtitle) {
-            VStack(spacing: 10) {
+        VStack(spacing: 18) {
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(MooniFont.display(24))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                Text(subtitle)
+                    .font(MooniFont.body(13))
+                    .foregroundColor(.white.opacity(0.6))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 12)
+
+            VStack(spacing: 7) {
                 ForEach(Array(options.enumerated()), id: \.offset) { _, opt in
                     let (value, label, icon) = opt
                     let isSelected = selection.contains(value)
                     Button {
-                        withAnimation(.spring(response: 0.3)) {
+                        withAnimation(.spring(response: 0.28)) {
                             if isSelected { selection.remove(value) }
                             else { selection.insert(value) }
                         }
                         Haptics.tap()
                     } label: {
-                        HStack(spacing: 14) {
+                        HStack(spacing: 12) {
                             Image(systemName: icon)
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(isSelected ? MooniColor.accent : MooniColor.accentSoft)
-                                .frame(width: 38, height: 38)
-                                .background((isSelected ? MooniColor.accent : MooniColor.accentSoft).opacity(0.16))
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(isSelected ? .black : .white)
+                                .frame(width: 30, height: 30)
+                                .background(isSelected ? Color.white : Color.white.opacity(0.10))
+                                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                             Text(label)
-                                .font(MooniFont.title(15))
-                                .foregroundColor(MooniColor.textPrimary)
-                                .multilineTextAlignment(.leading)
-                            Spacer()
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
                             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(isSelected ? MooniColor.accent : MooniColor.textMuted)
-                                .font(.system(size: 20))
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(isSelected ? .white : .white.opacity(0.25))
                         }
-                        .padding(14)
-                        .background(Color.white.opacity(isSelected ? 0.13 : 0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(Color.white.opacity(isSelected ? 0.10 : 0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.10),
-                                        lineWidth: isSelected ? 1.5 : 1)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.white.opacity(isSelected ? 0.5 : 0.10),
+                                        lineWidth: 1)
                         )
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
+        .padding(.horizontal, 20)
     }
 }
 

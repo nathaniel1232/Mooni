@@ -7,64 +7,45 @@ import UIKit
 /// First screen the user ever sees. Two choices: start fresh, or hop straight
 /// into Apple sign-in if they already have an account on another device.
 struct WelcomeScreen: View {
-    @State private var glow: Bool = false
     @State private var float: Bool = false
 
     var body: some View {
-        VStack(spacing: 30) {
-            Spacer(minLength: 24)
+        VStack(spacing: 28) {
+            Spacer(minLength: 20)
 
-            ZStack {
-                // Layered bloom — wide soft halo + a tighter core glow that
-                // breathes, so the icon feels lit from within.
-                Circle()
-                    .fill(RadialGradient(
-                        colors: [MooniColor.accent.opacity(glow ? 0.42 : 0.26),
-                                 MooniColor.accent.opacity(0.10), .clear],
-                        center: .center, startRadius: 6, endRadius: 190))
-                    .frame(width: 320, height: 320)
-                    .blur(radius: 22)
-                    .scaleEffect(glow ? 1.06 : 0.94)
-
-                Image("app_icon")
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFill()
-                    .frame(width: 156, height: 156)
-                    .clipShape(RoundedRectangle(cornerRadius: 36, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 36, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.30), .clear,
-                                             MooniColor.accent.opacity(0.30)],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing),
-                                lineWidth: 1)
-                    )
-                    .shadow(color: MooniColor.accent.opacity(0.55), radius: 26, y: 10)
-                    .shadow(color: Color.black.opacity(0.35), radius: 10, y: 6)
-                    .offset(y: float ? -7 : 7)
-            }
-            .onAppear {
-                withAnimation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true)) {
-                    glow = true
+            // Single quiet glyph — no halo, no rainbow stroke. The brand
+            // earns the rest of the screen.
+            Image("app_icon")
+                .resizable()
+                .interpolation(.high)
+                .scaledToFill()
+                .frame(width: 132, height: 132)
+                .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 30, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                )
+                .shadow(color: Color.black.opacity(0.35), radius: 18, y: 8)
+                .offset(y: float ? -5 : 5)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 4.2).repeatForever(autoreverses: true)) {
+                        float = true
+                    }
                 }
-                withAnimation(.easeInOut(duration: 4.2).repeatForever(autoreverses: true)) {
-                    float = true
-                }
-            }
 
-            VStack(spacing: 12) {
-                Text("SleepOwl")
-                    .font(MooniFont.display(42))
-                    .foregroundStyle(LinearGradient(
-                        colors: [MooniColor.textPrimary, MooniColor.accentSoft],
-                        startPoint: .leading, endPoint: .trailing))
-                    .tracking(0.5)
-                Text("Sleep better. Grow stronger.")
-                    .font(MooniFont.body(16))
-                    .foregroundColor(MooniColor.textSecondary)
+            VStack(spacing: 14) {
+                Text("Sleep like it matters.")
+                    .font(MooniFont.display(34))
+                    .foregroundColor(.white)
                     .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+
+                Text("Stop guessing your nights. Build a rhythm that runs your mornings — not the other way around.")
+                    .font(MooniFont.body(15))
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .padding(.horizontal, 8)
             }
 
             Spacer()

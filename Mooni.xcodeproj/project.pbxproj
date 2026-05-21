@@ -398,9 +398,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = SleepOwl;
+				INFOPLIST_KEY_NSCameraUsageDescription = "SleepOwl uses the camera to detect sunlight when you point your phone outside, helping you wake up gently with natural light. No video is recorded or sent off the device.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "SleepOwl reads your sleep data from Apple Health to track bedtime and wake time automatically, so you don't have to log nights manually.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "SleepOwl does not write to Apple Health.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "SleepOwl uses the camera to detect sunlight when you point your phone outside, helping you wake up gently with natural light. No video is recorded or sent off the device.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -435,9 +435,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = SleepOwl;
+				INFOPLIST_KEY_NSCameraUsageDescription = "SleepOwl uses the camera to detect sunlight when you point your phone outside, helping you wake up gently with natural light. No video is recorded or sent off the device.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "SleepOwl reads your sleep data from Apple Health to track bedtime and wake time automatically, so you don't have to log nights manually.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "SleepOwl does not write to Apple Health.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "SleepOwl uses the camera to detect sunlight when you point your phone outside, helping you wake up gently with natural light. No video is recorded or sent off the device.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
