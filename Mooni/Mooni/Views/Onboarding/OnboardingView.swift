@@ -226,6 +226,9 @@ struct OnboardingView: View {
                             .allowsHitTesting(false)
                         )
                 }
+                // iPad: cap the content column so the iPhone-shaped layout
+                // doesn't stretch to absurd widths. iPhone is unaffected.
+                .responsiveContainer()
                 .transition(.opacity)
             }
         }
@@ -244,6 +247,15 @@ struct OnboardingView: View {
                     onPurchased: {
                         paywallSheet = nil
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            finishOnboarding()
+                        }
+                    },
+                    // Offerings failed to load — don't route to the discount
+                    // paywall (it would also fail). Finish onboarding so the
+                    // user (or App Review) can actually use the app.
+                    onErrorContinue: {
+                        paywallSheet = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             finishOnboarding()
                         }
                     }
@@ -545,9 +557,8 @@ struct OnboardingView: View {
                 }
             case .ratingPledge:
                 // No skip. Big button opens the App Store sheet; "I rated it"
-                // only appears 5 s after the tap so the user can't dismiss
-                // and bounce instantly — they have to actually engage with
-                // the system sheet (or wait it out).
+                // appears 2.5 s after the tap — long enough that users can't
+                // dismiss and bounce instantly, short enough not to feel stuck.
                 VStack(spacing: 14) {
                     PrimaryButton(title: "Leave a rating", icon: "star.fill", variant: .white) {
                         OnboardingRatingPrompt.request()

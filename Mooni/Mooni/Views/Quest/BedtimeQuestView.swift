@@ -54,6 +54,8 @@ struct BedtimeQuestView: View {
                     }
                 }
                 .padding(.horizontal, 32)
+                // iPad: keep content column narrow; background stays full-bleed.
+                .responsiveContainer()
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)

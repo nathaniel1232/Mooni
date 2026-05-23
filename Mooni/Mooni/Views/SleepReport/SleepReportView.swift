@@ -47,6 +47,8 @@ struct SleepReportView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 24)
                 }
+                // iPad: cap content column; background stays full-bleed.
+                .responsiveContainer()
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)

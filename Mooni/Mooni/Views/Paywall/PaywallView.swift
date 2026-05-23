@@ -29,6 +29,11 @@ struct PaywallView: View {
     var hideCloseButton: Bool = false
     var onSoftDismiss: (() -> Void)? = nil
     var onPurchased: (() -> Void)? = nil
+    /// Called when the offerings failed to load and the user taps the
+    /// "Continue without subscribing" escape hatch. Routes around the
+    /// discount paywall (which would also fail) and lets onboarding
+    /// complete cleanly. Falls back to `dismiss()` if not provided.
+    var onErrorContinue: (() -> Void)? = nil
 
     @State private var plan: Plan = .annual
     @State private var showCustomerCenter = false
@@ -125,14 +130,28 @@ struct PaywallView: View {
             }
             .buttonStyle(.plain)
             Spacer()
+            // Bigger, more prominent escape hatch so a stuck App Review
+            // (or any user with a transient StoreKit failure) can always
+            // get into the app. Bypasses the discount paywall, which
+            // depends on the same offerings load and would also fail.
             Button {
-                if let soft = onSoftDismiss { soft() } else { dismiss() }
+                if let err = onErrorContinue {
+                    err()
+                } else if let soft = onSoftDismiss {
+                    soft()
+                } else {
+                    dismiss()
+                }
             } label: {
                 Text("Continue without subscribing")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundColor(MooniColor.textMuted)
-                    .underline()
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(Color.white.opacity(0.10))
+                    .clipShape(Capsule())
             }
+            .buttonStyle(.plain)
             .padding(.bottom, 24)
         }
         .padding(.horizontal, 32)

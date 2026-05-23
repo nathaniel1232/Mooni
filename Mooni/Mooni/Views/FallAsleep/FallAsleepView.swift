@@ -40,6 +40,8 @@ struct FallAsleepView: View {
                     }
                     .padding(20)
                 }
+                // iPad: cap content column; background stays full-bleed.
+                .responsiveContainer()
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)

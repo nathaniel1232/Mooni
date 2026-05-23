@@ -47,6 +47,8 @@ struct ProfileView: View {
                     .padding(20)
                     .padding(.bottom, 96)
                 }
+                // iPad: cap content column; background stays full-bleed.
+                .responsiveContainer()
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)

@@ -1529,20 +1529,49 @@ struct AutoTrackStoneAgeScreen: View {
 }
 
 // MARK: - autoTrackHow
+//
+// 24-hour phone-activity timeline. Replaces the previous iPhone glyph + pulse
+// rings + 3 bullets with a single visualization that *shows* the automatic
+// detection: activity bars drop into the night, a shaded "sleep" band marks
+// the inferred window, and two annotation pins call out "Bedtime detected"
+// and "Wake detected" at the band edges.
 
 struct AutoTrackHowScreen: View {
-    @State private var pulse: Bool = false
+    /// Mock phone-activity values across 24 hours (midnight → midnight).
+    /// High during waking hours, near-zero overnight. The sleep band derives
+    /// from where activity stays low for an extended stretch.
+    private let activity: [Double] = [
+        0.05, 0.02, 0.01, 0.01, 0.01, 0.02,   // 0am – 5am
+        0.10, 0.35, 0.55, 0.62, 0.58, 0.65,   // 6am – 11am
+        0.70, 0.68, 0.60, 0.66, 0.72, 0.78,   // 12pm – 5pm
+        0.74, 0.62, 0.48, 0.28, 0.12, 0.06    // 6pm – 11pm
+    ]
+
+    /// Sleep-band edges in hours-since-midnight. 22.75 = 10:45pm bedtime,
+    /// 6.75 (next day) = 6:45am wake. We render the band wrapping past
+    /// midnight by splitting it into [22.75…24] + [0…6.75].
+    private let bedHour: Double = 22.75
+    private let wakeHour: Double = 6.75
+
+    @State private var drawProgress: CGFloat = 0
+    @State private var bandVisible: Bool = false
+    @State private var pinsVisible: Bool = false
+
+    /// Brand-aligned accent for the sleep band.
+    private var sleepTint: Color {
+        Color(red: 0.62, green: 0.62, blue: 1.00)
+    }
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer(minLength: 8)
+        VStack(spacing: 22) {
+            Spacer(minLength: 4)
 
             VStack(spacing: 10) {
                 Text("Just you and your phone.")
-                    .font(MooniFont.display(28))
+                    .font(MooniFont.display(26))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                Text("No watch. No wearable. Nothing to charge.\nYour phone tracks your sleep on its own.")
+                Text("Your phone activity already tells the story.\nWe just read it — no watch, no wearable.")
                     .font(MooniFont.body(14))
                     .foregroundColor(.white.opacity(0.65))
                     .multilineTextAlignment(.center)
@@ -1550,81 +1579,357 @@ struct AutoTrackHowScreen: View {
                     .padding(.horizontal, 12)
             }
 
-            ZStack {
-                Circle()
-                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                    .frame(width: 240, height: 240)
-                    .scaleEffect(pulse ? 1.05 : 1)
-                Circle()
-                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                    .frame(width: 180, height: 180)
-                    .scaleEffect(pulse ? 1.03 : 1)
-                Image(systemName: "iphone.gen3")
-                    .font(.system(size: 80, weight: .regular))
-                    .foregroundColor(.white)
-            }
-            .onAppear {
-                withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
-                    pulse = true
-                }
-            }
+            timelineCard
+                .padding(.horizontal, 8)
 
-            VStack(spacing: 8) {
-                bullet("Bedtime signal", "Phone activity tapers between 8pm–4am")
-                bullet("Wake signal", "First morning unlock between 4am–noon")
-                bullet("Sanity filter", "Drops windows that don't look like sleep")
-            }
-            .padding(.horizontal, 20)
+            Text("Detected automatically. No alarms, no logging.")
+                .font(MooniFont.body(12))
+                .foregroundColor(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
 
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
+        .onAppear { play() }
     }
 
-    private func bullet(_ title: String, _ sub: String) -> some View {
-        HStack(spacing: 10) {
-            Circle().fill(Color.white).frame(width: 5, height: 5)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 13, weight: .heavy, design: .rounded))
-                    .foregroundColor(.white)
-                Text(sub)
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.6))
+    // MARK: - Timeline card
+
+    private var timelineCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Top label row — "Last 24 hours"
+            HStack(spacing: 6) {
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundColor(.white.opacity(0.55))
+                Text("LAST 24 HOURS")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .tracking(1.4)
+                    .foregroundColor(.white.opacity(0.55))
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+
+            GeometryReader { geo in
+                let w = geo.size.width
+                let h = geo.size.height
+                ZStack(alignment: .topLeading) {
+                    // Sleep band — split at midnight so it can wrap.
+                    sleepBand(width: w, height: h)
+                        .opacity(bandVisible ? 1 : 0)
+
+                    // Activity bars.
+                    HStack(alignment: .bottom, spacing: 2) {
+                        ForEach(0..<24, id: \.self) { hour in
+                            bar(for: hour, height: h)
+                        }
+                    }
+                    .frame(height: h, alignment: .bottom)
+
+                    // Bedtime pin (right side of midnight-wrap).
+                    pin(label: "Bedtime",
+                        icon: "moon.zzz.fill",
+                        x: xPos(forHour: bedHour, width: w),
+                        height: h,
+                        alignAbove: true)
+                        .opacity(pinsVisible ? 1 : 0)
+                        .offset(y: pinsVisible ? 0 : -4)
+
+                    // Wake pin (after midnight).
+                    pin(label: "Wake",
+                        icon: "sun.max.fill",
+                        x: xPos(forHour: wakeHour, width: w),
+                        height: h,
+                        alignAbove: true)
+                        .opacity(pinsVisible ? 1 : 0)
+                        .offset(y: pinsVisible ? 0 : -4)
+                }
+            }
+            .frame(height: 92)
+
+            // X-axis hour tick labels.
+            HStack {
+                axisLabel("12am")
+                Spacer(minLength: 0)
+                axisLabel("6am")
+                Spacer(minLength: 0)
+                axisLabel("12pm")
+                Spacer(minLength: 0)
+                axisLabel("6pm")
+                Spacer(minLength: 0)
+                axisLabel("12am")
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Building blocks
+
+    private func bar(for hour: Int, height h: CGFloat) -> some View {
+        let v = activity[hour]
+        let inSleep = isInSleepBand(hour: Double(hour))
+        let revealed = drawProgress >= CGFloat(hour) / 23.0
+        return RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+            .fill(
+                inSleep
+                    ? sleepTint.opacity(0.55)
+                    : Color.white.opacity(0.75)
+            )
+            .frame(maxWidth: .infinity)
+            .frame(height: max(2, CGFloat(v) * (h - 6) * (revealed ? 1 : 0)))
+    }
+
+    @ViewBuilder
+    private func sleepBand(width w: CGFloat, height h: CGFloat) -> some View {
+        // Pre-midnight portion: bedHour → 24
+        let pre = bandRect(start: bedHour, end: 24, width: w, height: h)
+        // Post-midnight portion: 0 → wakeHour
+        let post = bandRect(start: 0, end: wakeHour, width: w, height: h)
+        ZStack(alignment: .topLeading) {
+            sleepBandFill(rect: pre)
+            sleepBandFill(rect: post)
+        }
+    }
+
+    private func bandRect(start: Double, end: Double, width w: CGFloat,
+                          height h: CGFloat) -> CGRect {
+        let x0 = xPos(forHour: start, width: w)
+        let x1 = xPos(forHour: end, width: w)
+        return CGRect(x: x0, y: 0, width: max(0, x1 - x0), height: h)
+    }
+
+    private func sleepBandFill(rect: CGRect) -> some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        sleepTint.opacity(0.22),
+                        sleepTint.opacity(0.06)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .frame(width: rect.width, height: rect.height)
+            .offset(x: rect.minX, y: rect.minY)
+    }
+
+    private func pin(label: String, icon: String, x: CGFloat,
+                     height h: CGFloat, alignAbove: Bool) -> some View {
+        VStack(spacing: 3) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundColor(.white)
+                Text(label)
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(sleepTint.opacity(0.85)))
+            Rectangle()
+                .fill(sleepTint.opacity(0.6))
+                .frame(width: 1, height: 12)
+        }
+        .position(x: x, y: alignAbove ? 14 : h - 14)
+    }
+
+    private func axisLabel(_ s: String) -> some View {
+        Text(s)
+            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .foregroundColor(.white.opacity(0.45))
+            .tracking(0.3)
+    }
+
+    // MARK: - Geometry
+
+    private func xPos(forHour hour: Double, width w: CGFloat) -> CGFloat {
+        CGFloat(hour / 24.0) * w
+    }
+
+    private func isInSleepBand(hour: Double) -> Bool {
+        // Wraps past midnight: bed=22.75, wake=6.75 → in-band if hour ≥ 22.75
+        // OR hour < 6.75.
+        hour >= bedHour || hour < wakeHour
+    }
+
+    // MARK: - Animation
+
+    private func play() {
+        // Bars sweep in left-to-right.
+        withAnimation(.easeOut(duration: 1.0)) { drawProgress = 1 }
+        // Band fades in once the bars are halfway across.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+            withAnimation(.easeOut(duration: 0.5)) { bandVisible = true }
+        }
+        // Pins drop in after the band lands.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                pinsVisible = true
+            }
+            Haptics.tick()
         }
     }
 }
 
 // MARK: - autoTrackAccuracy → renamed to phone-only (no PSG claims)
+//
+// Strike-through comparison: three "old way" devices crossed out at the top,
+// arrow down, single highlighted iPhone card at the bottom. Sells the
+// "everything else is unnecessary" message visually instead of with bullet
+// pills.
 
 struct AutoTrackPhoneOnlyScreen: View {
+    @State private var strikeProgress: CGFloat = 0
+    @State private var iphoneVisible: Bool = false
+
+    private var accentTint: Color {
+        Color(red: 0.62, green: 0.62, blue: 1.00)
+    }
+
     var body: some View {
-        OBStack(
-            eyebrow: "Fully automated",
-            title: "Set it once. Forget it forever.",
-            subtitle: "Your sleep tracks itself every night. You wake up and the report is already there."
-        ) {
-            HStack(spacing: 14) {
-                pill(title: "No watch",   icon: "applewatch.slash")
-                pill(title: "No wearable", icon: "ear")
-                pill(title: "No logging",  icon: "pencil.slash")
+        VStack(spacing: 22) {
+            Spacer(minLength: 8)
+
+            VStack(spacing: 10) {
+                Text("Set it once.\nForget it forever.")
+                    .font(MooniFont.display(26))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                Text("Your sleep tracks itself. You wake up — the report is already there.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(.white.opacity(0.65))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .padding(.horizontal, 12)
             }
+
+            // ── Old way (3 struck-out tiles)
+            HStack(spacing: 12) {
+                strikedTile(title: "Smartwatch", icon: "applewatch")
+                strikedTile(title: "Ring", icon: "circle.circle")
+                strikedTile(title: "Manual log", icon: "pencil.and.list.clipboard")
+            }
+            .padding(.horizontal, 8)
+
+            // Arrow down + "Just this:"
+            VStack(spacing: 8) {
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 16, weight: .heavy))
+                    .foregroundColor(.white.opacity(0.35))
+                Text("ALL YOU NEED")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .tracking(1.4)
+                    .foregroundColor(.white.opacity(0.55))
+            }
+
+            // ── New way (one highlighted iPhone card)
+            iphoneCard
+                .padding(.horizontal, 24)
+                .opacity(iphoneVisible ? 1 : 0)
+                .scaleEffect(iphoneVisible ? 1 : 0.95)
+                .offset(y: iphoneVisible ? 0 : 8)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .onAppear { play() }
+    }
+
+    // MARK: - Building blocks
+
+    private func strikedTile(title: String, icon: String) -> some View {
+        VStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.04))
+                    .frame(width: 70, height: 70)
+                Image(systemName: icon)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.35))
+
+                // Animated strike-through diagonal.
+                GeometryReader { geo in
+                    Path { p in
+                        let pad: CGFloat = 8
+                        p.move(to: CGPoint(x: pad, y: geo.size.height - pad))
+                        p.addLine(to: CGPoint(x: geo.size.width - pad, y: pad))
+                    }
+                    .trim(from: 0, to: strikeProgress)
+                    .stroke(
+                        Color(red: 1.0, green: 0.55, blue: 0.55).opacity(0.9),
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                    )
+                }
+                .frame(width: 70, height: 70)
+            }
+            Text(title)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(.white.opacity(0.4))
+                .strikethrough(strikeProgress >= 1, color: .white.opacity(0.4))
         }
     }
 
-    private func pill(title: String, icon: String) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 22, weight: .semibold))
+    private var iphoneCard: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "iphone.gen3")
+                .font(.system(size: 44, weight: .regular))
                 .foregroundColor(.white)
-                .frame(width: 56, height: 56)
-                .background(Color.white.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            Text(title)
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
-                .foregroundColor(.white.opacity(0.8))
+                .frame(width: 64, height: 76)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(accentTint.opacity(0.18))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(accentTint.opacity(0.55), lineWidth: 1)
+                )
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Your iPhone")
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                Text("Already in your pocket. Already tracking.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.07))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(accentTint.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Animation
+
+    private func play() {
+        // Strikes draw left-to-right, staggered.
+        withAnimation(.easeOut(duration: 0.7).delay(0.25)) {
+            strikeProgress = 1
+        }
+        // iPhone card slides in after the strikes complete.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.05) {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
+                iphoneVisible = true
+            }
+            Haptics.tick()
         }
     }
 }

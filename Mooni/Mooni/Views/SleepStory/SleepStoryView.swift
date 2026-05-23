@@ -392,6 +392,8 @@ struct SleepStoryView: View {
                         }
                 )
             }
+            // iPad: cap the column; backdrop stays full-bleed.
+            .responsiveContainer()
 
             if celebrate {
                 ConfettiBurst()

@@ -157,6 +157,9 @@ struct MorningCheckInView: View {
                             .ignoresSafeArea(edges: .bottom)
                     )
             }
+            // iPad: cap the column so the iPhone-shaped check-in flow
+            // doesn't stretch to absurd widths.
+            .responsiveContainer()
         }
         .interactiveDismissDisabled(scene != .reveal)
         .onAppear(perform: setupInitialTimes)

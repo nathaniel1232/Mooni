@@ -86,6 +86,9 @@ struct HomeView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 96)
             }
+            // iPad: cap content width so the iPhone-shaped layout doesn't
+            // stretch absurdly wide. Background gradient still full-bleed.
+            .responsiveContainer()
         }
         .onAppear {
             if streak.hasUnseenLoss { showLostStreak = true }

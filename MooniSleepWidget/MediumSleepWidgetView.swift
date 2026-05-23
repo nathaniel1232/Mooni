@@ -182,66 +182,6 @@ struct MediumSleepWidgetView: View {
         )
     }
 
-    // MARK: Sparkline
-
-    private var sparkline: some View {
-        GeometryReader { geo in
-            let maxVal = (weekTrend.max() ?? 100)
-            let minVal = (weekTrend.min() ?? 0)
-            let range = max(1, maxVal - minVal)
-            let dx = geo.size.width / CGFloat(max(1, weekTrend.count - 1))
-
-            ZStack {
-                // Filled area
-                Path { p in
-                    p.move(to: CGPoint(x: 0, y: geo.size.height))
-                    for (i, v) in weekTrend.enumerated() {
-                        let x = CGFloat(i) * dx
-                        let y = geo.size.height - CGFloat((v - minVal) / range) * geo.size.height
-                        if i == 0 { p.addLine(to: CGPoint(x: x, y: y)) }
-                        else { p.addLine(to: CGPoint(x: x, y: y)) }
-                    }
-                    p.addLine(to: CGPoint(x: geo.size.width, y: geo.size.height))
-                    p.closeSubpath()
-                }
-                .fill(
-                    LinearGradient(
-                        colors: [data.scoreTint.opacity(0.35), data.scoreTint.opacity(0.02)],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                )
-
-                // Line stroke
-                Path { p in
-                    for (i, v) in weekTrend.enumerated() {
-                        let x = CGFloat(i) * dx
-                        let y = geo.size.height - CGFloat((v - minVal) / range) * geo.size.height
-                        if i == 0 { p.move(to: CGPoint(x: x, y: y)) }
-                        else { p.addLine(to: CGPoint(x: x, y: y)) }
-                    }
-                }
-                .stroke(
-                    LinearGradient(
-                        colors: [data.scoreTint.opacity(0.7), data.scoreTint],
-                        startPoint: .leading, endPoint: .trailing
-                    ),
-                    style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round)
-                )
-
-                // End dot
-                if let last = weekTrend.last {
-                    let x = geo.size.width
-                    let y = geo.size.height - CGFloat((last - minVal) / range) * geo.size.height
-                    Circle()
-                        .fill(data.scoreTint)
-                        .frame(width: 5, height: 5)
-                        .shadow(color: data.scoreTint.opacity(0.7), radius: 3)
-                        .position(x: x - 2, y: y)
-                }
-            }
-        }
-    }
-
     // MARK: Helpers
 
     private func captionFor(_ score: Int) -> String {
