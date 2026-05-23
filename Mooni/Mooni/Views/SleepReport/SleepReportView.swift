@@ -30,11 +30,11 @@ struct SleepReportView: View {
                         if let entry = appState.lastEntry {
                             heroCard(entry)
                             stageTimelineCard(entry)
-                            stageQualityCard(entry)
-                            metricRingsCard(entry)
-                            energyTrendCard
-                            trendCard
                             if subscriptionManager.isPro {
+                                stageQualityCard(entry)
+                                metricRingsCard(entry)
+                                energyTrendCard
+                                trendCard
                                 insightsGrid
                             } else {
                                 proTeaser

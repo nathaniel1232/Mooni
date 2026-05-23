@@ -200,15 +200,10 @@ struct PaywallView: View {
                 if hideCloseButton, let soft = onSoftDismiss { soft() } else { dismiss() }
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(
-                        size: hideCloseButton ? 10 : 13,
-                        weight: hideCloseButton ? .regular : .semibold))
-                    .foregroundColor(hideCloseButton
-                                     ? Color.white.opacity(0.18)
-                                     : MooniColor.textSecondary)
-                    .frame(width: hideCloseButton ? 24 : 30,
-                           height: hideCloseButton ? 24 : 30)
-                    .background(hideCloseButton ? Color.clear : Color.white.opacity(0.10))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .frame(width: 30, height: 30)
+                    .background(Color.white.opacity(0.10))
                     .clipShape(Circle())
                     .contentShape(Rectangle())
             }
@@ -395,7 +390,7 @@ struct PaywallView: View {
                     icon: "lock.open.fill",
                     tint: MooniColor.accent,
                     title: "Today",
-                    body: "Unlock the full SleepOwl library — meditations, sleep sounds, deep insights & every spirit colour.",
+                    body: "Unlock the full SleepOwl library — meditations, sleep sounds and deep insights.",
                     showConnector: true,
                     connectorFill: 1.0
                 )
@@ -482,8 +477,8 @@ struct PaywallView: View {
                        title: "Full history & insights",
                        body: "Deep dives into REM, debt, and recovery — every night.")
             benefitRow(icon: "sparkles", tint: MooniColor.warning,
-                       title: "Every sound, scene & colour",
-                       body: "All meditations, soundscapes and spirit themes unlocked.")
+                       title: "Every sound & scene",
+                       body: "All meditations and soundscapes unlocked.")
         }
     }
 

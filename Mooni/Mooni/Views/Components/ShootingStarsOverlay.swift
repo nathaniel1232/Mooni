@@ -55,13 +55,15 @@ struct ShootingStarsOverlay: View {
         // Head leads the tail along the trajectory.
         let headOffset = travel * CGFloat(progress)
         let tailOffset = max(0, headOffset - travel * 0.22)
+        let cosA = CGFloat(cos(angle))
+        let sinA = CGFloat(sin(angle))
         let head = CGPoint(
-            x: origin.x + cos(angle) * headOffset,
-            y: origin.y + sin(angle) * headOffset
+            x: origin.x + cosA * headOffset,
+            y: origin.y + sinA * headOffset
         )
         let tail = CGPoint(
-            x: origin.x + cos(angle) * tailOffset,
-            y: origin.y + sin(angle) * tailOffset
+            x: origin.x + cosA * tailOffset,
+            y: origin.y + sinA * tailOffset
         )
 
         // Fade in fast, hold, fade out.

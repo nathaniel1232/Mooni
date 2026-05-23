@@ -75,15 +75,12 @@ struct OnboardingView: View {
 
         // ─ Identity questions (10) ────────────────────────────────────────
         case wakeFeeling
-        case energyDip
-        case napsDay
         case racingThoughts
         case phoneBeforeBed
         case caffeineCutoff
         case stressLevel
         case struggleDuration
         case biggestProblem
-        case roomEnvironment
 
         // ─ Schedule basics ────────────────────────────────────────────────
         case schedule
@@ -94,7 +91,6 @@ struct OnboardingView: View {
         // ─ Personalize questions (5) ──────────────────────────────────────
         case personalizeGoals
         case personalizeBlockers
-        case personalizeImpact
         case personalizeTried
         case personalizeWindDown
 
@@ -308,8 +304,48 @@ struct OnboardingView: View {
         HStack(spacing: 12) {
             backChevron
             linearProgressBar
+            skipButton
         }
         .frame(height: 28)
+    }
+
+    /// Screens where a small "Skip" link sits opposite the back chevron. Used
+    /// for non-essential beats so the user is never trapped on a slide they
+    /// don't want to engage with — keeps the App Store reviewer (and impatient
+    /// users) happy without removing the screens entirely.
+    private var skippableSteps: Set<Step> {
+        [.lifeTimeline,
+         .trackingCompare,
+         .targetReachable,
+         .sleepMetricsTease,
+         .ratingPledge,
+         .commitReady,
+         .planWalkthrough,
+         .widgetSmall,
+         .widgetMedium,
+         .autoTrackStoneAge,
+         .autoTrackHow,
+         .autoTrackAccuracy,
+         .signaturePledge]
+    }
+
+    @ViewBuilder
+    private var skipButton: some View {
+        if skippableSteps.contains(step) {
+            Button {
+                advance()
+            } label: {
+                Text("Skip")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.55))
+                    .frame(height: 28)
+                    .padding(.horizontal, 6)
+                    .contentShape(Rectangle())
+            }
+            .transition(.opacity)
+        } else {
+            Color.clear.frame(width: 28, height: 28)
+        }
     }
 
     @ViewBuilder
@@ -377,19 +413,15 @@ struct OnboardingView: View {
         case .lifeTimeline:         LifeTimelineScreen()
         case .namePet:              NamePetScreen(species: species, name: $petName)
         case .wakeFeeling:          WakeFeelingScreen(profile: $profile)
-        case .energyDip:            EnergyDipScreen(profile: $profile)
-        case .napsDay:              NapsScreen(profile: $profile)
         case .racingThoughts:       RacingThoughtsScreen(profile: $profile, petName: petName)
         case .phoneBeforeBed:       PhoneBeforeBedScreen(profile: $profile)
         case .caffeineCutoff:       CaffeineCutoffScreen(profile: $profile)
         case .stressLevel:          StressLevelScreen(profile: $profile)
         case .struggleDuration:     StruggleDurationScreen(profile: $profile)
         case .biggestProblem:       BiggestProblemScreen(profile: $profile)
-        case .roomEnvironment:      RoomEnvironmentScreen(profile: $profile)
         case .schedule:             ScheduleScreen(bedtime: $bedtime, wakeTime: $wakeTime,
                                                    separateWeekends: $separateWeekends, weekendWake: $weekendWake)
         case .trackingCompare:      TrackingCompareScreen()
-        case .targetReachable:      TargetReachableScreen(wakeTime: wakeTime)
         case .personalizeGoals:     GoalsMultiScreen(selection: $selectedGoals)
         case .personalizeBlockers:
             MultiSelectScreen(
@@ -399,14 +431,6 @@ struct OnboardingView: View {
                     ($0, $0.label, $0.icon)
                 },
                 selection: $selBlockers)
-        case .personalizeImpact:
-            MultiSelectScreen(
-                title: "How does poor sleep hit you?",
-                subtitle: "Tick everything you feel — we'll target these.",
-                options: OnboardingProfile.SleepImpact.allCases.map {
-                    ($0, $0.label, $0.icon)
-                },
-                selection: $selImpacts)
         case .personalizeTried:
             MultiSelectScreen(
                 title: "What have you already tried?",
@@ -428,7 +452,7 @@ struct OnboardingView: View {
         case .sleepMetricsTease:    SleepMetricsTeaseScreen()
         case .notifAllowMock:       NotifAllowMockScreen(petName: petName,
                                                          state: notifications.authState)
-        case .ratingPledge:         RatingPledgeScreen()
+        case .ratingPledge:         RatingPledgeScreen(promptShown: $ratePromptShown)
         case .signIn:               SignInScreen(state: authState, errorMessage: authErrorMessage)
         case .commitReady:          CommitReadyScreen(petName: petName)
         case .planComputing:
@@ -567,21 +591,17 @@ struct OnboardingView: View {
             ? "Give them a name"
             : "Continue"
         case .wakeFeeling:         return profile.wakeFeeling == nil ? "Pick one to continue" : "Continue"
-        case .energyDip:           return profile.energyDip == nil ? "Pick one to continue" : "Continue"
-        case .napsDay:             return "Continue"
         case .racingThoughts:      return "Continue"
         case .phoneBeforeBed:      return "Continue"
         case .caffeineCutoff:      return profile.caffeineCutoff == nil ? "Pick one to continue" : "Continue"
         case .stressLevel:         return "Continue"
         case .struggleDuration:    return profile.struggleDuration == nil ? "Pick one to continue" : "Continue"
         case .biggestProblem:      return profile.biggestProblem == nil ? "Pick one to continue" : "Continue"
-        case .roomEnvironment:     return "Continue"
         case .schedule:            return "Continue"
         case .trackingCompare:     return "I want this"
         case .targetReachable:     return "Continue"
         case .personalizeGoals:    return selectedGoals.isEmpty ? "Pick at least one" : "Continue"
         case .personalizeBlockers: return selBlockers.isEmpty ? "Pick at least one" : "Continue"
-        case .personalizeImpact:   return selImpacts.isEmpty ? "Pick at least one" : "Continue"
         case .personalizeTried:    return selTried.isEmpty ? "Pick at least one" : "Continue"
         case .personalizeWindDown: return selWindDown.isEmpty ? "Pick at least one" : "Continue"
         case .sleepGoal:           return sleepGoal == nil ? "Pick one to continue" : "Set my goal"
@@ -606,7 +626,6 @@ struct OnboardingView: View {
         case .ageQuestion:         return profile.age != nil
         case .personalizeGoals:    return !selectedGoals.isEmpty
         case .personalizeBlockers: return !selBlockers.isEmpty
-        case .personalizeImpact:   return !selImpacts.isEmpty
         case .personalizeTried:    return !selTried.isEmpty
         case .personalizeWindDown: return !selWindDown.isEmpty
         case .sleepGoal:           return sleepGoal != nil
@@ -616,8 +635,6 @@ struct OnboardingView: View {
         case .caffeineCutoff:      return profile.caffeineCutoff != nil
         case .racingThoughts:      return profile.racingThoughtsAtNight != nil
         case .wakeFeeling:         return profile.wakeFeeling != nil
-        case .energyDip:           return profile.energyDip != nil
-        case .napsDay:             return profile.napsDuringDay != nil
         default:                   return true
         }
     }
@@ -665,15 +682,15 @@ struct OnboardingView: View {
 
     /// (progressTarget, secondsToHoldAfterReaching) per step.
     private static let analyzingScript: [(Double, Double)] = [
-        (0.08, 0.4),   // reading answers
-        (0.20, 0.6),   // mapping chronotype
-        (0.35, 0.4),
-        (0.48, 0.7),   // calculating debt
-        (0.62, 0.4),
-        (0.74, 0.6),   // identifying issues
-        (0.84, 0.3),
-        (0.93, 0.5),
-        (1.00, 0.3)
+        (0.08, 1.3),   // reading answers
+        (0.20, 1.5),   // mapping chronotype
+        (0.35, 1.2),
+        (0.48, 1.8),   // calculating debt
+        (0.62, 1.3),
+        (0.74, 1.6),   // identifying issues
+        (0.84, 1.1),
+        (0.93, 1.4),
+        (1.00, 0.8)
     ]
 
     private func runAnalyzingAnimation() {
@@ -1481,36 +1498,36 @@ private struct GoalScreen: View {
             }
             .padding(.horizontal, 12)
 
-            VStack(spacing: 7) {
+            VStack(spacing: 6) {
                 ForEach(SleepGoal.allCases) { goal in
                     Button {
                         withAnimation(.spring(response: 0.28)) { selection = goal }
                         Haptics.tap()
                     } label: {
                         let isSelected = selection == goal
-                        HStack(spacing: 12) {
+                        HStack(spacing: 10) {
                             Image(systemName: goal.icon)
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(isSelected ? .black : .white)
-                                .frame(width: 30, height: 30)
+                                .frame(width: 26, height: 26)
                                 .background(isSelected ? Color.white : Color.white.opacity(0.10))
-                                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             Text(goal.title)
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
                                 .foregroundColor(.white)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
                             Spacer(minLength: 0)
                             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundColor(isSelected ? .white : .white.opacity(0.25))
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 9)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 8)
                         .background(Color.white.opacity(isSelected ? 0.10 : 0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .stroke(Color.white.opacity(isSelected ? 0.5 : 0.10),
                                         lineWidth: 1)
                         )
@@ -1551,7 +1568,7 @@ private struct MultiSelectScreen<T: Hashable>: View {
             }
             .padding(.horizontal, 12)
 
-            VStack(spacing: 7) {
+            VStack(spacing: 5) {
                 ForEach(Array(options.enumerated()), id: \.offset) { _, opt in
                     let (value, label, icon) = opt
                     let isSelected = selection.contains(value)
@@ -1562,28 +1579,28 @@ private struct MultiSelectScreen<T: Hashable>: View {
                         }
                         Haptics.tap()
                     } label: {
-                        HStack(spacing: 12) {
+                        HStack(spacing: 10) {
                             Image(systemName: icon)
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(isSelected ? .black : .white)
-                                .frame(width: 30, height: 30)
+                                .frame(width: 24, height: 24)
                                 .background(isSelected ? Color.white : Color.white.opacity(0.10))
-                                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                             Text(label)
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
                                 .foregroundColor(.white)
                                 .lineLimit(1)
                             Spacer(minLength: 0)
                             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundColor(isSelected ? .white : .white.opacity(0.25))
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 9)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 7)
                         .background(Color.white.opacity(isSelected ? 0.10 : 0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .stroke(Color.white.opacity(isSelected ? 0.5 : 0.10),
                                         lineWidth: 1)
                         )

@@ -69,9 +69,11 @@ struct DiscountPaywallView: View {
                     Spacer()
                     Button(action: onDecline) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .regular))
-                            .foregroundColor(Color.white.opacity(0.20))
-                            .padding(10)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.75))
+                            .frame(width: 30, height: 30)
+                            .background(Color.white.opacity(0.10))
+                            .clipShape(Circle())
                             .contentShape(Rectangle())
                     }
                 }

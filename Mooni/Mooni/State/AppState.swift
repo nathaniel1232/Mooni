@@ -994,6 +994,9 @@ final class AppState: ObservableObject {
     /// "going to bed". Called on background transitions.
     func autoArmNightIfDue(at date: Date = Date()) {
         guard hasCompletedOnboarding, !isSleeping else { return }
+        // Auto-tracking (activity-based sleep detection) is a Pro feature.
+        // Free users must tap "going to bed" / "I'm awake" manually.
+        guard SubscriptionManager.shared.isPro else { return }
         let hour = Calendar.current.component(.hour, from: date)
         guard hour >= 19 || hour < 4 else { return }
 
