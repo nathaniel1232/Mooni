@@ -47,6 +47,10 @@ struct OnboardingView: View {
     @State private var analyzingProgress: Double = 0
     @State private var analyzingStep: Int = 0
 
+    // TrackingCompareScreen sets this true once its play() animation finishes;
+    // it gates the footer Continue so the user can't skip past the reveal.
+    @State private var trackingCompareDone: Bool = false
+
     // Paywall flow
     @State private var paywallSheet: PaywallStage? = nil
 
@@ -86,7 +90,10 @@ struct OnboardingView: View {
         case schedule
 
         // ─ Goal hours (commit BEFORE targetReachable so we can quote it) ──
+        // Split across two screens so each row can be full-sized + readable
+        // instead of cramming all 6 options into a single screen.
         case sleepGoal
+        case sleepGoalMore
 
         // ─ Personalize questions (5) ──────────────────────────────────────
         case personalizeGoals
@@ -124,9 +131,6 @@ struct OnboardingView: View {
         // ─ Widget showcase (Small + Medium) ───────────────────────────────
         case widgetSmall
         case widgetMedium
-
-        // ─ Soft bridge: "Here's how your plan works" ──────────────────────
-        case planWalkthrough
 
         // ─ Auto-tracking pitch (3) ────────────────────────────────────────
         case autoTrackStoneAge
@@ -320,7 +324,6 @@ struct OnboardingView: View {
          .sleepMetricsTease,
          .ratingPledge,
          .commitReady,
-         .planWalkthrough,
          .widgetSmall,
          .widgetMedium,
          .autoTrackStoneAge,
@@ -421,7 +424,7 @@ struct OnboardingView: View {
         case .biggestProblem:       BiggestProblemScreen(profile: $profile)
         case .schedule:             ScheduleScreen(bedtime: $bedtime, wakeTime: $wakeTime,
                                                    separateWeekends: $separateWeekends, weekendWake: $weekendWake)
-        case .trackingCompare:      TrackingCompareScreen()
+        case .trackingCompare:      TrackingCompareScreen(animationDone: $trackingCompareDone)
         case .personalizeGoals:     GoalsMultiScreen(selection: $selectedGoals)
         case .personalizeBlockers:
             MultiSelectScreen(
@@ -447,7 +450,10 @@ struct OnboardingView: View {
                     ($0, $0.label, $0.icon)
                 },
                 selection: $selWindDown)
-        case .sleepGoal:            GoalScreen(selection: $sleepGoal)
+        case .sleepGoal:            GoalScreen(selection: $sleepGoal, page: 0,
+                                                onAdvance: { advance() })
+        case .sleepGoalMore:        GoalScreen(selection: $sleepGoal, page: 1,
+                                                onAdvance: { advance() })
         case .targetReachable:      TargetReachableScreen(sleepGoal: sleepGoal)
         case .sleepMetricsTease:    SleepMetricsTeaseScreen()
         case .notifAllowMock:       NotifAllowMockScreen(petName: petName,
@@ -466,7 +472,6 @@ struct OnboardingView: View {
                 petName: petName)
         case .widgetSmall:          WidgetShowcaseScreen(kind: .small)
         case .widgetMedium:         WidgetShowcaseScreen(kind: .medium)
-        case .planWalkthrough:      PlanWalkthroughScreen(petName: petName)
         case .autoTrackStoneAge:    AutoTrackStoneAgeScreen()
         case .autoTrackHow:         AutoTrackHowScreen()
         case .autoTrackAccuracy:    AutoTrackPhoneOnlyScreen()
@@ -527,7 +532,8 @@ struct OnboardingView: View {
                             }
                         }
                     }
-                    SecondaryButton(title: "Continue without an account") {
+                    SecondaryButton(title: "Continue without an account",
+                                    variant: .capsule) {
                         authState = .skipped
                         advance()
                     }
@@ -545,7 +551,9 @@ struct OnboardingView: View {
                 VStack(spacing: 14) {
                     PrimaryButton(title: "Leave a rating", icon: "star.fill", variant: .white) {
                         OnboardingRatingPrompt.request()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                        // Surface "I rated it" quickly so users aren't stuck
+                        // staring at the screen wondering what's next.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 ratePromptShown = true
                             }
@@ -611,7 +619,6 @@ struct OnboardingView: View {
         case .planReveal:          return "See my widgets"
         case .widgetSmall:         return "Next widget"
         case .widgetMedium:        return "Got it"
-        case .planWalkthrough:     return "Let's set it up"
         case .autoTrackStoneAge:   return "Tell me how"
         case .autoTrackHow:        return "How accurate?"
         case .autoTrackAccuracy:   return "Got it"
@@ -629,6 +636,8 @@ struct OnboardingView: View {
         case .personalizeTried:    return !selTried.isEmpty
         case .personalizeWindDown: return !selWindDown.isEmpty
         case .sleepGoal:           return sleepGoal != nil
+        case .sleepGoalMore:       return sleepGoal != nil
+        case .trackingCompare:     return trackingCompareDone
         case .struggleDuration:    return profile.struggleDuration != nil
         case .biggestProblem:      return profile.biggestProblem != nil
         case .phoneBeforeBed:      return profile.usesPhoneBeforeBed != nil
@@ -677,59 +686,135 @@ struct OnboardingView: View {
 
     // MARK: - Loading animations
     //
-    // Both loops use uneven progress jumps + uneven dwell times so it feels like
-    // real work is happening — *not* a constant-rate progress bar.
+    // The bar crawls *smoothly* through every percentage point rather than
+    // teleporting between scripted targets. Each phase below interpolates
+    // linearly from the previous phase's end to its own target over the
+    // listed duration — so 1 → 100 advances 1, 2, 3, 4… instead of the old
+    // 1 → 12 → 25 → 38 stepping. Believable variance comes from the phases
+    // themselves having different speeds (fewer percentage points per second
+    // during the "hard" beats like chronotype + debt calculation).
 
-    /// (progressTarget, secondsToHoldAfterReaching) per step.
+    /// (progressTarget, secondsToReachItFromPrevious) per phase.
     private static let analyzingScript: [(Double, Double)] = [
-        (0.08, 1.3),   // reading answers
-        (0.20, 1.5),   // mapping chronotype
-        (0.35, 1.2),
-        (0.48, 1.8),   // calculating debt
-        (0.62, 1.3),
-        (0.74, 1.6),   // identifying issues
+        (0.10, 1.2),   // reading answers
+        (0.22, 1.5),   // mapping chronotype  (slow)
+        (0.36, 1.3),
+        (0.50, 1.7),   // calculating debt    (slow)
+        (0.62, 1.2),
+        (0.74, 1.4),   // identifying issues
         (0.84, 1.1),
-        (0.93, 1.4),
+        (0.93, 1.2),
         (1.00, 0.8)
     ]
 
+    @State private var analyzingTimer: Timer? = nil
+
     private func runAnalyzingAnimation() {
+        analyzingTimer?.invalidate()
+        analyzingTimer = nil
         analyzingProgress = 0
         analyzingStep = 0
-        runScript(
+        runScriptSmooth(
             Self.analyzingScript,
             progress: { v in analyzingProgress = v },
             stepIndex: { i in analyzingStep = i },
             messageGroups: PlanComputingScreen.stepBoundaries,
+            timerSink: { analyzingTimer = $0 },
             onDone: { advance() }
         )
     }
 
-    /// Walks through the scripted (target, hold) pairs. After each progress jump
-    /// it waits `hold` seconds — so the bar visibly *pauses* at believable
-    /// moments instead of climbing at a constant rate.
-    private func runScript(
+    /// Timer-driven smooth driver. Maintains a running `elapsed`, figures
+    /// out the active phase, applies a *per-phase easing curve* (so the bar
+    /// crawls slowly into a phase, then accelerates out, or vice versa)
+    /// AND a small per-tick jitter so the rate visibly fluctuates instead
+    /// of feeling like a fake fixed-rate progress bar.
+    private func runScriptSmooth(
         _ script: [(Double, Double)],
         progress: @escaping (Double) -> Void,
         stepIndex: @escaping (Int) -> Void,
-        messageGroups: [Int],          // script index where each message advances
+        messageGroups: [Int],
+        timerSink: @escaping (Timer?) -> Void,
         onDone: @escaping () -> Void
     ) {
-        var t: Double = 0
-        for (i, entry) in script.enumerated() {
-            let (target, hold) = entry
-            let firstFireDelay = t
-            DispatchQueue.main.asyncAfter(deadline: .now() + firstFireDelay) {
-                withAnimation(.easeInOut(duration: 0.55)) {
-                    progress(target)
-                    if let msgIdx = messageGroups.firstIndex(where: { $0 == i }) {
-                        stepIndex(msgIdx)
-                    }
+        // Cumulative end-time per phase.
+        var phaseEnds: [Double] = []
+        var acc: Double = 0
+        for entry in script {
+            acc += entry.1
+            phaseEnds.append(acc)
+        }
+        let total = acc
+
+        // Tick interval. 60ms ≈ 16 ticks/s — visibly continuous on screen.
+        let interval: TimeInterval = 0.06
+        let start = Date()
+        var lastPhase = -1
+        // Carries the previous rendered progress so the bar never goes backward
+        // when jitter would otherwise pull it down a hair.
+        var lastValue: Double = 0
+
+        // Easing per phase — alternates so consecutive phases feel different.
+        // Index into this with `phase % easingCurves.count`.
+        let easingCurves: [(Double) -> Double] = [
+            { t in t * t },                              // easeIn — slow start
+            { t in 1 - (1 - t) * (1 - t) },              // easeOut — slow finish
+            { t in t < 0.5
+                ? 2 * t * t
+                : 1 - pow(-2 * t + 2, 2) / 2 },          // easeInOut
+            { t in 1 - pow(1 - t, 3) }                   // easeOut cubic
+        ]
+
+        let timer = Timer.scheduledTimer(withTimeInterval: interval,
+                                         repeats: true) { t in
+            let elapsed = Date().timeIntervalSince(start)
+            if elapsed >= total {
+                progress(1.0)
+                if let lastMsg = messageGroups.indices.last {
+                    stepIndex(lastMsg)
+                }
+                t.invalidate()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    onDone()
+                }
+                return
+            }
+
+            // Find the current phase.
+            var phase = 0
+            while phase < phaseEnds.count && elapsed > phaseEnds[phase] {
+                phase += 1
+            }
+            let phaseStartTime = phase == 0 ? 0 : phaseEnds[phase - 1]
+            let phaseStartProg = phase == 0 ? 0 : script[phase - 1].0
+            let phaseEndProg   = script[phase].0
+            let phaseDur       = phaseEnds[phase] - phaseStartTime
+            let localT         = phaseDur > 0
+                ? (elapsed - phaseStartTime) / phaseDur
+                : 1.0
+
+            let curve = easingCurves[phase % easingCurves.count]
+            let eased = curve(min(max(localT, 0), 1))
+            let target = phaseStartProg + (phaseEndProg - phaseStartProg) * eased
+
+            // Per-tick jitter — ±15% of the *increment* since last tick.
+            // Keeps the bar moving organically: sometimes a small wobble, but
+            // never backward, never past the eased target.
+            let nominalDelta = target - lastValue
+            let jitter = Double.random(in: -0.15...0.15) * nominalDelta
+            let candidate = lastValue + nominalDelta + jitter
+            let value = max(lastValue, min(candidate, target + 0.005))
+            lastValue = value
+            progress(value)
+
+            if phase != lastPhase {
+                lastPhase = phase
+                if let msgIdx = messageGroups.firstIndex(of: phase) {
+                    stepIndex(msgIdx)
                 }
             }
-            t += hold
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + t + 0.4) { onDone() }
+        timerSink(timer)
     }
 
     // MARK: - Finish
@@ -1479,64 +1564,116 @@ private struct WeightScreen: View {
 }
 
 // MARK: - Screen: Sleep goal
+//
+// 6 SleepGoal cases split across 2 screens (3 per page) so each row can be
+// full-sized instead of crammed. `page` (0 or 1) selects which slice to
+// render. Selection is a single shared binding across both pages; back
+// navigation from page 1 → page 0 preserves the choice.
 
 private struct GoalScreen: View {
     @Binding var selection: SleepGoal?
+    /// 0 = primary (first three goals + "More options" link),
+    /// 1 = continuation (remaining goals).
+    let page: Int
+    /// Called when the user explicitly asks to see more options on page 0.
+    /// Bypasses the footer's canAdvance gate so users can browse without
+    /// having to select prematurely.
+    var onAdvance: () -> Void = {}
+
+    /// Three goals per page in stable enum order.
+    private var pageGoals: [SleepGoal] {
+        let all = SleepGoal.allCases
+        let mid = all.count / 2
+        return page == 0 ? Array(all.prefix(mid)) : Array(all.suffix(from: mid))
+    }
+
+    private var title: String {
+        page == 0
+            ? "What do you want help with most?"
+            : "A few more options."
+    }
+    private var subtitle: String {
+        page == 0
+            ? "We'll personalize your plan around this."
+            : "Still nothing fits? Use Back to revisit the first set."
+    }
 
     var body: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 8) {
-                Text("What do you want help with most?")
+        VStack(spacing: 22) {
+            VStack(spacing: 10) {
+                Text(title)
                     .font(MooniFont.display(24))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
-                Text("We'll personalize your plan around this.")
-                    .font(MooniFont.body(13))
+                Text(subtitle)
+                    .font(MooniFont.body(14))
                     .foregroundColor(.white.opacity(0.6))
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 12)
 
-            VStack(spacing: 6) {
-                ForEach(SleepGoal.allCases) { goal in
-                    Button {
-                        withAnimation(.spring(response: 0.28)) { selection = goal }
-                        Haptics.tap()
-                    } label: {
-                        let isSelected = selection == goal
-                        HStack(spacing: 10) {
-                            Image(systemName: goal.icon)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(isSelected ? .black : .white)
-                                .frame(width: 26, height: 26)
-                                .background(isSelected ? Color.white : Color.white.opacity(0.10))
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            Text(goal.title)
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.85)
-                            Spacer(minLength: 0)
-                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(isSelected ? .white : .white.opacity(0.25))
-                        }
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(isSelected ? 0.10 : 0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(Color.white.opacity(isSelected ? 0.5 : 0.10),
-                                        lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
+            VStack(spacing: 10) {
+                ForEach(pageGoals) { goal in
+                    goalRow(goal: goal)
                 }
+            }
+
+            if page == 0 {
+                Button {
+                    Haptics.tap()
+                    onAdvance()
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("More options")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 20)
+    }
+
+    private func goalRow(goal: SleepGoal) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.28)) { selection = goal }
+            Haptics.tap()
+        } label: {
+            let isSelected = selection == goal
+            HStack(spacing: 14) {
+                Image(systemName: goal.icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(isSelected ? .black : .white)
+                    .frame(width: 40, height: 40)
+                    .background(isSelected ? Color.white : Color.white.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                Text(goal.title)
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(isSelected ? .white : .white.opacity(0.25))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(Color.white.opacity(isSelected ? 0.10 : 0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.white.opacity(isSelected ? 0.5 : 0.10),
+                            lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1568,7 +1705,7 @@ private struct MultiSelectScreen<T: Hashable>: View {
             }
             .padding(.horizontal, 12)
 
-            VStack(spacing: 5) {
+            VStack(spacing: 10) {
                 ForEach(Array(options.enumerated()), id: \.offset) { _, opt in
                     let (value, label, icon) = opt
                     let isSelected = selection.contains(value)
@@ -1579,28 +1716,29 @@ private struct MultiSelectScreen<T: Hashable>: View {
                         }
                         Haptics.tap()
                     } label: {
-                        HStack(spacing: 10) {
+                        HStack(spacing: 14) {
                             Image(systemName: icon)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(isSelected ? .black : .white)
-                                .frame(width: 24, height: 24)
+                                .frame(width: 40, height: 40)
                                 .background(isSelected ? Color.white : Color.white.opacity(0.10))
-                                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                             Text(label)
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .font(.system(size: 17, weight: .semibold, design: .rounded))
                                 .foregroundColor(.white)
-                                .lineLimit(1)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 0)
                             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: 20, weight: .semibold))
                                 .foregroundColor(isSelected ? .white : .white.opacity(0.25))
                         }
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 7)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 14)
                         .background(Color.white.opacity(isSelected ? 0.10 : 0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .stroke(Color.white.opacity(isSelected ? 0.5 : 0.10),
                                         lineWidth: 1)
                         )

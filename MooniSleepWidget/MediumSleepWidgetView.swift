@@ -3,29 +3,19 @@ import SwiftUI
 /// Medium widget — premium two-pane layout.
 /// LEFT: glowing gradient ring with mascot at centre and a clean "tonight"
 /// time-range pill beneath it.
-/// RIGHT: massive score number with tinted glow, quality badge, energy chip,
-/// and a 7-day sparkline so the user sees their trend at a glance.
-/// "SleepOwl" wordmark sits subtly in the top-right corner.
+/// RIGHT: score + quality + a tidy day-stats grid (duration / energy /
+/// bedtime → wake). No sparkline — sparklines were unreadable at this
+/// size and the text kept overflowing.
 struct MediumSleepWidgetView: View {
     let data: SleepWidgetData
 
-    /// Synthesised 7-day trend for the sparkline. The real app should swap
-    /// this to a snapshot field once that's wired through; for now it draws
-    /// a believable shape weighted by the latest score so the sparkline
-    /// always lands at tonight's value.
-    private var weekTrend: [Double] {
-        let last = Double(data.score)
-        // Each prior day perturbs by ±8 around the current score, bounded.
-        let perturb: [Double] = [-6, 4, -3, 5, -2, 3]
-        return perturb.map { max(20, min(100, last + $0)) } + [last]
-    }
-
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .center, spacing: 14) {
             leftPane
-                .frame(width: 124)
+                .frame(width: 116)
             rightPane
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity,
+                       alignment: .topLeading)
         }
     }
 
@@ -34,7 +24,7 @@ struct MediumSleepWidgetView: View {
     private var leftPane: some View {
         VStack(spacing: 8) {
             ringHero
-                .frame(width: 112, height: 112)
+                .frame(width: 104, height: 104)
 
             // Time-range pill — replaces the previous detail row
             HStack(spacing: 5) {
@@ -63,13 +53,13 @@ struct MediumSleepWidgetView: View {
             // Outer soft glow
             Circle()
                 .fill(data.scoreTint.opacity(0.22))
-                .frame(width: 118, height: 118)
+                .frame(width: 110, height: 110)
                 .blur(radius: 12)
 
             // Track
             Circle()
-                .stroke(SleepWidgetPalette.ringTrack, lineWidth: 9)
-                .frame(width: 100, height: 100)
+                .stroke(SleepWidgetPalette.ringTrack, lineWidth: 8)
+                .frame(width: 94, height: 94)
 
             // Progress — angular gradient stroke
             Circle()
@@ -83,50 +73,62 @@ struct MediumSleepWidgetView: View {
                         ],
                         center: .center
                     ),
-                    style: StrokeStyle(lineWidth: 9, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
                 )
-                .frame(width: 100, height: 100)
+                .frame(width: 94, height: 94)
                 .rotationEffect(.degrees(-90))
                 .shadow(color: data.scoreTint.opacity(0.55), radius: 8)
 
             MooniMascotView()
-                .frame(width: 58, height: 58)
+                .frame(width: 54, height: 54)
         }
     }
 
     // MARK: - Right pane
+    //
+    // Restructured to: brand wordmark + score+quality + a tidy 2x2 day-stats
+    // grid. No more sparkline (it was unreadable at this height and the
+    // gradient stroke kept making the layout feel busy). No more
+    // firstTextBaseline alignment (which fought the mixed font sizes and
+    // pushed the quality chip off the right edge). Everything now uses
+    // .center alignment and stays inside the widget bounds.
 
     private var rightPane: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Brand wordmark (subtle, top-right tucked to start so layout stays clean)
+            // Brand wordmark (top, small, subtle)
             HStack(spacing: 4) {
                 Image(systemName: "moon.stars.fill")
                     .font(.system(size: 9, weight: .black))
                 Text("SleepOwl")
                     .font(.system(size: 10, weight: .black, design: .rounded))
                     .tracking(0.2)
+                Spacer(minLength: 0)
             }
             .foregroundStyle(SleepWidgetPalette.textSecondary)
 
-            // Massive score + quality
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            // Score block — center alignment now (no baseline collision)
+            HStack(alignment: .center, spacing: 8) {
                 Text("\(data.score)")
-                    .font(.system(size: 52, weight: .heavy, design: .rounded))
+                    .font(.system(size: 44, weight: .heavy, design: .rounded))
                     .foregroundStyle(scoreGradient)
-                    .shadow(color: data.scoreTint.opacity(0.55), radius: 14)
+                    .shadow(color: data.scoreTint.opacity(0.55), radius: 12)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                VStack(alignment: .leading, spacing: 4) {
+                    .minimumScaleFactor(0.7)
+                VStack(alignment: .leading, spacing: 3) {
                     qualityChip
                     Text(captionFor(data.score))
                         .font(.system(size: 9, weight: .heavy, design: .rounded))
                         .foregroundStyle(SleepWidgetPalette.textTertiary)
-                        .tracking(1.2)
+                        .tracking(1.0)
                         .textCase(.uppercase)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
+                Spacer(minLength: 0)
             }
 
-            // Chips row — duration + energy
+            // Day stats — two mini chips side by side. Width-balanced
+            // (each gets ½ of the right pane) so neither overflows.
             HStack(spacing: 6) {
                 miniChip(icon: "bed.double.fill",
                          value: data.sleepDuration,
@@ -135,10 +137,6 @@ struct MediumSleepWidgetView: View {
                          value: "\(data.energyScore)%",
                          tint: energyTint(for: data.energyScore))
             }
-
-            // Sparkline — last 7 nights
-            sparkline
-                .frame(height: 22)
         }
     }
 

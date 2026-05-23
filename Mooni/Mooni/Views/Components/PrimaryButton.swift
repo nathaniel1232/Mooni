@@ -62,9 +62,38 @@ struct PrimaryButton: View {
 }
 
 struct SecondaryButton: View {
+    enum Variant {
+        /// Default app style — rounded rectangle (16pt corner).
+        case standard
+        /// Onboarding style — capsule pill matching `PrimaryButton.white`,
+        /// so a stacked "primary white" + "secondary" pair share the same
+        /// silhouette instead of one being noticeably less rounded.
+        case capsule
+    }
+
     let title: String
     var icon: String? = nil
+    var variant: Variant = .standard
     let action: () -> Void
+
+    private var corner: CGFloat {
+        switch variant {
+        case .standard: return 16
+        case .capsule:  return 999
+        }
+    }
+    private var verticalPadding: CGFloat {
+        switch variant {
+        case .standard: return 14
+        case .capsule:  return 17 // matches PrimaryButton.white
+        }
+    }
+    private var titleFont: Font {
+        switch variant {
+        case .standard: return MooniFont.title(15)
+        case .capsule:  return MooniFont.title(17) // matches PrimaryButton.white
+        }
+    }
 
     var body: some View {
         Button {
@@ -74,17 +103,17 @@ struct SecondaryButton: View {
             HStack(spacing: 8) {
                 if let icon { Image(systemName: icon) }
                 Text(title)
-                    .font(MooniFont.title(15))
+                    .font(titleFont)
             }
             .foregroundColor(MooniColor.textPrimary)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .padding(.vertical, verticalPadding)
             .background(Color.white.opacity(0.08))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
                     .stroke(Color.white.opacity(0.12), lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
         }
     }
 }

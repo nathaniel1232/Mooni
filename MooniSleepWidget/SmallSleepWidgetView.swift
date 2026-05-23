@@ -143,23 +143,31 @@ struct SmallSleepWidgetView: View {
     }
 
     // MARK: Footer
+    //
+    // Stacked layout: duration on the top line, time-range on the line
+    // below. Previously these two lived on a single horizontal row and the
+    // time-range got shrunk to illegibility by minimumScaleFactor on small
+    // devices. Two lines give each value its own font budget.
 
     private var footerChip: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "bed.double.fill")
-                .font(.system(size: 9, weight: .heavy))
-                .foregroundStyle(data.scoreTint)
-            Text(data.sleepDuration)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundStyle(SleepWidgetPalette.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Spacer(minLength: 4)
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 4) {
+                Image(systemName: "bed.double.fill")
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundStyle(data.scoreTint)
+                Text(data.sleepDuration)
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundStyle(SleepWidgetPalette.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 0)
+            }
             Text("\(data.sleepStart) → \(data.wakeTime)")
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .foregroundStyle(SleepWidgetPalette.textSecondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
