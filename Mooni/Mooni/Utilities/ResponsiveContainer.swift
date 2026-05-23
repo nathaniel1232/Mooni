@@ -29,7 +29,10 @@ struct ResponsiveContainerModifier: ViewModifier {
 
 extension View {
     /// Caps content at `maxWidth` and centers it on iPad. No-op on iPhone.
-    func responsiveContainer(maxWidth: CGFloat = 540) -> some View {
+    /// Default 720 reads as a comfortable tablet column — wide enough that
+    /// the iPad doesn't feel like a stretched phone, narrow enough that long
+    /// lines of text stay readable.
+    func responsiveContainer(maxWidth: CGFloat = 720) -> some View {
         modifier(ResponsiveContainerModifier(maxWidth: maxWidth))
     }
 }

@@ -131,7 +131,12 @@ struct LifeTimelineScreen: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)
-        .onAppear { play() }
+        // .task instead of .onAppear so the animation steps await cleanly
+        // through Task.sleep rather than racing inside DispatchQueue.async
+        // blocks. The .onAppear version sometimes completed before the
+        // screen transition finished, leaving the chart fully drawn with
+        // no visible motion (the symptom reported on iPad).
+        .task { await play() }
     }
 
     // MARK: Chart card
@@ -144,7 +149,7 @@ struct LifeTimelineScreen: View {
                     Circle()
                         .fill(.white)
                         .frame(width: 7, height: 7)
-                    Text("With Mooni")
+                    Text("With SleepOwl")
                         .font(.system(size: 11, weight: .heavy, design: .rounded))
                         .foregroundColor(.white)
                 }
@@ -347,33 +352,38 @@ struct LifeTimelineScreen: View {
 
     // MARK: Animation
 
-    private func play() {
+    @MainActor
+    private func play() async {
+        // Reset every entry so re-navigating to the screen replays.
         currentScore = Int(withMooni[0])
+        cardVisible = false
+        draw = 0
 
-        // 1) Title lands. Then the card fades in 0.45s later.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
-                cardVisible = true
-            }
+        // 1) Wait out the onboarding screen transition (~0.35s) plus a
+        //    beat so the title lands first.
+        try? await Task.sleep(nanoseconds: 550_000_000)
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
+            cardVisible = true
         }
-        // 2) Draw both curves simultaneously over ~1.8s.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            withAnimation(.easeOut(duration: 1.8)) {
-                draw = 1.0
-            }
-        }
-        // 3) Score number ticks up to the final value as the curve draws.
-        let totalTicks = withMooni.count
+
+        // 2) Beat, then draw the curve.
+        try? await Task.sleep(nanoseconds: 250_000_000)
         let drawDuration: Double = 1.8
+        withAnimation(.easeOut(duration: drawDuration)) {
+            draw = 1.0
+        }
+
+        // 3) Tick the score number up alongside the curve.
+        let totalTicks = withMooni.count
+        let stepNanos = UInt64(drawDuration / Double(totalTicks - 1)
+                               * 1_000_000_000)
         for i in 0..<totalTicks {
-            let t = Double(i) / Double(totalTicks - 1)
-            DispatchQueue.main.asyncAfter(
-                deadline: .now() + 0.8 + drawDuration * t
-            ) {
-                currentScore = Int(withMooni[i])
-                if i == totalTicks / 2 || i == totalTicks - 1 {
-                    Haptics.tick()
-                }
+            currentScore = Int(withMooni[i])
+            if i == totalTicks / 2 || i == totalTicks - 1 {
+                Haptics.tick()
+            }
+            if i < totalTicks - 1 {
+                try? await Task.sleep(nanoseconds: stepNanos)
             }
         }
     }
@@ -866,10 +876,10 @@ struct ProgressBucketScreen: View {
 
             HStack(spacing: 28) {
                 bucket(label: "Manual", fill: manualFill, color: .white.opacity(0.35))
-                bucket(label: "Mooni",  fill: mooniFill,  color: .white)
+                bucket(label: "SleepOwl",  fill: mooniFill,  color: .white)
             }
 
-            Text("Manual logging leaks. Mooni fills the bucket on its own.")
+            Text("Manual logging leaks. SleepOwl fills the bucket on its own.")
                 .font(MooniFont.body(14))
                 .foregroundColor(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
@@ -943,6 +953,19 @@ struct NotifAllowMockScreen: View {
         .onAppear {
             withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) {
                 pointerBob = true
+            }
+            // If the user has *already* answered the system prompt before
+            // (denied or authorized in an earlier run / earlier install),
+            // tapping Allow on the mock dialog won't show iOS's prompt —
+            // it's already been decided. Skip this screen entirely so the
+            // mock dialog doesn't look broken. Real first-time users still
+            // see the mock + real prompt as designed.
+            Task {
+                await NotificationManager.shared.refreshAuthState()
+                if NotificationManager.shared.authState != .notDetermined {
+                    NotificationCenter.default.post(
+                        name: .onboardingNotifAllowTapped, object: nil)
+                }
             }
         }
     }
@@ -1070,25 +1093,28 @@ struct RatingPledgeScreen: View {
         OBStack(
             eyebrow: "Enjoying the app?",
             title: "Leave us a rating.",
-            subtitle: "Ratings are how new people find Mooni. It takes five seconds."
+            subtitle: "Ratings are how new people find SleepOwl. It takes five seconds."
         ) {
             ZStack {
                 Circle()
                     .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                    .frame(width: 200, height: 200)
+                    .frame(width: 220, height: 220)
                 Circle()
                     .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                    .frame(width: 150, height: 150)
+                    .frame(width: 170, height: 170)
                     .scaleEffect(twinkle ? 1.04 : 1)
-                HStack(spacing: 7) {
+                // Stars are sized so the row (5 × 16pt + 4 × 5pt spacing
+                // = 100pt) sits comfortably inside the 170pt inner ring,
+                // even after the .scaleEffect(1.06) twinkle.
+                HStack(spacing: 5) {
                     ForEach(0..<5, id: \.self) { _ in
                         Image(systemName: "star.fill")
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                             .foregroundColor(goldTint)
-                            .shadow(color: goldTint.opacity(0.55), radius: 6)
+                            .shadow(color: goldTint.opacity(0.55), radius: 4)
                     }
                 }
-                .scaleEffect(twinkle ? 1.06 : 1)
+                .scaleEffect(twinkle ? 1.04 : 1)
             }
         }
         .onAppear {
@@ -1302,207 +1328,169 @@ struct PlanRevealScreen: View {
     }
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer(minLength: 8)
+        VStack(spacing: 28) {
+            Spacer(minLength: 4)
 
-            VStack(spacing: 8) {
+            // Title block
+            VStack(spacing: 10) {
                 Text("Your plan is ready\(petName.isEmpty ? "" : ", \(petName)").")
-                    .font(MooniFont.display(26))
+                    .font(MooniFont.display(28))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                Text("Your home screen will look like this every morning.")
-                    .font(MooniFont.body(14))
+                    .lineSpacing(2)
+                Text("Here's what tonight looks like.")
+                    .font(MooniFont.body(15))
                     .foregroundColor(.white.opacity(0.6))
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 12)
             }
 
-            // ONE widget mock, centered. Mirrors the real Medium widget
-            // visually (ring on the left, big score + duration on the right).
-            mediumWidgetMock
-                .frame(maxWidth: 320)
-                .frame(height: 140)
-                .padding(.horizontal, 24)
+            // Hero score ring — big, centered, with the projected score
+            // animating up from 0. This is the visual anchor of the screen.
+            heroRing
+                .frame(width: 220, height: 220)
                 .opacity(widgetAppear ? 1 : 0)
-                .scaleEffect(widgetAppear ? 1 : 0.92)
-                .offset(y: widgetAppear ? 0 : 8)
+                .scaleEffect(widgetAppear ? 1 : 0.9)
 
-            // ONE row of plain text — no card backgrounds, just values.
-            HStack(spacing: 0) {
-                statColumn(label: "BEDTIME", value: idealBedtime.hourMinuteString)
-                divider
-                statColumn(label: "WAKE",    value: wakeTime.hourMinuteString)
-                divider
-                statColumn(label: "TARGET",  value: sleepDurationLabel)
+            // Three full-width stat tiles in a clean row. Each is a real
+            // card (matches the rest of the app's card language) instead
+            // of plain text columns that read as half-finished.
+            HStack(spacing: 10) {
+                statTile(icon: "moon.zzz.fill",
+                         label: "Bedtime",
+                         value: idealBedtime.hourMinuteString)
+                statTile(icon: "sun.max.fill",
+                         label: "Wake",
+                         value: wakeTime.hourMinuteString)
+                statTile(icon: "bed.double.fill",
+                         label: "Target",
+                         value: sleepDurationLabel)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 4)
             .opacity(widgetAppear ? 1 : 0)
+            .offset(y: widgetAppear ? 0 : 8)
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
-        .onAppear { animateIn() }
+        .padding(.horizontal, 20)
+        .task { await animateIn() }
     }
 
-    // MARK: Widget mock
+    // MARK: Hero ring
 
-    private var mediumWidgetMock: some View {
+    /// Big animated score ring — outer track + accent-gradient progress arc,
+    /// with the climbing score number at the center. Replaces the cramped
+    /// medium-widget mock from the previous design.
+    private var heroRing: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.13, green: 0.12, blue: 0.26),
-                            Color(red: 0.06, green: 0.05, blue: 0.16)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
-
-            HStack(alignment: .center, spacing: 16) {
-                ring
-                    .frame(width: 92, height: 92)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "moon.stars.fill")
-                            .font(.system(size: 9, weight: .black))
-                        Text("SleepOwl")
-                            .font(.system(size: 10, weight: .black, design: .rounded))
-                            .tracking(0.3)
-                    }
-                    .foregroundColor(.white.opacity(0.7))
-
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("\(scoreCount)")
-                            .font(.system(size: 36, weight: .heavy, design: .rounded))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.white, scoreTint],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .shadow(color: scoreTint.opacity(0.55), radius: 8)
-                            .contentTransition(.numericText())
-                        Text("GREAT")
-                            .font(.system(size: 8, weight: .heavy, design: .rounded))
-                            .tracking(0.4)
-                            .foregroundColor(scoreTint)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(scoreTint.opacity(0.22)))
-                    }
-
-                    HStack(spacing: 4) {
-                        Image(systemName: "bed.double.fill")
-                            .font(.system(size: 9, weight: .heavy))
-                            .foregroundColor(scoreTint)
-                        Text(sleepDurationLabel)
-                            .font(.system(size: 11, weight: .heavy, design: .rounded))
-                            .foregroundColor(.white)
-                        Text("·")
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundColor(.white.opacity(0.4))
-                        Text(bedToWakeLabel)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white.opacity(0.6))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 14)
-        }
-    }
-
-    private var ring: some View {
-        ZStack {
+            // Soft halo
             Circle()
-                .fill(scoreTint.opacity(0.22))
-                .blur(radius: 10)
+                .fill(scoreTint.opacity(0.18))
+                .blur(radius: 28)
+
+            // Track
             Circle()
-                .stroke(Color.white.opacity(0.10), lineWidth: 7)
+                .stroke(Color.white.opacity(0.08),
+                        style: StrokeStyle(lineWidth: 14, lineCap: .round))
+
+            // Progress arc
             Circle()
                 .trim(from: 0, to: ringTrim)
                 .stroke(
                     AngularGradient(
-                        colors: [scoreTint.opacity(0.55), scoreTint, .white],
+                        colors: [
+                            scoreTint.opacity(0.4),
+                            scoreTint,
+                            .white,
+                            scoreTint
+                        ],
                         center: .center
                     ),
-                    style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 14, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: scoreTint.opacity(0.55), radius: 8)
+                .shadow(color: scoreTint.opacity(0.6), radius: 12)
 
-            // Mascot stand-in — soft moon disk.
-            ZStack {
-                Circle()
-                    .fill(
+            VStack(spacing: 2) {
+                Text("\(scoreCount)")
+                    .font(.system(size: 76, weight: .heavy, design: .rounded))
+                    .foregroundStyle(
                         LinearGradient(
-                            colors: [
-                                Color(red: 0.95, green: 0.92, blue: 0.78),
-                                Color(red: 0.82, green: 0.76, blue: 0.95)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                            colors: [.white, scoreTint],
+                            startPoint: .top,
+                            endPoint: .bottom
                         )
                     )
-                    .frame(width: 50, height: 50)
-                Circle()
-                    .fill(Color.black.opacity(0.50))
-                    .frame(width: 40, height: 40)
-                    .offset(x: 12, y: -5)
-                    .mask(Circle().frame(width: 50, height: 50))
+                    .contentTransition(.numericText())
+                Text("PROJECTED SCORE")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .tracking(1.6)
+                    .foregroundColor(.white.opacity(0.5))
             }
         }
     }
 
-    // MARK: Stat row
+    // MARK: Stat tile
 
-    private func statColumn(label: String, value: String) -> some View {
-        VStack(spacing: 4) {
-            Text(label)
-                .font(.system(size: 9, weight: .heavy, design: .rounded))
-                .tracking(1.2)
-                .foregroundColor(.white.opacity(0.5))
+    private func statTile(icon: String, label: String,
+                          value: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .heavy))
+                .foregroundColor(scoreTint)
+                .frame(width: 32, height: 32)
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(scoreTint.opacity(0.18))
+                )
             Text(value)
-                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                .font(.system(size: 18, weight: .heavy, design: .rounded))
                 .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
+                .tracking(1.3)
+                .foregroundColor(.white.opacity(0.5))
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var divider: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.10))
-            .frame(width: 1, height: 28)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     // MARK: Animation
 
-    private func animateIn() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
-                widgetAppear = true
-            }
+    @MainActor
+    private func animateIn() async {
+        widgetAppear = false
+        ringTrim = 0
+        scoreCount = 0
+
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
+            widgetAppear = true
         }
-        withAnimation(.easeOut(duration: 1.4).delay(0.25)) {
+
+        // Draw ring and tick number concurrently over ~1.6s.
+        let duration: Double = 1.6
+        withAnimation(.easeOut(duration: duration)) {
             ringTrim = CGFloat(projectedScore) / 100
         }
-        Timer.scheduledTimer(withTimeInterval: 0.018, repeats: true) { t in
-            DispatchQueue.main.async {
-                if scoreCount < projectedScore {
-                    scoreCount += 1
-                } else {
-                    t.invalidate()
-                }
-            }
+        let totalTicks = projectedScore
+        let stepNanos = UInt64(duration / Double(max(1, totalTicks))
+                               * 1_000_000_000)
+        for _ in 0..<totalTicks {
+            scoreCount += 1
+            try? await Task.sleep(nanoseconds: stepNanos)
         }
+        Haptics.success()
     }
 }
 
@@ -1971,44 +1959,68 @@ struct SignaturePledgeScreen: View {
     }
 
     private var signaturePad: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+        // Wrap in a GeometryReader so we know the pad's bounds and can
+        // clamp incoming drag points to stay inside the rounded rect.
+        // Without this the stroke can render outside the visible pad on
+        // iPad — exactly the "written outside the area" issue.
+        GeometryReader { geo in
+            let size = geo.size
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
 
-            // Faint guide line.
-            GeometryReader { geo in
+                // Faint guide line.
                 Path { p in
-                    let y = geo.size.height * 0.78
+                    let y = size.height * 0.78
                     p.move(to: CGPoint(x: 24, y: y))
-                    p.addLine(to: CGPoint(x: geo.size.width - 24, y: y))
+                    p.addLine(to: CGPoint(x: size.width - 24, y: y))
                 }
                 .stroke(Color.white.opacity(0.18),
                         style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-            }
 
-            if points.isEmpty {
-                Text("Sign here")
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
-                    .foregroundColor(.white.opacity(0.35))
-            }
+                if points.isEmpty {
+                    Text("Sign here")
+                        .font(.system(size: 14, weight: .medium,
+                                      design: .rounded))
+                        .foregroundColor(.white.opacity(0.35))
+                }
 
-            // The drawn signature.
-            Path { p in
-                guard let first = points.first else { return }
-                p.move(to: first)
-                for pt in points.dropFirst() { p.addLine(to: pt) }
+                // The drawn signature — clipped to the rounded rect so
+                // nothing ever renders outside the pad's bounds.
+                Path { p in
+                    guard let first = points.first else { return }
+                    p.move(to: first)
+                    for pt in points.dropFirst() { p.addLine(to: pt) }
+                }
+                .stroke(Color.white,
+                        style: StrokeStyle(lineWidth: 2.4,
+                                           lineCap: .round,
+                                           lineJoin: .round))
+                .clipShape(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
             }
-            .stroke(Color.white, style: StrokeStyle(lineWidth: 2.4,
-                                                    lineCap: .round,
-                                                    lineJoin: .round))
+            .contentShape(RoundedRectangle(cornerRadius: 18,
+                                           style: .continuous))
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        // Clamp to pad bounds with a small inset so the
+                        // 2.4pt stroke never grazes the edge.
+                        let inset: CGFloat = 4
+                        let clamped = CGPoint(
+                            x: min(max(v.location.x, inset),
+                                   size.width - inset),
+                            y: min(max(v.location.y, inset),
+                                   size.height - inset)
+                        )
+                        points.append(clamped)
+                    }
+            )
         }
         .frame(height: 170)
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { v in points.append(v.location) }
-        )
     }
 
     private var holdButton: some View {
