@@ -88,8 +88,14 @@ final class HealthKitManager: ObservableObject {
     /// Sets up an HKObserverQuery so we hear about new sleep samples the moment
     /// they're written — e.g. when the Watch syncs overnight data in the morning.
     /// Calling multiple times is safe; the store deduplicates observer queries.
+    ///
+    /// Gated behind a Pro subscription: auto-tracking is the headline paid
+    /// feature, so free users only get the manual logging path. We check here
+    /// (rather than only at call sites) so a missed call site can't silently
+    /// leak the feature to non-Pro users.
     func startSleepObserverIfNeeded() {
         guard isAvailable, let type = sleepType else { return }
+        guard SubscriptionManager.shared.isPro else { return }
 
         // Enable background delivery (hourly cadence; sleep data arrives once per night).
         store.enableBackgroundDelivery(for: type, frequency: .hourly) { _, _ in }

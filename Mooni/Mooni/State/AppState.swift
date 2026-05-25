@@ -108,6 +108,11 @@ final class AppState: ObservableObject {
         didSet { persistProfile() }
     }
 
+    /// Combine subscriptions kept alive for the lifetime of AppState.
+    /// Currently used to watch SubscriptionManager.isPro so newly-Pro users
+    /// get auto-tracking enabled immediately, not on next launch.
+    private var cancellables = Set<AnyCancellable>()
+
     // MARK: - Init
     init() {
         let defaults = UserDefaults.standard
@@ -228,6 +233,21 @@ final class AppState: ObservableObject {
                 await self?.runAutomationMaintenance(reason: "HealthKit observer")
             }
         }
+
+        // When the user upgrades to Pro mid-session, kick off the automation
+        // pass immediately so auto-tracking starts working without requiring
+        // an app restart. Skip the initial value (drop the first emission)
+        // so we don't double-run on launch.
+        SubscriptionManager.shared.$isPro
+            .removeDuplicates()
+            .dropFirst()
+            .filter { $0 }
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    await self?.runAutomationMaintenance(reason: "subscription upgraded")
+                }
+            }
+            .store(in: &cancellables)
     }
 
     private func handleConfirmedWake() {
@@ -942,8 +962,14 @@ final class AppState: ObservableObject {
         // Recover a stuck sleep-lock if the user forgot to tap "I'm awake".
         autoEndStaleSleepIfNeeded()
         // M9: pull HealthKit / activity data, always re-register the observer.
-        await importHealthKitSleep()
-        HealthKitManager.shared.startSleepObserverIfNeeded()
+        // Auto-tracking (HealthKit import + background observer) is a Pro
+        // feature — free users keep manual logging, sleep score, and 3-night
+        // history. Gating here ensures non-Pro users don't get auto-detected
+        // sleep updates without subscribing.
+        if SubscriptionManager.shared.isPro {
+            await importHealthKitSleep()
+            HealthKitManager.shared.startSleepObserverIfNeeded()
+        }
         // M4: make sure every elapsed night exists as an editable entry.
         backfillMissedNights()
         // M3: surface the morning check-in if a night is unconfirmed (any hour).

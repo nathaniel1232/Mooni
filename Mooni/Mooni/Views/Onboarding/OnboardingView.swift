@@ -241,24 +241,21 @@ struct OnboardingView: View {
                     onSoftDismiss: {
                         // Guideline 5.6 fix: dismissing the paywall goes straight
                         // to the app — no automatic second/discount paywall.
+                        // Finish onboarding immediately so the underlying
+                        // Color.clear placeholder never becomes visible (would
+                        // otherwise flash blank during the dismiss animation).
                         paywallSheet = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            finishOnboarding()
-                        }
+                        finishOnboarding()
                     },
                     onPurchased: {
                         paywallSheet = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                            finishOnboarding()
-                        }
+                        finishOnboarding()
                     },
                     // Offerings failed to load — finish onboarding so the
                     // user (or App Review) can actually use the app.
                     onErrorContinue: {
                         paywallSheet = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            finishOnboarding()
-                        }
+                        finishOnboarding()
                     }
                 )
             case .discount:
