@@ -237,11 +237,13 @@ struct OnboardingView: View {
             switch stage {
             case .main:
                 PaywallView(
-                    hideCloseButton: true,
+                    hideCloseButton: false,
                     onSoftDismiss: {
+                        // Guideline 5.6 fix: dismissing the paywall goes straight
+                        // to the app — no automatic second/discount paywall.
                         paywallSheet = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                            paywallSheet = .discount
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            finishOnboarding()
                         }
                     },
                     onPurchased: {
@@ -250,8 +252,7 @@ struct OnboardingView: View {
                             finishOnboarding()
                         }
                     },
-                    // Offerings failed to load — don't route to the discount
-                    // paywall (it would also fail). Finish onboarding so the
+                    // Offerings failed to load — finish onboarding so the
                     // user (or App Review) can actually use the app.
                     onErrorContinue: {
                         paywallSheet = nil
@@ -261,6 +262,9 @@ struct OnboardingView: View {
                     }
                 )
             case .discount:
+                // Discount paywall is kept in code but no longer auto-triggered
+                // after dismissal (removed to comply with Guideline 5.6).
+                // Kept here to avoid compiler errors; this case is never reached.
                 DiscountPaywallView(
                     petName: petName,
                     onAccept: {
