@@ -70,7 +70,10 @@ struct HomeView: View {
 
                     fallAsleepShortcutSection
 
-                    leagueSection
+                    // League / friends section hidden until backend sleep-sync
+                    // ships. Without it friends' scores stay "—" forever, which
+                    // reads as broken to anyone who adds a friend.
+                    //   leagueSection
 
                     if shouldShowMissedNightCard {
                         missedNightCard

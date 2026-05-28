@@ -289,6 +289,18 @@ struct OnboardingView: View {
             .publisher(for: .onboardingSignatureCommitted)) { _ in
             if step == .signaturePledge { advance() }
         }
+        // Defensive: if the paywall cover dismisses for ANY reason while we're
+        // still on the terminal prePaywall step (X tap, OS gesture, etc.) and
+        // onboarding hasn't completed, finish it. The Color.clear placeholder
+        // under the paywall would otherwise leave the user on a blank screen
+        // with no way forward.
+        .onChange(of: paywallSheet) { _, newValue in
+            if newValue == nil
+                && step == .prePaywall
+                && !appState.hasCompletedOnboarding {
+                finishOnboarding()
+            }
+        }
     }
 
     // MARK: - Transition

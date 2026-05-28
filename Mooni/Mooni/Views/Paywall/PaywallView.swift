@@ -216,7 +216,13 @@ struct PaywallView: View {
         HStack {
             Spacer()
             Button {
-                if hideCloseButton, let soft = onSoftDismiss { soft() } else { dismiss() }
+                // Always prefer onSoftDismiss when the caller supplied one.
+                // The onboarding paywall sits over a Color.clear placeholder
+                // step — if we just call dismiss() and don't fire the soft-
+                // dismiss callback that finishes onboarding, the user lands
+                // on a blank screen with no way forward. Matches the same
+                // pattern used by the success overlay's "Let's Go" button.
+                if let soft = onSoftDismiss { soft() } else { dismiss() }
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 13, weight: .semibold))
