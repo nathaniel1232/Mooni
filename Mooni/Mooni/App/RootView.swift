@@ -176,11 +176,23 @@ struct MainTabView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     @Environment(\.scenePhase) private var scenePhase
-    @State private var selection: Tab = .home
+    @State private var selection: Tab
     @State private var showPaywall = false
 
     init() {
         Self.configureTabBarAppearance()
+        // DEBUG: allow screenshot tooling to set the initial tab via a
+        // UserDefaults key. No effect in production unless that key is set.
+        let raw = UserDefaults.standard.string(forKey: "debug.initialTab") ?? "home"
+        let initial: Tab
+        switch raw {
+        case "sleep":  initial = .sleep
+        case "quest":  initial = .quest
+        case "sounds": initial = .sounds
+        case "me":     initial = .me
+        default:       initial = .home
+        }
+        self._selection = State(initialValue: initial)
     }
 
     enum Tab: Hashable {
@@ -197,9 +209,13 @@ struct MainTabView: View {
                 .tabItem { Label("Sleep", systemImage: "chart.xyaxis.line") }
                 .tag(Tab.sleep)
 
-            BedtimeQuestView(showPaywall: $showPaywall)
-                .tabItem { Label("Quest", systemImage: "checklist") }
-                .tag(Tab.quest)
+            // Quest tab hidden until the BedtimeQuest feature ships — it
+            // currently only shows a "Coming Soon" stub, and the Home view
+            // also doesn't surface a quest progress strip, so the tab would
+            // just be dead UI.
+            //   BedtimeQuestView(showPaywall: $showPaywall)
+            //       .tabItem { Label("Quest", systemImage: "checklist") }
+            //       .tag(Tab.quest)
 
             FallAsleepView()
                 .tabItem { Label("Sounds", systemImage: "waveform") }

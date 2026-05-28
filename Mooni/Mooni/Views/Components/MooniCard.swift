@@ -37,6 +37,10 @@ struct LunaMoodHero: View {
     var mood: Pet.Mood
     var size: CGFloat = 210
     var caption: String?
+    /// Pass-through to PetIllustration: when true, the owl responds to taps.
+    /// Wire `onTap` to update an in-flight speech bubble on the parent view.
+    var interactive: Bool = false
+    var onTap: (() -> Void)? = nil
 
     private var moodPet: Pet {
         var p = pet
@@ -46,7 +50,7 @@ struct LunaMoodHero: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            DreamSpiritView(pet: moodPet, size: size)
+            DreamSpiritView(pet: moodPet, size: size, interactive: interactive, onTap: onTap)
                 .padding(.top, 4)
                 .shadow(color: MooniColor.petGlow.opacity(0.24), radius: 26, y: 12)
 

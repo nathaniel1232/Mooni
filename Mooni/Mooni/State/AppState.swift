@@ -43,6 +43,14 @@ final class AppState: ObservableObject {
             persistEntries()
             if let latest = entries.sorted(by: { $0.wakeTime > $1.wakeTime }).first {
                 WidgetSnapshotPublisher.publish(latest)
+                // Keep the FriendsSleepWidget in step with the user's latest
+                // night so the "You" slot updates the same day the score is
+                // logged. Friends' rows refresh only when the friends list
+                // mutates (handled in FriendsManager).
+                FriendsManager.shared.syncToWidget(
+                    myLatest: latest,
+                    petName: pet.name
+                )
             }
         }
     }

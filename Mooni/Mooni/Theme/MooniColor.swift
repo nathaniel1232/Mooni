@@ -17,6 +17,34 @@ enum MooniColor {
     static let textMuted = Color.white.opacity(0.45)
 
     static let petGlow = Color(red: 0.78, green: 0.85, blue: 1.0)
+
+    // MARK: - Gamification tokens
+    /// Streak flame core — used by `StreakFireBadge`. The bright tip of the flame.
+    static let streakFire = Color(red: 1.0, green: 0.62, blue: 0.18)
+    /// Deeper red base of the flame, paired with `streakFire` in a vertical gradient.
+    static let streakEmber = Color(red: 1.0, green: 0.35, blue: 0.30)
+    /// Cold blue replacement when a streak is frozen (streak-freeze item active).
+    static let streakFrozen = Color(red: 0.55, green: 0.82, blue: 1.0)
+
+    /// XP / progress green — high contrast against the dark surface for the XP bar fill.
+    static let xpGreen = Color(red: 0.34, green: 0.85, blue: 0.45)
+    static let xpGreenSoft = Color(red: 0.65, green: 0.95, blue: 0.65)
+}
+
+extension LinearGradient {
+    /// Vertical flame gradient (bright top → red base) used inside the streak fire icon.
+    static let streakFlame = LinearGradient(
+        colors: [MooniColor.streakFire, MooniColor.streakEmber],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    /// XP bar fill: a left-to-right green sweep that reads as "progress".
+    static let xpFill = LinearGradient(
+        colors: [MooniColor.xpGreen, MooniColor.xpGreenSoft],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
 }
 
 enum MooniGradient {

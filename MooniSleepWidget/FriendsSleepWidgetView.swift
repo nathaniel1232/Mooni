@@ -107,7 +107,10 @@ struct FriendsSleepWidgetView: View {
             }
             .frame(width: 50, height: 50)
 
-            Text("\(person.score)")
+            // Real friends start with score=0 until the per-friend sleep sync
+            // ships — render an em-dash in that case so it doesn't read as
+            // "0 / bad night". The pending state is signaled by quality.
+            Text(person.quality == "Pending" ? "—" : "\(person.score)")
                 .font(.system(size: 18, weight: .heavy, design: .rounded))
                 .foregroundStyle(person.scoreTint)
                 .shadow(color: person.scoreTint.opacity(0.45), radius: 4)

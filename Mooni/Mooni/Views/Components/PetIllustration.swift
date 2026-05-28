@@ -12,8 +12,35 @@ struct PetIllustration: View {
     /// kept for source compatibility with older callers.
     var forceClosedEyes: Bool = false
 
+    /// When true, the owl gains a tap gesture: bounce, heart emit, haptic,
+    /// and a callback. Default false so all existing call sites stay
+    /// non-interactive.
+    var interactive: Bool = false
+
+    /// Called once per tap when `interactive` is true. Use this to show a
+    /// speech bubble, register the interaction, etc. Heart/bounce animation
+    /// happens regardless.
+    var onTap: (() -> Void)? = nil
+
     @State private var bob: Bool = false
     @State private var pulse: Bool = false
+    @State private var blinkSquish: Bool = false
+    @State private var tapBounce: Bool = false
+    @State private var hearts: [HeartBurst] = []
+
+    init(
+        pet: Pet,
+        size: CGFloat = 200,
+        forceClosedEyes: Bool = false,
+        interactive: Bool = false,
+        onTap: (() -> Void)? = nil
+    ) {
+        self.pet = pet
+        self.size = size
+        self.forceClosedEyes = forceClosedEyes
+        self.interactive = interactive
+        self.onTap = onTap
+    }
 
     private var tint: Color {
         if pet.equippedColor == "default_color" {
@@ -61,16 +88,83 @@ struct PetIllustration: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: size, height: size)
-                .scaleEffect(pulse ? 1.02 : 0.98)
+                // Combined transforms: idle breath (`pulse`) × tap bounce ×
+                // blink squish. Multiplicative so each can animate without
+                // stomping the others.
+                .scaleEffect(
+                    x: (pulse ? 1.02 : 0.98) * (tapBounce ? 1.10 : 1.0),
+                    y: (pulse ? 1.02 : 0.98) * (tapBounce ? 1.10 : 1.0) * (blinkSquish ? 0.92 : 1.0)
+                )
                 .offset(y: bob ? -6 : 6)
                 .shadow(color: tint.opacity(0.55), radius: 22, y: 6)
 
             moodAddOns
+
+            // Heart particle layer — visible only after a tap, auto-cleans.
+            ForEach(hearts) { burst in
+                Image(systemName: "heart.fill")
+                    .font(.system(size: burst.size, weight: .bold))
+                    .foregroundColor(burst.color)
+                    .shadow(color: burst.color.opacity(0.5), radius: 6)
+                    .offset(x: burst.xOffset, y: burst.yOffset)
+                    .opacity(burst.opacity)
+            }
         }
         .frame(width: size * 1.7, height: size * 1.7)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard interactive else { return }
+            handleTap()
+        }
         .onAppear {
             withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) { bob = true }
             withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) { pulse = true }
+            scheduleNextBlink()
+        }
+    }
+
+    // MARK: - Interaction
+    private func handleTap() {
+        Haptics.soft()
+
+        // Bounce (one-shot)
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.45)) { tapBounce = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.7)) { tapBounce = false }
+        }
+
+        // Emit a small burst of 3 hearts at slightly different offsets.
+        for i in 0..<3 {
+            let burst = HeartBurst.spawn(index: i, owlSize: size, tint: tint)
+            hearts.append(burst)
+            withAnimation(.easeOut(duration: 1.1)) {
+                if let idx = hearts.firstIndex(where: { $0.id == burst.id }) {
+                    hearts[idx].yOffset = burst.endY
+                    hearts[idx].xOffset = burst.endX
+                    hearts[idx].opacity = 0
+                }
+            }
+            // Schedule removal after the animation completes.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                hearts.removeAll { $0.id == burst.id }
+            }
+        }
+
+        onTap?()
+    }
+
+    // MARK: - Blink scheduling
+    /// Fires a quick vertical squish every 4–7 seconds at random. The owl's
+    /// art doesn't have an actual closed-eye variant, but the squish + short
+    /// shadow contraction reads as a blink from arm's length.
+    private func scheduleNextBlink() {
+        let delay = Double.random(in: 4.0...7.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            withAnimation(.easeInOut(duration: 0.12)) { blinkSquish = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+                withAnimation(.easeInOut(duration: 0.12)) { blinkSquish = false }
+                scheduleNextBlink()
+            }
         }
     }
 
@@ -139,6 +233,34 @@ struct PetIllustration: View {
             .stroke(Color.white.opacity(0.06), lineWidth: 4)
             .frame(width: size * 1.15, height: size * 1.15)
             .blur(radius: 1)
+    }
+
+    // MARK: - Heart burst model
+    struct HeartBurst: Identifiable {
+        let id = UUID()
+        var xOffset: CGFloat
+        var yOffset: CGFloat
+        let endX: CGFloat
+        let endY: CGFloat
+        let size: CGFloat
+        let color: Color
+        var opacity: Double = 1.0
+
+        static func spawn(index: Int, owlSize: CGFloat, tint: Color) -> HeartBurst {
+            // Stagger the 3 hearts across the upper hemisphere of the owl.
+            let xs: [CGFloat] = [-owlSize * 0.12, owlSize * 0.18, -owlSize * 0.03]
+            let ys: [CGFloat] = [-owlSize * 0.05, -owlSize * 0.02, -owlSize * 0.10]
+            let xStart = xs[index % xs.count]
+            let yStart = ys[index % ys.count]
+            return HeartBurst(
+                xOffset: xStart,
+                yOffset: yStart,
+                endX: xStart + CGFloat.random(in: -owlSize * 0.12 ... owlSize * 0.12),
+                endY: yStart - owlSize * 0.85,
+                size: owlSize * (index == 0 ? 0.16 : 0.12),
+                color: index == 1 ? tint : MooniColor.danger
+            )
+        }
     }
 
 }

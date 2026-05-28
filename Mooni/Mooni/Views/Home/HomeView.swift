@@ -16,6 +16,24 @@ struct HomeView: View {
     @State private var showAutoWakeUp = false
     @State private var showSleepStory = false
     @State private var showManualOptions = false
+    @State private var showInviteFriends = false
+    @State private var showFallAsleepSheet = false
+
+    /// Currently-displayed speech bubble text. Set by `handleOwlTap()` after
+    /// the user taps the hero owl; auto-clears after a short delay. nil
+    /// means no bubble is showing.
+    @State private var heroSpeech: String?
+    @State private var heroSpeechToken: UUID = UUID()
+
+    /// In-flight celebration toast (level-up / streak milestone / etc).
+    /// Set by `maybeFireCelebration()` and cleared by the toast's dismiss.
+    @State private var celebration: CelebrationToast.Payload?
+
+    /// The last streak day count we've already celebrated. Prevents the same
+    /// milestone from re-firing on every refresh. Persists in UserDefaults so
+    /// a backgrounded app doesn't replay celebrations on warm starts.
+    @AppStorage("mooni.home.lastCelebratedStreak") private var lastCelebratedStreak: Int = 0
+    @AppStorage("mooni.home.lastCelebratedLevel") private var lastCelebratedLevel: Int = 0
     /// Day key (yyyy-MM-dd) currently selected in the week strip. Nil = the
     /// most-recent night's entry. Drives the day-detail card and insight.
     @State private var selectedDayKey: String? = nil
@@ -44,42 +62,19 @@ struct HomeView: View {
 
                     heroCard
 
-                    if let lastEntry = appState.lastEntry {
-                        MorningHookCard(
-                            context: SleepStoryContext(appState: appState, entry: lastEntry),
-                            streakCurrent: streak.current,
-                            streakLongest: streak.longest
-                        )
-                        SleepBreakdownView(
-                            context: SleepStoryContext(appState: appState, entry: lastEntry),
-                            style: .homeGlance
-                        )
-                        DayPlanView(
-                            forecast: SleepForecast.make(appState: appState, entry: lastEntry),
-                            style: .homeCompact
-                        )
-                    }
-
+                    // Action-first: tonight's plan and (in the evening) a
+                    // sounds shortcut come right under the hero. Deep dives
+                    // like SleepBreakdown / DayPlan / week strip / history
+                    // live on the Sleep tab — Home stays a short, fun page.
                     tonightPlanCard
+
+                    fallAsleepShortcutSection
+
+                    leagueSection
 
                     if shouldShowMissedNightCard {
                         missedNightCard
                     }
-
-                    if !appState.entries.isEmpty {
-                        weekStripSection
-
-                        if let entry = displayEntry {
-                            dayDetailCard(entry)
-                            insightCard(entry)
-                        }
-
-                        if appState.entries.count > 1 {
-                            historySection
-                        }
-                    }
-
-                    // Growth footer hidden until the feature is shipped.
 
                     Color.clear.frame(height: 24)
                 }
@@ -93,7 +88,11 @@ struct HomeView: View {
         .onAppear {
             if streak.hasUnseenLoss { showLostStreak = true }
             checkAutoWakeUp()
+            maybeFireCelebration()
         }
+        .onChange(of: streak.current) { _, _ in maybeFireCelebration() }
+        .onChange(of: appState.pet.level) { _, _ in maybeFireCelebration() }
+        .celebrationToast(payload: $celebration)
         .alert("You lost your \(streak.lostStreakLength)-day streak", isPresented: $showLostStreak) {
             Button("Start fresh") { streak.acknowledgeLostStreak() }
         } message: {
@@ -149,6 +148,15 @@ struct HomeView: View {
         .sheet(item: $editingEntry) { entry in
             MorningCheckInView(entryOverride: entry, startInEditMode: true)
                 .environmentObject(appState)
+        }
+        .sheet(isPresented: $showInviteFriends) {
+            InviteFriendsView()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $showFallAsleepSheet) {
+            FallAsleepView()
+                .environmentObject(appState)
+                .environmentObject(subscriptionManager)
         }
     }
 
@@ -263,7 +271,14 @@ struct HomeView: View {
             HStack(alignment: .center, spacing: 10) {
                 SleepOwlBrandMark(size: .prominent)
                 Spacer(minLength: 8)
-                StreakFlameChip(current: streak.current, freezes: streak.freezesRemaining)
+                // Duolingo-style streak: tappable, opens streak detail / freeze
+                // info via the existing lost-streak alert plumbing.
+                StreakFireBadge(
+                    count: streak.current,
+                    state: streakBadgeState,
+                    size: .compact,
+                    tappable: true
+                )
             }
 
             HStack(alignment: .center, spacing: 4) {
@@ -277,8 +292,82 @@ struct HomeView: View {
                     .minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
             }
+
+            // XP / level progress — sits just under the greeting so the
+            // gamification loop reads at-a-glance every time the user opens
+            // the app.
+            XPBar(
+                value: appState.pet.levelProgress,
+                level: appState.pet.level,
+                title: appState.pet.levelTitle,
+                recentDelta: appState.lastEarnedEnergy
+            )
+            .padding(.top, 2)
         }
         .padding(.top, 6)
+    }
+
+    /// Map StreakManager state to the visual state expected by `StreakFireBadge`.
+    /// We surface a `.lost` flame the moment the user has acknowledged a reset,
+    /// `.frozen` when a freeze is shielding the streak overnight, and `.active`
+    /// while the streak is alive.
+    private var streakBadgeState: StreakFireBadge.Status {
+        if streak.current == 0 && streak.hasUnseenLoss { return .lost }
+        if streak.current > 0 && streak.freezesRemaining > 0 && streak.current % 7 == 0 {
+            // Mild celebration: every 7-day mark hints a fresh freeze is
+            // available. Kept subtle — the toast on Phase 3 handles the loud
+            // milestone moment.
+            return .active
+        }
+        return streak.current > 0 ? .active : (streak.hasUnseenLoss ? .lost : .active)
+    }
+
+    // MARK: - Fall-asleep shortcut
+
+    /// "Drift off" shortcut. Shown only in the evening / night window when a
+    /// sleep sound is contextually useful — out of morning view it would just
+    /// be clutter.
+    @ViewBuilder
+    private var fallAsleepShortcutSection: some View {
+        let tod = TimeOfDay.current
+        if tod == .evening || tod == .night {
+            FallAsleepShortcutCard(
+                recommendation: FallAsleepShortcutCard.recommend(profile: appState.profile),
+                onTap: { showFallAsleepSheet = true }
+            )
+        }
+    }
+
+    // MARK: - League card
+
+    /// Weekly league card. Until Phase 5 plugs in real friends, we render the
+    /// empty/invite slate so the social hook is visible from day one. The
+    /// invite CTA currently routes to ProfileView's invite section — Phase 5
+    /// will surface a dedicated InviteFriendsView.
+    private var leagueSection: some View {
+        // Project the local friends list into the LeagueCard's mini-leaderboard
+        // shape. Friends' scores come from the projection in FriendsManager —
+        // 0 until backend sync lands, so the rank is "fair" with only the
+        // user populated. Adding real friends still bumps the count and the
+        // card flips out of the invite slate.
+        let manager = FriendsManager.shared
+        let members: [LeagueCard.Member] = manager.friends.prefix(3).map { f in
+            LeagueCard.Member(
+                initial: f.avatarInitial,
+                score: 0,
+                isYou: false,
+                color: MooniColor.accentSoft
+            )
+        }
+
+        return LeagueCard(
+            tier: LeagueCard.Tier.from(streak: max(streak.longest, streak.current)),
+            userScore: appState.lastEntry?.score ?? 0,
+            friends: members,
+            onInviteFriends: {
+                showInviteFriends = true
+            }
+        )
     }
 
     // MARK: - Hero card (varies by mode)
@@ -307,6 +396,104 @@ struct HomeView: View {
         }
     }
 
+    // MARK: - Celebration triggers
+
+    /// Streak milestones we celebrate with a full-screen toast. Picked from
+    /// the Duolingo / habit-tracker playbook — early hits (3, 7) build the
+    /// habit, then we ramp the cadence so it doesn't feel spammy.
+    private static let streakMilestones: Set<Int> = [3, 7, 14, 30, 60, 100, 200, 365]
+
+    /// Inspect current streak + level and fire a `CelebrationToast` if a
+    /// milestone hasn't been celebrated yet. Guards against re-firing using
+    /// the AppStorage trackers so a backgrounded app doesn't replay the toast.
+    private func maybeFireCelebration() {
+        // Don't stack celebrations — if one's on screen, wait.
+        guard celebration == nil else { return }
+
+        // Level-up takes priority over streak (rarer, more rewarding).
+        let level = appState.pet.level
+        if level > lastCelebratedLevel && level > 1 {
+            celebration = .init(
+                kind: .levelUp(newLevel: level, title: appState.pet.levelTitle),
+                title: "Level \(level)!",
+                subtitle: "You unlocked \(appState.pet.levelTitle). New colors and freezes available.",
+                ctaTitle: "See unlocks",
+                pet: appState.pet
+            )
+            lastCelebratedLevel = level
+            return
+        }
+
+        let s = streak.current
+        if Self.streakMilestones.contains(s) && s > lastCelebratedStreak {
+            celebration = .init(
+                kind: .streakMilestone(days: s),
+                title: streakHeadline(for: s),
+                subtitle: streakSubtitle(for: s, petName: appState.pet.name),
+                ctaTitle: "Keep going",
+                pet: appState.pet
+            )
+            lastCelebratedStreak = s
+        }
+    }
+
+    private func streakHeadline(for days: Int) -> String {
+        switch days {
+        case 3:   return "3-day streak!"
+        case 7:   return "One week strong"
+        case 14:  return "Two weeks in"
+        case 30:  return "30-day streak!"
+        case 60:  return "60 nights — wow"
+        case 100: return "Triple digits"
+        case 200: return "200-day legend"
+        case 365: return "A FULL YEAR"
+        default:  return "\(days)-day streak"
+        }
+    }
+
+    private func streakSubtitle(for days: Int, petName: String) -> String {
+        switch days {
+        case 3:   return "Three nights in a row. The habit is forming."
+        case 7:   return "A full week of consistent sleep. \(petName) is glowing."
+        case 14:  return "Two weeks. Your body clock is locking in."
+        case 30:  return "A month of consistency. This is real."
+        case 60:  return "60 nights. \(petName) couldn't be prouder."
+        case 100: return "100 nights of resting well. Top 1% territory."
+        case 200: return "Half a year, doubled. Unreal."
+        case 365: return "A year of nightly wins. Hall of Fame."
+        default:  return "Another milestone. Keep showing up."
+        }
+    }
+
+    /// Tap reaction: register the interaction, pick a contextual line, show a
+    /// bubble for ~2.4s. If the user hasn't tapped the owl in >24h we lead
+    /// with a "missed you" message before falling back to the regular pool.
+    private func handleOwlTap() {
+        let log = PetInteractionLog.shared
+        let line: String
+        if log.owlMissedYou() {
+            line = PetReactionPool.missedYou(for: appState.pet)
+        } else {
+            line = PetReactionPool.random(
+                for: appState.pet,
+                interactionsToday: log.interactionsToday
+            )
+        }
+        log.registerTap()
+
+        let token = UUID()
+        heroSpeechToken = token
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+            heroSpeech = line
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
+            // Only clear if no newer tap has taken over.
+            if heroSpeechToken == token {
+                withAnimation(.easeOut(duration: 0.3)) { heroSpeech = nil }
+            }
+        }
+    }
+
     private func morningHero(_ entry: SleepEntry, isRecovery: Bool) -> some View {
         let r = entry.readinessScore ?? entry.score
         return MooniCard(padding: 24, cornerRadius: 32) {
@@ -318,9 +505,21 @@ struct HomeView: View {
                     Spacer(minLength: 0)
 
                     VStack(spacing: 8) {
-                        DreamSpiritView(pet: petForMood(heroMood(r)), size: 104)
+                        DreamSpiritView(
+                            pet: petForMood(heroMood(r)),
+                            size: 104,
+                            interactive: true,
+                            onTap: { handleOwlTap() }
+                        )
                             .shadow(color: MooniColor.petGlow.opacity(0.3),
                                     radius: 18, y: 8)
+                            .overlay(alignment: .top) {
+                                if let line = heroSpeech {
+                                    PetSpeechBubble(text: line, maxWidth: 200)
+                                        .offset(y: -36)
+                                        .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .bottom)))
+                                }
+                            }
                         Text(scoreStatus(entry.score))
                             .font(MooniFont.title(13))
                             .foregroundColor(scoreColor(entry.score))
@@ -385,8 +584,20 @@ struct HomeView: View {
                         .frame(width: 280, height: 280)
                         .blur(radius: 6)
 
-                    DreamSpiritView(pet: petForMood(.cozy), size: 170)
+                    DreamSpiritView(
+                        pet: petForMood(.cozy),
+                        size: 170,
+                        interactive: true,
+                        onTap: { handleOwlTap() }
+                    )
                         .shadow(color: MooniColor.petGlow.opacity(0.4), radius: 26, y: 12)
+                        .overlay(alignment: .top) {
+                            if let line = heroSpeech {
+                                PetSpeechBubble(text: line, maxWidth: 240)
+                                    .offset(y: -28)
+                                    .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .bottom)))
+                            }
+                        }
                 }
                 .frame(height: 200)
 
@@ -434,8 +645,20 @@ struct HomeView: View {
                         .frame(width: 260, height: 260)
                         .blur(radius: 5)
 
-                    DreamSpiritView(pet: petForMood(.sleepy), size: 150)
+                    DreamSpiritView(
+                        pet: petForMood(.sleepy),
+                        size: 150,
+                        interactive: true,
+                        onTap: { handleOwlTap() }
+                    )
                         .shadow(color: MooniColor.petGlow.opacity(0.35), radius: 22, y: 10)
+                        .overlay(alignment: .top) {
+                            if let line = heroSpeech {
+                                PetSpeechBubble(text: line, maxWidth: 240)
+                                    .offset(y: -28)
+                                    .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .bottom)))
+                            }
+                        }
                 }
                 .frame(height: 180)
 
@@ -461,19 +684,6 @@ struct HomeView: View {
                         .padding(.horizontal, 8)
                 }
 
-                // Quest progress
-                VStack(spacing: 8) {
-                    HStack {
-                        Text("Tonight's quest")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textSecondary)
-                        Spacer()
-                        Text("\(questDone)/3 done")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.accentSoft)
-                    }
-                    MooniProgressBar(value: Double(questDone) / 3.0, height: 9)
-                }
             }
         }
     }

@@ -5,9 +5,11 @@ import SwiftUI
 struct DreamSpiritView: View {
     let pet: Pet
     var size: CGFloat = 200
+    var interactive: Bool = false
+    var onTap: (() -> Void)? = nil
 
     var body: some View {
-        PetIllustration(pet: pet, size: size)
+        PetIllustration(pet: pet, size: size, interactive: interactive, onTap: onTap)
     }
 }
 
