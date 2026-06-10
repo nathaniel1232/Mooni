@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import Combine
+import AuthenticationServices
 
 /// Extended high-converting onboarding flow.
 ///
@@ -66,49 +67,54 @@ struct OnboardingView: View {
         // ─ Hook ───────────────────────────────────────────────────────────
         case welcome
 
+        // The sequence alternates short question batches (3-4 max) with a
+        // visual/story beat so the quiz never feels like an endless form.
+
         // ─ Warmup questions (3) ───────────────────────────────────────────
         case ageQuestion
         case genderQuestion
         case typicalSleepHours
 
-        // ─ Story moment 1 — life turnaround timeline ──────────────────────
-        case lifeTimeline
-
-        // ─ Pet (light touch) ──────────────────────────────────────────────
+        // ─ Pet beat — meet & name the companion ───────────────────────────
         case namePet
 
-        // ─ Identity questions (10) ────────────────────────────────────────
+        // ─ Identity questions, part 1 (3) ─────────────────────────────────
         case wakeFeeling
         case racingThoughts
         case phoneBeforeBed
+
+        // ─ Visual beat — manual journal vs the SleepOwl report ────────────
+        case trackingCompare
+
+        // ─ Identity questions, part 2 (4) ─────────────────────────────────
         case caffeineCutoff
         case stressLevel
         case struggleDuration
         case biggestProblem
 
-        // ─ Schedule basics ────────────────────────────────────────────────
-        case schedule
+        // ─ Visual beat — your phone already tracks it ─────────────────────
+        case targetReachable
 
-        // ─ Goal hours (commit BEFORE targetReachable so we can quote it) ──
-        // Split across two screens so each row can be full-sized + readable
-        // instead of cramming all 6 options into a single screen.
+        // ─ Schedule + goal commitment ─────────────────────────────────────
+        // Goal is split across two screens so each row can be full-sized +
+        // readable instead of cramming all 6 options into a single screen.
+        case schedule
         case sleepGoal
         case sleepGoalMore
 
-        // ─ Personalize questions (5) ──────────────────────────────────────
+        // ─ Visual payoff — the 4-week turnaround for the goal they just set
+        case lifeTimeline
+
+        // ─ Personalize questions, part 1 (2) ──────────────────────────────
         case personalizeGoals
         case personalizeBlockers
+
+        // ─ Visual beat — what we score every night ────────────────────────
+        case sleepMetricsTease
+
+        // ─ Personalize questions, part 2 (2) ──────────────────────────────
         case personalizeTried
         case personalizeWindDown
-
-        // ─ Story moment 2 — manual vs Mooni tracking ──────────────────────
-        case trackingCompare
-
-        // ─ Story moment 3 — 90% of users hit the goal they just set ──────
-        case targetReachable
-
-        // ─ Story moment 4 — what we actually track for you ────────────────
-        case sleepMetricsTease
 
         // ─ In-app "Allow notifications" mock that triggers the real prompt ─
         case notifAllowMock
@@ -199,7 +205,7 @@ struct OnboardingView: View {
                                 .padding(.bottom, 56)
                                 .frame(maxWidth: .infinity)
                                 .frame(minHeight: geo.size.height,
-                                       alignment: .center)
+                                       alignment: contentVerticalAlignment)
                                 .id(step)
                                 .transition(transition)
                         }
@@ -426,6 +432,23 @@ struct OnboardingView: View {
     /// like they're at a real entry/exit gate rather than mid-quiz.
     private var hidesProgressChrome: Bool {
         step == .welcome
+    }
+
+    /// Question screens (a prompt + answer controls) pin to the TOP of the
+    /// content band so the title lands right under the progress bar — top-left,
+    /// next to the back chevron — instead of floating in the vertical centre.
+    /// Story / hero / reveal beats stay centred.
+    private var topAlignedSteps: Set<Step> {
+        [.ageQuestion, .genderQuestion, .typicalSleepHours,
+         .wakeFeeling, .racingThoughts, .phoneBeforeBed, .caffeineCutoff,
+         .stressLevel, .struggleDuration, .biggestProblem, .schedule,
+         .sleepGoal, .sleepGoalMore,
+         .personalizeGoals, .personalizeBlockers, .personalizeTried,
+         .personalizeWindDown]
+    }
+
+    private var contentVerticalAlignment: Alignment {
+        topAlignedSteps.contains(step) ? .top : .center
     }
 
 
@@ -853,10 +876,30 @@ struct OnboardingView: View {
             try await AppleSignInService.shared.signInAndSyncWithSupabase()
             return true
         } catch {
+            // Tapping "Cancel" on the Apple sheet throws ASAuthorizationError
+            // .canceled (and sometimes .unknown). That's a deliberate user
+            // action, not a failure — surfacing "The operation couldn't be
+            // completed… error 1001" inside the UI looks broken. Stay silent
+            // and just let them keep going.
+            if Self.isUserCancellation(error) {
+                return false
+            }
             authErrorMessage = error.localizedDescription
             authState = .failed
             return false
         }
+    }
+
+    /// True when the error is the user backing out of the Apple sign-in sheet
+    /// rather than a real authentication failure worth showing.
+    private static func isUserCancellation(_ error: Error) -> Bool {
+        if let authError = error as? ASAuthorizationError {
+            return authError.code == .canceled || authError.code == .unknown
+        }
+        let ns = error as NSError
+        return ns.domain == ASAuthorizationError.errorDomain
+            && (ns.code == ASAuthorizationError.canceled.rawValue
+                || ns.code == ASAuthorizationError.unknown.rawValue)
     }
 
     /// Selected goals in stable enum order (so the payoff screen lists them
@@ -948,18 +991,22 @@ private struct QuestionScaffold<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        // Same atoms + edge as OnboardingScaffold so question screens and
-        // content screens are pixel-identical across the whole flow.
-        VStack(spacing: 22) {
-            VStack(spacing: 12) {
-                OBTitle(title)
-                if let s = subtitle {
-                    OBSubtitle(s)
-                }
-            }
+        // Question screens read top-left: the title lands a small, constant
+        // distance under the progress bar, and the answer controls float in
+        // the band between the title and the footer (the two Spacers split
+        // the leftover space). This kills both old complaints at once: no
+        // big dead gap pushing the title down, and no giant empty hole
+        // between short answer sets and the Continue button. The parent's
+        // `.frame(minHeight: geo.size.height)` is what lets these Spacers
+        // actually stretch; content taller than the band still scrolls.
+        VStack(spacing: 0) {
+            QuestionHeader(title: title, subtitle: subtitle)
+            Spacer(minLength: 26)
             content()
+            Spacer(minLength: 12)
         }
         .frame(maxWidth: .infinity)
+        .padding(.top, 14)
         .onboardingEdge()
     }
 }
@@ -1173,50 +1220,109 @@ private struct NamePetScreen: View {
     @Binding var name: String
     @FocusState private var focused: Bool
 
-    var body: some View {
-        VStack(spacing: 22) {
-            Spacer(minLength: 4)
+    /// One-tap name ideas under the field. Most users never type during
+    /// onboarding — chips make naming a single tap, and the shuffle keeps
+    /// it playful for the ones who want more options.
+    private static let namePool: [String] = [
+        "Luna", "Nova", "Momo", "Pip",
+        "Sage", "Mochi", "Echo", "Willow",
+        "Cleo", "Juno", "Ollie", "Astra"
+    ]
+    @State private var suggestionPage: Int = 0
 
-            // Simple silhouette — not focal. The screen is about the input.
-            DreamSpiritView(pet: previewPet, size: 96)
-                .opacity(0.85)
+    private var suggestions: [String] {
+        let start = (suggestionPage * 4) % Self.namePool.count
+        return (0..<4).map { Self.namePool[(start + $0) % Self.namePool.count] }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 8)
+
+            DreamSpiritView(pet: previewPet, size: 132)
+
+            Spacer(minLength: 20)
 
             VStack(spacing: 10) {
-                Text("Give your sleep companion a name")
+                Text("Meet your sleep companion.")
                     .font(MooniFont.display(26))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
                     .padding(.horizontal, 8)
 
-                Text("You'll see them every night. Pick something that feels yours.")
+                Text("They grow every night you sleep well.\nGive them a name to make it real.")
                     .font(MooniFont.body(14))
                     .foregroundColor(.white.opacity(0.6))
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            TextField(
-                "",
-                text: $name,
-                prompt: Text(species.defaultName)
-                    .foregroundColor(.white.opacity(0.35))
-            )
-            .font(.system(size: 22, weight: .semibold, design: .rounded))
-            .multilineTextAlignment(.center)
-            .foregroundColor(.white)
-            .padding(.vertical, 18)
-            .padding(.horizontal, 20)
-            .background(Color.white.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(focused ? 0.5 : 0.16), lineWidth: 1)
-            )
-            .padding(.horizontal, 24)
-            .focused($focused)
-            .submitLabel(.done)
-            .onSubmit { focused = false }
+            Spacer(minLength: 26)
+
+            // The name reads like a name tag, not a form: big centered text
+            // over a single underline that lights up with focus.
+            VStack(spacing: 18) {
+                VStack(spacing: 10) {
+                    TextField(
+                        "",
+                        text: $name,
+                        prompt: Text(species.defaultName)
+                            .foregroundColor(.white.opacity(0.25))
+                    )
+                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .focused($focused)
+                    .submitLabel(.done)
+                    .onSubmit { focused = false }
+
+                    Capsule()
+                        .fill(focused ? MooniColor.accent : Color.white.opacity(0.22))
+                        .frame(width: 180, height: 2)
+                }
+
+                HStack(spacing: 8) {
+                    ForEach(suggestions, id: \.self) { suggestion in
+                        Button {
+                            Haptics.tap()
+                            name = suggestion
+                            focused = false
+                        } label: {
+                            Text(suggestion)
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundColor(name == suggestion ? .black : .white.opacity(0.85))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(
+                                    Capsule().fill(name == suggestion
+                                                   ? Color.white
+                                                   : Color.white.opacity(0.07))
+                                )
+                                .overlay(
+                                    Capsule().stroke(Color.white.opacity(name == suggestion ? 0 : 0.14),
+                                                     lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        Haptics.tap()
+                        withAnimation(.easeInOut(duration: 0.2)) { suggestionPage += 1 }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 12, weight: .heavy))
+                            .foregroundColor(.white.opacity(0.7))
+                            .frame(width: 30, height: 30)
+                            .background(Circle().fill(Color.white.opacity(0.07)))
+                            .overlay(Circle().stroke(Color.white.opacity(0.14), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
 
             Spacer(minLength: 0)
         }
@@ -1715,19 +1821,7 @@ private struct MultiSelectScreen<T: Hashable>: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            VStack(spacing: 8) {
-                Text(title)
-                    .font(MooniFont.display(24))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(2)
-                Text(subtitle)
-                    .font(MooniFont.body(13))
-                    .foregroundColor(.white.opacity(0.6))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, 12)
+            QuestionHeader(title: title, subtitle: subtitle)
 
             VStack(spacing: 10) {
                 ForEach(Array(options.enumerated()), id: \.offset) { _, opt in
@@ -1771,6 +1865,7 @@ private struct MultiSelectScreen<T: Hashable>: View {
                 }
             }
         }
+        .padding(.top, 44)
         .padding(.horizontal, 20)
     }
 }
@@ -2025,35 +2120,59 @@ private struct TypicalSleepHoursScreen: View {
                 timeWheelCard(
                     icon: "moon.fill",
                     label: "BEDTIME",
-                    accent: MooniColor.accentSoft,
+                    accent: MooniColor.accent,
                     binding: bedDate
                 )
                 timeWheelCard(
                     icon: "sun.max.fill",
                     label: "WAKE UP",
-                    accent: MooniColor.warning,
+                    accent: MooniColor.accent,
                     binding: wakeDate
                 )
 
-                HStack(spacing: 8) {
-                    Image(systemName: "clock.fill")
-                        .font(.system(size: 13))
+                // Total-sleep readout — same card language as the two wheels
+                // above (icon tile + label on the left, value on the right) so
+                // it reads as part of the set instead of a stray mismatched pill.
+                HStack(spacing: 10) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(MooniColor.accent.opacity(0.18))
+                            .frame(width: 32, height: 32)
+                        Image(systemName: "bed.double.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(MooniColor.accent)
+                    }
+                    Text("TIME ASLEEP")
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
                         .foregroundColor(MooniColor.textMuted)
+                        .tracking(1.8)
+                    Spacer()
                     Text(durationDisplay)
                         .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundStyle(LinearGradient(
                             colors: [MooniColor.accentSoft, MooniColor.accent],
                             startPoint: .leading, endPoint: .trailing))
-                    Text("of sleep")
-                        .font(MooniFont.caption(13))
-                        .foregroundColor(MooniColor.textMuted)
+                        .monospacedDigit()
                 }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
                 .background(Color.white.opacity(0.06))
-                .clipShape(Capsule())
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(MooniColor.accent.opacity(0.28), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .padding(.top, 2)
             }
+        }
+        .onAppear {
+            // Keep the stored duration in sync with the displayed times so the
+            // readout is correct on first load — it used to show a stale 6h 30m
+            // default until the user nudged a wheel.
+            profile.typicalSleepHours = Self.duration(
+                bed: profile.typicalBedHour ?? 23.5,
+                wake: profile.typicalWakeHour ?? 7.0
+            )
         }
     }
 
@@ -2136,6 +2255,11 @@ private struct TypicalSleepHoursScreen: View {
     static func duration(bed: Double, wake: Double) -> Double {
         var diff = wake - bed
         if diff <= 0 { diff += 24 }
+        // A "typical night" longer than ~14h is never what someone means here —
+        // it's an AM/PM mix-up (e.g. wake picked as 7 PM instead of 7 AM, which
+        // used to read as "19h of sleep"). Recover the intended morning wake so
+        // the readout always stays believable.
+        if diff > 14 { diff -= 12 }
         return diff
     }
 }
@@ -2152,21 +2276,15 @@ private struct PhoneBeforeBedScreen: View {
             subtitle: "Screens delay melatonin by up to 90 minutes."
         ) {
             VStack(spacing: 18) {
-                ZStack {
-                    Circle()
-                        .fill(MooniColor.warning.opacity(0.18))
-                        .frame(width: 130, height: 130)
-                        .blur(radius: 24)
-                        .scaleEffect(glow ? 1.05 : 0.95)
-                    Image(systemName: "iphone.gen3.radiowaves.left.and.right")
-                        .font(.system(size: 70))
-                        .foregroundStyle(LinearGradient(
-                            colors: [MooniColor.warning, MooniColor.danger],
-                            startPoint: .top, endPoint: .bottom))
-                }
-                .onAppear {
-                    withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { glow = true }
-                }
+                Image(systemName: "iphone.gen3.radiowaves.left.and.right")
+                    .font(.system(size: 70))
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .top, endPoint: .bottom))
+                    .scaleEffect(glow ? 1.03 : 0.97)
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { glow = true }
+                    }
 
                 HStack(spacing: 10) {
                     bigChoice(label: "Yes", isYes: true)
@@ -2185,7 +2303,7 @@ private struct PhoneBeforeBedScreen: View {
                 Image(systemName: isYes ? "checkmark.circle.fill" : "xmark.circle.fill")
                     .font(.system(size: 28))
                     .foregroundColor(profile.usesPhoneBeforeBed == isYes
-                                     ? (isYes ? MooniColor.warning : MooniColor.success)
+                                     ? MooniColor.accent
                                      : MooniColor.textMuted)
                 Text(label)
                     .font(MooniFont.title(18))
@@ -2198,7 +2316,7 @@ private struct PhoneBeforeBedScreen: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(profile.usesPhoneBeforeBed == isYes
-                            ? (isYes ? MooniColor.warning : MooniColor.success)
+                            ? MooniColor.accent
                             : Color.white.opacity(0.12), lineWidth: 1.5)
             )
         }
@@ -2311,18 +2429,20 @@ private struct StressLevelScreen: View {
             VStack(spacing: 16) {
                 Text("\(profile.stressLevel)")
                     .font(.system(size: 76, weight: .bold, design: .rounded))
-                    .foregroundColor(stressColor)
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .top, endPoint: .bottom))
 
                 Slider(value: Binding(
                     get: { Double(profile.stressLevel) },
                     set: { profile.stressLevel = Int($0) }
                 ), in: 1...10, step: 1)
-                .tint(stressColor)
+                .tint(MooniColor.accent)
 
                 HStack {
-                    Text("Calm").font(MooniFont.caption(11)).foregroundColor(MooniColor.success)
+                    Text("Calm").font(MooniFont.caption(11)).foregroundColor(MooniColor.textMuted)
                     Spacer()
-                    Text("Anxious").font(MooniFont.caption(11)).foregroundColor(MooniColor.danger)
+                    Text("Anxious").font(MooniFont.caption(11)).foregroundColor(MooniColor.textMuted)
                 }
 
                 Text(stressMessage)
@@ -2335,14 +2455,6 @@ private struct StressLevelScreen: View {
             .padding(20)
             .background(Color.white.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        }
-    }
-
-    private var stressColor: Color {
-        switch profile.stressLevel {
-        case ..<4: return MooniColor.success
-        case 4..<7: return MooniColor.warning
-        default: return MooniColor.danger
         }
     }
 
@@ -2381,7 +2493,7 @@ private struct RacingThoughtsScreen: View {
                 Image(systemName: isYes ? "wind" : "checkmark.seal.fill")
                     .font(.system(size: 28))
                     .foregroundColor(profile.racingThoughtsAtNight == isYes
-                                     ? (isYes ? MooniColor.warning : MooniColor.success)
+                                     ? MooniColor.accent
                                      : MooniColor.textMuted)
                 Text(label)
                     .font(MooniFont.title(15))
@@ -2395,7 +2507,7 @@ private struct RacingThoughtsScreen: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(profile.racingThoughtsAtNight == isYes
-                            ? (isYes ? MooniColor.warning : MooniColor.success)
+                            ? MooniColor.accent
                             : Color.white.opacity(0.12), lineWidth: 1.5)
             )
         }
@@ -2613,7 +2725,7 @@ private struct ScheduleScreen: View {
                 timeRow(title: "Bedtime", icon: "moon.fill",
                         color: MooniColor.accent, selection: $bedtime)
                 timeRow(title: "Wake up", icon: "sun.max.fill",
-                        color: MooniColor.warning, selection: $wakeTime)
+                        color: MooniColor.accent, selection: $wakeTime)
 
                 Toggle(isOn: $separateWeekends) {
                     Text("Different wake time on weekends")

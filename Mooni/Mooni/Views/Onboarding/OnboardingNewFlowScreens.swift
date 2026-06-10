@@ -80,6 +80,8 @@ struct LifeTimelineScreen: View {
     @State private var cardVisible: Bool = false
     /// Score number above the chart climbs along the head of the With-Mooni curve.
     @State private var currentScore: Int = 48
+    /// "+40" payoff badge that pops at the curve terminus once drawn.
+    @State private var deltaVisible: Bool = false
 
     /// White-to-tint gradient for the With-Mooni curve. Matches the rest
     /// of the onboarding palette.
@@ -172,12 +174,16 @@ struct LifeTimelineScreen: View {
                 Spacer(minLength: 0)
             }
 
-            // The chart itself.
+            // The chart itself. Curves are animatable Shapes whose
+            // `animatableData` is the draw progress, so they genuinely draw on
+            // frame-by-frame. The endpoint dots ride the same inset-mapped
+            // points so they sit exactly on each curve's ends.
             GeometryReader { geo in
-                let plot = CGSize(width: geo.size.width, height: geo.size.height)
+                let plot = geo.size
                 ZStack {
-                    // "Without Mooni" — flat trailing curve, drawn faint.
-                    smoothCurve(values: withoutMooni, in: plot, drawProgress: draw)
+                    // "Without SleepOwl" — flat trailing curve, drawn faint.
+                    ProjectedCurveShape(values: withoutMooni, yMin: chartYMin,
+                                        yMax: chartYMax, closed: false, progress: draw)
                         .stroke(
                             Color.white.opacity(0.30),
                             style: StrokeStyle(lineWidth: 2,
@@ -190,10 +196,11 @@ struct LifeTimelineScreen: View {
                     endpointDot(values: withoutMooni, at: withoutMooni.count - 1,
                                 in: plot,
                                 color: Color.white.opacity(0.40),
-                                visible: draw > 0.97)
+                                visible: draw > 0.985)
 
-                    // "With Mooni" — the rising hero curve.
-                    smoothArea(values: withMooni, in: plot, drawProgress: draw)
+                    // "With SleepOwl" — the rising hero curve + soft area fill.
+                    ProjectedCurveShape(values: withMooni, yMin: chartYMin,
+                                        yMax: chartYMax, closed: true, progress: draw)
                         .fill(
                             LinearGradient(
                                 colors: [
@@ -204,7 +211,8 @@ struct LifeTimelineScreen: View {
                                 endPoint: .bottom
                             )
                         )
-                    smoothCurve(values: withMooni, in: plot, drawProgress: draw)
+                    ProjectedCurveShape(values: withMooni, yMin: chartYMin,
+                                        yMax: chartYMax, closed: false, progress: draw)
                         .stroke(
                             LinearGradient(
                                 colors: [mooniTint, .white],
@@ -215,19 +223,36 @@ struct LifeTimelineScreen: View {
                                                lineCap: .round,
                                                lineJoin: .round)
                         )
-                        .shadow(color: mooniTint.opacity(0.5), radius: 6)
                     endpointDot(values: withMooni, at: 0, in: plot,
                                 color: .white,
                                 visible: draw > 0.01)
-                    endpointDot(values: withMooni,
-                                at: withMooni.count - 1,
-                                in: plot,
-                                color: .white,
-                                visible: draw > 0.97,
-                                halo: true)
+
+                    // Head dot rides the tip of the hero curve while it draws.
+                    // Same animatableData as the curve shape, so SwiftUI keeps
+                    // them frame-locked instead of the dot lagging the line.
+                    CurveHeadDotShape(values: withMooni, yMin: chartYMin,
+                                      yMax: chartYMax, progress: draw)
+                        .fill(Color.white)
+                        .opacity(draw > 0.01 ? 1 : 0)
+
+                    // "+40" payoff badge anchored above the terminus.
+                    let endPt = point(at: withMooni.count - 1,
+                                      value: withMooni[withMooni.count - 1],
+                                      in: plot)
+                    Text("+40")
+                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.white))
+                        .position(x: min(endPt.x - 6, plot.width - 26),
+                                  y: max(endPt.y - 24, 12))
+                        .opacity(deltaVisible ? 1 : 0)
+                        .scaleEffect(deltaVisible ? 1 : 0.6,
+                                     anchor: .bottomTrailing)
                 }
             }
-            .frame(height: 180)
+            .frame(height: 184)
 
             // Two endpoint labels — the ONLY x-axis labels in the chart.
             HStack {
@@ -253,75 +278,12 @@ struct LifeTimelineScreen: View {
 
     // MARK: Curve geometry
 
-    /// Maps a sample index + value to a plot-space point. Indices span the
-    /// full width; values are mapped into [chartYMin, chartYMax].
+    /// Maps a sample index + value to a plot-space point. Delegates to the
+    /// shared `ChartGeometry` so the endpoint dots land exactly on the curves
+    /// drawn by `ProjectedCurveShape`.
     private func point(at i: Int, value: Double, in size: CGSize) -> CGPoint {
-        let xRatio = CGFloat(i) / CGFloat(withMooni.count - 1)
-        let yRatio = 1 - CGFloat((value - chartYMin) / (chartYMax - chartYMin))
-        return CGPoint(x: xRatio * size.width,
-                       y: max(0, min(yRatio, 1)) * size.height)
-    }
-
-    /// Number of segments to draw given current draw progress.
-    private func drawnCount(_ progress: CGFloat, total: Int) -> Int {
-        max(1, Int(round(CGFloat(total - 1) * progress)) + 1)
-    }
-
-    /// Smooth catmull-rom-ish curve via mid-point cubic interpolation.
-    /// Keeps the line organic without using Swift Charts.
-    private func smoothCurve(values: [Double],
-                             in size: CGSize,
-                             drawProgress: CGFloat) -> Path {
-        Path { p in
-            let count = drawnCount(drawProgress, total: values.count)
-            guard count >= 1 else { return }
-            let pts = (0..<count).map {
-                point(at: $0, value: values[$0], in: size)
-            }
-            p.move(to: pts[0])
-            if pts.count == 1 { return }
-            for i in 1..<pts.count {
-                let prev = pts[i - 1]
-                let curr = pts[i]
-                let mid = CGPoint(x: (prev.x + curr.x) / 2,
-                                  y: (prev.y + curr.y) / 2)
-                p.addQuadCurve(to: mid, control: prev)
-                if i == pts.count - 1 {
-                    p.addQuadCurve(to: curr, control: curr)
-                }
-            }
-        }
-    }
-
-    /// Area fill underneath a curve — closes back to the baseline.
-    private func smoothArea(values: [Double],
-                            in size: CGSize,
-                            drawProgress: CGFloat) -> Path {
-        Path { p in
-            let count = drawnCount(drawProgress, total: values.count)
-            guard count >= 1 else { return }
-            let pts = (0..<count).map {
-                point(at: $0, value: values[$0], in: size)
-            }
-            p.move(to: CGPoint(x: pts[0].x, y: size.height))
-            p.addLine(to: pts[0])
-            if pts.count > 1 {
-                for i in 1..<pts.count {
-                    let prev = pts[i - 1]
-                    let curr = pts[i]
-                    let mid = CGPoint(x: (prev.x + curr.x) / 2,
-                                      y: (prev.y + curr.y) / 2)
-                    p.addQuadCurve(to: mid, control: prev)
-                    if i == pts.count - 1 {
-                        p.addQuadCurve(to: curr, control: curr)
-                    }
-                }
-            }
-            if let last = pts.last {
-                p.addLine(to: CGPoint(x: last.x, y: size.height))
-            }
-            p.closeSubpath()
-        }
+        ChartGeometry.point(index: i, value: value, count: withMooni.count,
+                            yMin: chartYMin, yMax: chartYMax, in: size)
     }
 
     /// A filled dot at the given sample index — used for the two endpoints
@@ -357,6 +319,7 @@ struct LifeTimelineScreen: View {
         // Reset every entry so re-navigating to the screen replays.
         currentScore = Int(withMooni[0])
         cardVisible = false
+        deltaVisible = false
         draw = 0
 
         // 1) Wait out the onboarding screen transition (~0.35s) plus a
@@ -373,17 +336,160 @@ struct LifeTimelineScreen: View {
             draw = 1.0
         }
 
-        // 3) Tick the score number up alongside the curve.
-        let totalTicks = withMooni.count
-        let stepNanos = UInt64(drawDuration / Double(totalTicks - 1)
-                               * 1_000_000_000)
-        for i in 0..<totalTicks {
-            currentScore = Int(withMooni[i])
-            if i == totalTicks / 2 || i == totalTicks - 1 {
+        // 3) Tick the score number alongside the curve. The tick index runs
+        //    through the same easeOut curve as the draw animation so the
+        //    number stays in step with the head of the line instead of
+        //    racing ahead of it early and stalling at the end.
+        let steps = 40
+        let stepNanos = UInt64(drawDuration / Double(steps) * 1_000_000_000)
+        var lastScore = currentScore
+        for s in 0...steps {
+            let t = Double(s) / Double(steps)
+            let eased = 1 - pow(1 - t, 2)
+            let idx = Int(round(eased * Double(withMooni.count - 1)))
+            currentScore = Int(withMooni[idx])
+            if currentScore != lastScore, currentScore % 10 == 0 {
                 Haptics.tick()
             }
-            if i < totalTicks - 1 {
+            lastScore = currentScore
+            if s < steps {
                 try? await Task.sleep(nanoseconds: stepNanos)
+            }
+        }
+
+        // 4) Land the payoff badge.
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) {
+            deltaVisible = true
+        }
+        Haptics.success()
+    }
+}
+
+/// Companion to `ProjectedCurveShape`: a filled dot whose center is the head
+/// of the partially-drawn curve. Because its `animatableData` is the same
+/// draw progress, SwiftUI interpolates it on the exact same timeline as the
+/// line itself — the dot leads the stroke pixel-for-pixel.
+private struct CurveHeadDotShape: Shape {
+    let values: [Double]
+    let yMin: Double
+    let yMax: Double
+    var progress: CGFloat
+    var radius: CGFloat = 5
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        guard values.count > 1 else { return Path() }
+        let last = values.count - 1
+        let span = CGFloat(last) * max(0, min(1, progress))
+        let whole = Int(span)
+        let frac = span - CGFloat(whole)
+
+        func pt(_ i: Int) -> CGPoint {
+            ChartGeometry.point(index: i, value: values[i], count: values.count,
+                                yMin: yMin, yMax: yMax, in: rect.size)
+        }
+
+        var head = pt(min(whole, last))
+        if whole < last, frac > 0 {
+            let a = pt(whole)
+            let b = pt(whole + 1)
+            head = CGPoint(x: a.x + (b.x - a.x) * frac,
+                           y: a.y + (b.y - a.y) * frac)
+        }
+        return Path(ellipseIn: CGRect(x: head.x - radius, y: head.y - radius,
+                                      width: radius * 2, height: radius * 2))
+    }
+}
+
+/// Shared point mapping + edge insets for the projected-sleep chart so the
+/// animatable curve and the endpoint dots agree on geometry, and the rounded
+/// line caps / dots never clip against the plot edges.
+private enum ChartGeometry {
+    static let xInset: CGFloat = 8
+    static let topInset: CGFloat = 12
+    static let bottomInset: CGFloat = 6
+
+    static func point(index i: Int, value v: Double, count: Int,
+                      yMin: Double, yMax: Double, in size: CGSize) -> CGPoint {
+        let xRatio = count > 1 ? CGFloat(i) / CGFloat(count - 1) : 0
+        let x = xInset + xRatio * (size.width - xInset * 2)
+        let yRatio = 1 - CGFloat((v - yMin) / (yMax - yMin))
+        let clamped = max(0, min(1, yRatio))
+        let y = topInset + clamped * (size.height - topInset - bottomInset)
+        return CGPoint(x: x, y: y)
+    }
+}
+
+/// Animatable draw-on curve for the projected-sleep chart. `animatableData` is
+/// the draw progress, so SwiftUI interpolates the head of the line every frame
+/// while `draw` animates 0 → 1. (The previous version returned a raw `Path`
+/// built from a @State value; Paths can't be interpolated, so `draw` snapped to
+/// 1 and the whole chart appeared already-drawn with no motion — the reported
+/// "chart doesn't animate / shows too early" bug. This shape is the fix.)
+private struct ProjectedCurveShape: Shape {
+    let values: [Double]
+    let yMin: Double
+    let yMax: Double
+    /// true = close down to the baseline (an area fill); false = line only.
+    let closed: Bool
+    var progress: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            guard values.count > 1 else { return }
+            let last = values.count - 1
+            let span = CGFloat(last) * max(0, min(1, progress))
+            let whole = Int(span)
+            let frac = span - CGFloat(whole)
+
+            func pt(_ i: Int) -> CGPoint {
+                ChartGeometry.point(index: i, value: values[i], count: values.count,
+                                    yMin: yMin, yMax: yMax, in: rect.size)
+            }
+
+            var pts: [CGPoint] = (0...whole).map { pt($0) }
+            // Extend the head a fractional step toward the next sample so the
+            // line grows continuously instead of snapping point-to-point.
+            if whole < last, frac > 0 {
+                let a = pt(whole)
+                let b = pt(whole + 1)
+                pts.append(CGPoint(x: a.x + (b.x - a.x) * frac,
+                                   y: a.y + (b.y - a.y) * frac))
+            }
+            guard let first = pts.first else { return }
+
+            if closed {
+                p.move(to: CGPoint(x: first.x, y: rect.maxY))
+                p.addLine(to: first)
+            } else {
+                p.move(to: first)
+            }
+
+            if pts.count > 1 {
+                for i in 1..<pts.count {
+                    let prev = pts[i - 1]
+                    let curr = pts[i]
+                    let mid = CGPoint(x: (prev.x + curr.x) / 2,
+                                      y: (prev.y + curr.y) / 2)
+                    p.addQuadCurve(to: mid, control: prev)
+                    if i == pts.count - 1 {
+                        p.addQuadCurve(to: curr, control: curr)
+                    }
+                }
+            }
+
+            if closed, let tail = pts.last {
+                p.addLine(to: CGPoint(x: tail.x, y: rect.maxY))
+                p.closeSubpath()
             }
         }
     }
@@ -435,37 +541,41 @@ struct TrackingCompareScreen: View {
             ZStack {
                 if !sideBySide {
                     ZStack {
-                        manualJournal
+                        manualJournal(compact: false)
                             .opacity(1 - Double(phase))
                             .scaleEffect(1 - 0.06 * phase)
                             .rotationEffect(.degrees(Double(phase) * -4))
                             .offset(x: -phase * 18, y: phase * 8)
 
-                        liveReport
+                        liveReport(compact: false)
                             .opacity(Double(phase))
                             .scaleEffect(0.92 + 0.08 * phase)
                             .offset(y: (1 - phase) * 16)
                     }
                     .transition(.opacity)
                 } else {
-                    HStack(alignment: .top, spacing: 8) {
-                        VStack(spacing: 6) {
+                    // Side-by-side: the cards now have compact internals and
+                    // break out to ~8pt screen margins with a wider gutter so
+                    // neither column feels crammed.
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(spacing: 8) {
                             sideBySideHeader(label: "BEFORE",
                                              tint: Color.white.opacity(0.55))
-                            manualJournal
+                            manualJournal(compact: true)
                                 .frame(maxWidth: .infinity)
                         }
-                        VStack(spacing: 6) {
+                        VStack(spacing: 8) {
                             sideBySideHeader(label: "WITH SLEEPOWL",
                                              tint: Color(red: 0.78, green: 0.78, blue: 1.0))
-                            liveReport
+                            liveReport(compact: true)
                                 .frame(maxWidth: .infinity)
                         }
                     }
+                    .padding(.horizontal, -12)
                     .transition(.opacity)
                 }
             }
-            .frame(height: 360)
+            .frame(height: 384)
             .padding(.horizontal, 4)
 
             Spacer(minLength: 0)
@@ -491,42 +601,46 @@ struct TrackingCompareScreen: View {
 
     // MARK: Manual journal card
 
-    private var manualJournal: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func manualJournal(compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: compact ? 8 : 12) {
             HStack {
                 Text("MY SLEEP JOURNAL")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .tracking(2)
+                    .font(.system(size: compact ? 9 : 10, weight: .heavy, design: .rounded))
+                    .tracking(compact ? 1.2 : 2)
                     .foregroundColor(.black.opacity(0.55))
-                Spacer()
-                Text("LAST WEEK")
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .tracking(1.2)
-                    .foregroundColor(.black.opacity(0.4))
+                Spacer(minLength: 0)
+                if !compact {
+                    Text("LAST WEEK")
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .tracking(1.2)
+                        .foregroundColor(.black.opacity(0.4))
+                }
             }
 
-            VStack(alignment: .leading, spacing: 9) {
-                journalLine("Mon", "11pm? woke at 6, felt rough")
-                journalLine("Tue", "forgot to log 😬")
-                journalLine("Wed", "slept ok – maybe 7h? not sure")
-                journalLine("Thu", "couldn't fall asleep. 1am? 5h?")
-                journalLine("Fri", "—")
-                journalLine("Sat", "long night, can't remember")
-                journalLine("Sun", "skipped")
+            VStack(alignment: .leading, spacing: compact ? 6 : 9) {
+                journalLine("Mon", "11pm? woke at 6, felt rough", compact: compact)
+                journalLine("Tue", "forgot to log 😬", compact: compact)
+                journalLine("Wed", "slept ok – maybe 7h?", compact: compact)
+                journalLine("Thu", "couldn't sleep. 1am? 5h?", compact: compact)
+                journalLine("Fri", "—", compact: compact)
+                journalLine("Sat", "long night, can't recall", compact: compact)
+                journalLine("Sun", "skipped", compact: compact)
             }
 
             Spacer(minLength: 0)
 
-            HStack {
+            HStack(spacing: 6) {
                 Image(systemName: "questionmark.circle.fill")
+                    .font(.system(size: compact ? 11 : 13))
                     .foregroundColor(.black.opacity(0.55))
-                Text("3 of 7 nights logged. None measured.")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                Text(compact ? "3 of 7 logged" : "3 of 7 nights logged. None measured.")
+                    .font(.system(size: compact ? 10 : 11, weight: .semibold, design: .rounded))
                     .foregroundColor(.black.opacity(0.55))
-                Spacer()
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
             }
         }
-        .padding(18)
+        .padding(compact ? 13 : 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
             // Cream paper with subtle ruled lines.
@@ -549,23 +663,26 @@ struct TrackingCompareScreen: View {
         .shadow(color: .black.opacity(0.35), radius: 18, y: 10)
     }
 
-    private func journalLine(_ day: String, _ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+    private func journalLine(_ day: String, _ text: String,
+                             compact: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: compact ? 6 : 8) {
             Text(day)
-                .font(.system(size: 12, weight: .heavy, design: .serif))
+                .font(.system(size: compact ? 11 : 12, weight: .heavy, design: .serif))
                 .foregroundColor(.black.opacity(0.7))
-                .frame(width: 32, alignment: .leading)
+                .frame(width: compact ? 26 : 32, alignment: .leading)
             Text(text)
-                .font(.system(size: 13, weight: .regular, design: .serif))
+                .font(.system(size: compact ? 11 : 13, weight: .regular, design: .serif))
                 .italic()
                 .foregroundColor(.black.opacity(0.65))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
     }
 
     // MARK: Live Mooni report card
 
-    private var liveReport: some View {
-        VStack(alignment: .leading, spacing: 14) {
+    private func liveReport(compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: compact ? 10 : 14) {
             HStack {
                 HStack(spacing: 6) {
                     Image(systemName: "moon.stars.fill")
@@ -575,7 +692,7 @@ struct TrackingCompareScreen: View {
                         .font(.system(size: 12, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                 }
-                Spacer()
+                Spacer(minLength: 0)
                 Text("LAST NIGHT")
                     .font(.system(size: 9, weight: .heavy, design: .rounded))
                     .tracking(1.5)
@@ -583,45 +700,51 @@ struct TrackingCompareScreen: View {
             }
 
             // Big sleep score reveal — copies the home ring style.
-            HStack(alignment: .center, spacing: 16) {
+            HStack(alignment: .center, spacing: compact ? 10 : 16) {
+                let ring: CGFloat = compact ? 58 : 78
+                let lw: CGFloat = compact ? 6 : 7
                 ZStack {
                     Circle()
-                        .stroke(Color.white.opacity(0.12), lineWidth: 7)
-                        .frame(width: 78, height: 78)
+                        .stroke(Color.white.opacity(0.12), lineWidth: lw)
+                        .frame(width: ring, height: ring)
                     Circle()
                         .trim(from: 0, to: 0.87 * hypnoFill)
                         .stroke(Color.white,
-                                style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                        .frame(width: 78, height: 78)
+                                style: StrokeStyle(lineWidth: lw, lineCap: .round))
+                        .frame(width: ring, height: ring)
                         .rotationEffect(.degrees(-90))
                     VStack(spacing: -2) {
                         Text("87")
-                            .font(.system(size: 26, weight: .heavy, design: .rounded))
+                            .font(.system(size: compact ? 20 : 26, weight: .heavy, design: .rounded))
                             .foregroundColor(.white)
                             .opacity(scoreVisible ? 1 : 0)
                         Text("score")
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .font(.system(size: compact ? 8 : 9, weight: .semibold, design: .rounded))
                             .foregroundColor(.white.opacity(0.55))
                             .opacity(scoreVisible ? 1 : 0)
                     }
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("7h 38m")
-                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .font(.system(size: compact ? 16 : 22, weight: .heavy, design: .rounded))
                         .foregroundColor(.white)
-                    Text("11:42p → 7:20a")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(compact ? "11:42p→7:20a" : "11:42p → 7:20a")
+                        .font(.system(size: compact ? 10 : 11, weight: .semibold, design: .rounded))
                         .foregroundColor(.white.opacity(0.6))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
                 Spacer(minLength: 0)
             }
 
             // Animated hypnogram — the wow visual.
             hypnogram
-                .frame(height: 60)
+                .frame(height: compact ? 44 : 60)
 
             // Stage breakdown bars.
-            VStack(spacing: 8) {
+            VStack(spacing: compact ? 6 : 8) {
                 stageRow("Deep",  duration: "1h 24m", weight: 0.40,
                          color: Color(red: 0.65, green: 0.62, blue: 1.0),
                          visible: metricsVisible >= 1)
@@ -636,7 +759,7 @@ struct TrackingCompareScreen: View {
                          visible: metricsVisible >= 4)
             }
         }
-        .padding(18)
+        .padding(compact ? 13 : 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
             LinearGradient(
@@ -974,64 +1097,69 @@ struct NotifAllowMockScreen: View {
 
     private var mockDialog: some View {
         ZStack {
+            // iOS 26-style permission alert: translucent "liquid glass"
+            // material, large continuous corner radius, and the authentic
+            // system two-button row (hairline dividers, blue text, bold
+            // preferred action) — replaces the old square card with capsule
+            // buttons that read as a dated iOS dialog.
             VStack(spacing: 0) {
-                VStack(spacing: 6) {
-                    Text("\"SleepOwl\" Would Like to\nSend You Notifications")
-                        .font(.system(size: 14, weight: .semibold))
+                VStack(spacing: 5) {
+                    Text("\u{201C}SleepOwl\u{201D} Would Like to Send You Notifications")
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.black)
                         .multilineTextAlignment(.center)
-                    Text("Bedtime nudges and morning recaps.")
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Notifications may include alerts, sounds, and icon badges. These can be configured in Settings.")
                         .font(.system(size: 12))
-                        .foregroundColor(.black.opacity(0.55))
+                        .foregroundColor(.black.opacity(0.6))
                         .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.vertical, 16)
-                .padding(.horizontal, 18)
+                .padding(.top, 19)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
 
-                Divider().background(Color.black.opacity(0.18))
+                Rectangle().fill(Color.black.opacity(0.10)).frame(height: 0.5)
 
-                // Two SHORT side-by-side buttons — replaces the previous
-                // full-width Don't Allow / Allow bars that read as ugly.
-                HStack(spacing: 10) {
-                    iosButton(title: "Don't Allow", bold: false) {
+                HStack(spacing: 0) {
+                    alertButton(title: "Don't Allow", bold: false) {
                         triggerRealFlow()
                     }
-                    iosButton(title: "Allow", bold: true) {
+                    Rectangle().fill(Color.black.opacity(0.10)).frame(width: 0.5, height: 44)
+                    alertButton(title: "Allow", bold: true) {
                         triggerRealFlow()
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                .frame(height: 44)
             }
-            .frame(maxWidth: 280)
-            .background(Color(red: 0.95, green: 0.95, blue: 0.96))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .shadow(color: Color.black.opacity(0.45), radius: 20, y: 8)
+            .frame(width: 270)
+            .background(.regularMaterial)
+            .environment(\.colorScheme, .light)
+            .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                    .stroke(Color.white.opacity(0.5), lineWidth: 0.5)
+            )
+            .shadow(color: Color.black.opacity(0.4), radius: 30, y: 12)
 
-            // Animated pointing finger — hovers just above the Allow button.
-            // Dialog sits centered in the ZStack; the button row is well below
-            // center (title block + divider + button padding), so we offset
-            // the finger DOWN so its fingertip lands right at the top of the
-            // Allow pill instead of floating in the middle of the title text.
+            // Animated pointing finger — hovers just above the Allow button
+            // (the right-hand action in the two-button row).
             Text("👆")
                 .font(.system(size: 30))
-                .offset(x: 60, y: pointerBob ? 64 : 76)
+                .offset(x: 60, y: pointerBob ? 60 : 72)
                 .opacity(triggered ? 0 : 1)
                 .animation(.easeInOut(duration: 0.25), value: triggered)
         }
     }
 
-    private func iosButton(title: String, bold: Bool, action: @escaping () -> Void) -> some View {
+    private func alertButton(title: String, bold: Bool,
+                             action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 14, weight: bold ? .semibold : .regular))
-                .foregroundColor(.blue)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .frame(minWidth: 96)
-                .background(Color.white)
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(Color.black.opacity(0.10), lineWidth: 0.5))
+                .font(.system(size: 17, weight: bold ? .semibold : .regular))
+                .foregroundColor(Color(red: 0.0, green: 0.48, blue: 1.0))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -1197,6 +1325,15 @@ struct PlanComputingScreen: View {
         "Wind-down"
     ]
 
+    private let subBarIcons: [String] = [
+        "person.fill.viewfinder",
+        "moon.zzz.fill",
+        "sun.max.fill",
+        "wind"
+    ]
+
+    private var accent: Color { Color(red: 0.62, green: 0.62, blue: 1.00) }
+
     var body: some View {
         VStack(spacing: 28) {
             Spacer(minLength: 12)
@@ -1220,44 +1357,87 @@ struct PlanComputingScreen: View {
 
     private var ringProgress: some View {
         ZStack {
+            // Soft halo so the ring glows rather than sitting flat.
+            Circle().fill(accent.opacity(0.18)).blur(radius: 26)
+
             Circle()
-                .stroke(Color.white.opacity(0.12), lineWidth: 6)
+                .stroke(Color.white.opacity(0.10),
+                        style: StrokeStyle(lineWidth: 10, lineCap: .round))
             Circle()
                 .trim(from: 0, to: CGFloat(progress))
-                .stroke(Color.white,
-                        style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .stroke(
+                    AngularGradient(
+                        colors: [accent.opacity(0.4), accent, .white, accent],
+                        center: .center
+                    ),
+                    style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                )
                 .rotationEffect(.degrees(-90))
-            Text("\(Int(progress * 100))%")
-                .font(.system(size: 28, weight: .heavy, design: .rounded))
-                .foregroundColor(.white)
+                .shadow(color: accent.opacity(0.5), radius: 9)
+                .animation(.easeInOut(duration: 0.4), value: progress)
+
+            VStack(spacing: 1) {
+                Text("\(Int(progress * 100))%")
+                    .font(.system(size: 36, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                    .contentTransition(.numericText())
+                Text("ANALYZING")
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .tracking(2)
+                    .foregroundColor(.white.opacity(0.45))
+            }
         }
-        .frame(width: 160, height: 160)
+        .frame(width: 172, height: 172)
     }
 
+    /// Live analysis checklist — each row fills its own progress bar, then
+    /// flips to an accent checkmark when that stage completes. Reads as a real
+    /// system working through your data instead of four bare lines.
     private var subBars: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
             ForEach(subBarLabels.indices, id: \.self) { idx in
                 let label = subBarLabels[idx]
                 let local = subProgress(for: idx)
-                HStack {
-                    Text(label)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundColor(.white.opacity(0.7))
-                    Spacer()
-                    Text(local >= 1 ? "Done" : "")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundColor(.white.opacity(0.7))
-                }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.10))
-                        Capsule()
-                            .fill(Color.white)
-                            .frame(width: geo.size.width * local)
-                            .animation(.easeInOut(duration: 0.4), value: local)
+                let done = local >= 1
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(accent.opacity(done ? 0.22 : 0.12))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: done ? "checkmark" : subBarIcons[idx])
+                            .font(.system(size: 14, weight: .heavy))
+                            .foregroundColor(done ? accent : .white.opacity(0.7))
                     }
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(label)
+                            .font(.system(size: 13, weight: .heavy, design: .rounded))
+                            .foregroundColor(.white.opacity(0.9))
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.white.opacity(0.10))
+                                Capsule()
+                                    .fill(LinearGradient(colors: [accent, .white],
+                                                         startPoint: .leading,
+                                                         endPoint: .trailing))
+                                    .frame(width: max(4, geo.size.width * local))
+                                    .animation(.easeInOut(duration: 0.4), value: local)
+                            }
+                        }
+                        .frame(height: 4)
+                    }
+                    Spacer(minLength: 0)
                 }
-                .frame(height: 4)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white.opacity(done ? 0.06 : 0.03))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(done ? accent.opacity(0.30) : Color.white.opacity(0.08),
+                                lineWidth: 1)
+                )
             }
         }
     }
@@ -1328,46 +1508,72 @@ struct PlanRevealScreen: View {
     }
 
     var body: some View {
-        VStack(spacing: 28) {
-            Spacer(minLength: 4)
+        VStack(spacing: 22) {
+            Spacer(minLength: 2)
 
             // Title block
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 Text("Your plan is ready\(petName.isEmpty ? "" : ", \(petName)").")
                     .font(MooniFont.display(28))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
-                Text("Here's what tonight looks like.")
-                    .font(MooniFont.body(15))
+                Text("Built from everything you told us — here's what changes.")
+                    .font(MooniFont.body(14))
                     .foregroundColor(.white.opacity(0.6))
                     .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
             }
 
-            // Hero score ring — big, centered, with the projected score
-            // animating up from 0. This is the visual anchor of the screen.
-            heroRing
-                .frame(width: 220, height: 220)
-                .opacity(widgetAppear ? 1 : 0)
-                .scaleEffect(widgetAppear ? 1 : 0.9)
-
-            // Three full-width stat tiles in a clean row. Each is a real
-            // card (matches the rest of the app's card language) instead
-            // of plain text columns that read as half-finished.
-            HStack(spacing: 10) {
-                statTile(icon: "moon.zzz.fill",
-                         label: "Bedtime",
-                         value: idealBedtime.hourMinuteString)
-                statTile(icon: "sun.max.fill",
-                         label: "Wake",
-                         value: wakeTime.hourMinuteString)
-                statTile(icon: "bed.double.fill",
-                         label: "Target",
-                         value: sleepDurationLabel)
+            // Hero projected-score ring + the improvement it represents. This
+            // is the emotional anchor: where they are now → where they'll be.
+            VStack(spacing: 14) {
+                heroRing
+                    .frame(width: 188, height: 188)
+                    .scaleEffect(widgetAppear ? 1 : 0.9)
+                improvementBadge
             }
-            .padding(.horizontal, 4)
             .opacity(widgetAppear ? 1 : 0)
-            .offset(y: widgetAppear ? 0 : 8)
+
+            // Tonight's schedule — concrete and theirs.
+            scheduleCard
+                .opacity(widgetAppear ? 1 : 0)
+                .offset(y: widgetAppear ? 0 : 10)
+
+            // Personalized: the exact issues we pulled from their answers, now
+            // framed as things the plan FIXES. Makes the plan feel tailored.
+            if !planFixes.isEmpty {
+                planSection(icon: "checkmark.seal.fill",
+                            title: "What your plan fixes") {
+                    VStack(spacing: 12) {
+                        ForEach(Array(planFixes.enumerated()), id: \.offset) { _, fix in
+                            fixRow(fix)
+                        }
+                    }
+                }
+                .opacity(widgetAppear ? 1 : 0)
+                .offset(y: widgetAppear ? 0 : 10)
+            }
+
+            // Everything included — the value stack that earns the subscription.
+            planSection(icon: "sparkles", title: "Everything you'll unlock") {
+                VStack(spacing: 14) {
+                    ForEach(planFeatures) { featureRow($0) }
+                }
+            }
+            .opacity(widgetAppear ? 1 : 0)
+            .offset(y: widgetAppear ? 0 : 10)
+
+            // Bold, motivating projected outcomes.
+            resultsRow
+                .opacity(widgetAppear ? 1 : 0)
+
+            Text("Your plan adapts every night as \(petNameOrDefault) learns your sleep.")
+                .font(MooniFont.caption(12))
+                .foregroundColor(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+                .padding(.top, 2)
 
             Spacer(minLength: 0)
         }
@@ -1429,40 +1635,216 @@ struct PlanRevealScreen: View {
         }
     }
 
-    // MARK: Stat tile
+    // MARK: Plan data
 
-    private func statTile(icon: String, label: String,
-                          value: String) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .heavy))
+    private var petNameOrDefault: String { petName.isEmpty ? "SleepOwl" : petName }
+
+    /// Where they are now (honest, derived from their answers) → drives the
+    /// "now → projected" improvement story.
+    private var currentScore: Int { profile.derivedSleepScore }
+
+    /// The personalized issues we already surface elsewhere, reframed here as
+    /// things the plan will fix. Capped so the section stays scannable.
+    private var planFixes: [String] { Array(profile.topIssues.prefix(4)) }
+
+    private struct PlanFeature: Identifiable {
+        let icon: String
+        let title: String
+        let subtitle: String
+        var id: String { title }
+    }
+
+    private var planFeatures: [PlanFeature] {
+        [
+            .init(icon: "alarm.waves.left.and.right.fill",
+                  title: "Smart wake window",
+                  subtitle: "Wake in your lightest stage — never mid-deep-sleep."),
+            .init(icon: "wind",
+                  title: "Personalized wind-down",
+                  subtitle: "A nightly routine built from what relaxes you."),
+            .init(icon: "bell.badge.fill",
+                  title: "Bedtime nudges",
+                  subtitle: "\(petNameOrDefault) reminds you before it's too late."),
+            .init(icon: "waveform.path.ecg",
+                  title: "Automatic sleep tracking",
+                  subtitle: "No wearable — your phone does the measuring."),
+            .init(icon: "chart.line.uptrend.xyaxis",
+                  title: "Nightly score & insights",
+                  subtitle: "See exactly what helped, and what hurt."),
+            .init(icon: "sparkles",
+                  title: "\(petNameOrDefault) grows with you",
+                  subtitle: "Every good night, your companion thrives.")
+        ]
+    }
+
+    private var projectedResults: [(value: String, label: String)] {
+        [
+            ("2×",   "faster to\nfall asleep"),
+            ("+47%", "more\ndeep sleep"),
+            ("+38%", "all-day\nenergy")
+        ]
+    }
+
+    // MARK: Plan components
+
+    private var improvementBadge: some View {
+        HStack(spacing: 9) {
+            Text("\(currentScore)")
+                .font(.system(size: 16, weight: .heavy, design: .rounded))
+                .foregroundColor(.white.opacity(0.55))
+            Image(systemName: "arrow.right")
+                .font(.system(size: 11, weight: .heavy))
                 .foregroundColor(scoreTint)
-                .frame(width: 32, height: 32)
-                .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(scoreTint.opacity(0.18))
-                )
-            Text(value)
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
+            Text("\(projectedScore)")
+                .font(.system(size: 16, weight: .heavy, design: .rounded))
                 .foregroundColor(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-            Text(label.uppercased())
-                .font(.system(size: 9, weight: .heavy, design: .rounded))
-                .tracking(1.3)
+            Text("projected by week 4")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundColor(.white.opacity(0.5))
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Capsule().fill(Color.white.opacity(0.06)))
+        .overlay(Capsule().stroke(scoreTint.opacity(0.30), lineWidth: 1))
+    }
+
+    private var scheduleCard: some View {
+        HStack(spacing: 0) {
+            scheduleCell(icon: "moon.zzz.fill", label: "BEDTIME",
+                         value: idealBedtime.hourMinuteString)
+            scheduleDivider
+            scheduleCell(icon: "sun.max.fill", label: "WAKE",
+                         value: wakeTime.hourMinuteString)
+            scheduleDivider
+            scheduleCell(icon: "bed.double.fill", label: "TARGET",
+                         value: sleepDurationLabel)
+        }
+        .padding(.vertical, 16)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.white.opacity(0.05))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.white.opacity(0.10), lineWidth: 1)
         )
+    }
+
+    private func scheduleCell(icon: String, label: String,
+                              value: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .heavy))
+                .foregroundColor(scoreTint)
+            Text(value)
+                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
+                .tracking(1.2)
+                .foregroundColor(.white.opacity(0.45))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var scheduleDivider: some View {
+        Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1, height: 40)
+    }
+
+    private func planSection<Content: View>(
+        icon: String, title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundColor(scoreTint)
+                Text(title)
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .tracking(0.5)
+                    .foregroundColor(.white.opacity(0.85))
+            }
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private func fixRow(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 16))
+                .foregroundColor(scoreTint)
+            Text(text)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundColor(.white.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func featureRow(_ f: PlanFeature) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: f.icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(scoreTint)
+                .frame(width: 38, height: 38)
+                .background(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(scoreTint.opacity(0.16))
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(f.title)
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                Text(f.subtitle)
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundColor(.white.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var resultsRow: some View {
+        HStack(spacing: 10) {
+            ForEach(Array(projectedResults.enumerated()), id: \.offset) { _, r in
+                VStack(spacing: 4) {
+                    Text(r.value)
+                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .foregroundStyle(
+                            LinearGradient(colors: [.white, scoreTint],
+                                           startPoint: .top, endPoint: .bottom)
+                        )
+                    Text(r.label)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(scoreTint.opacity(0.10))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(scoreTint.opacity(0.22), lineWidth: 1)
+                )
+            }
+        }
     }
 
     // MARK: Animation

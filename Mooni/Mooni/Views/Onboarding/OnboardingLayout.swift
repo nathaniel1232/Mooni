@@ -71,6 +71,35 @@ struct OBSubtitle: View {
     }
 }
 
+/// Left-aligned title + optional subtitle for *question* screens. The quiz
+/// reads top-left (title sits on the same band as the back chevron) instead of
+/// the old dead-centre look, which felt floaty and pushed the answer controls
+/// too far down the screen. Content screens still use the centred OBTitle.
+struct QuestionHeader: View {
+    let title: String
+    var subtitle: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title)
+                .font(MooniFont.display(27))
+                .foregroundColor(MooniColor.textPrimary)
+                .multilineTextAlignment(.leading)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+            if let subtitle {
+                Text(subtitle)
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.leading)
+                    .lineSpacing(1)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 /// The one card used for every list / option / stat row in onboarding.
 /// Single accent, optional subtitle, built-in reveal offset.
 struct OBCard: View {
