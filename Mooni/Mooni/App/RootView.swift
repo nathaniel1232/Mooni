@@ -144,6 +144,20 @@ struct SleepingOverlay: View {
                                 .foregroundColor(MooniColor.textMuted)
                                 .textCase(.uppercase)
                         }
+
+                        // Always-available escape: arming the night by mistake
+                        // (or during the day) must never trap the user behind
+                        // the lock until `canWake`. This exits sleep mode
+                        // WITHOUT logging anything.
+                        Button {
+                            appState.cancelSleepMode()
+                        } label: {
+                            Text("I'm not actually going to bed")
+                                .font(MooniFont.caption(13))
+                                .foregroundColor(MooniColor.textMuted)
+                                .underline()
+                        }
+                        .buttonStyle(.plain)
                     }
                     .padding(.bottom, 36)
                 }

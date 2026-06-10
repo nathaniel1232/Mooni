@@ -69,10 +69,57 @@ actor ProfileSync {
             // than signal during onboarding.
         }
     }
+
+    /// Downloads the signed-in user's previously-synced `OnboardingProfile`,
+    /// used by the "Already have an account?" returning-user shortcut so they
+    /// don't restart onboarding from scratch with all-default answers. Returns
+    /// nil when not signed in, when no row exists yet, or on any network/decode
+    /// failure (caller falls back to the default onboarding state). Read-only.
+    func fetchProfile() async -> OnboardingProfile? {
+        guard let userID = Supa.currentUserID else { return nil }
+        do {
+            let rows: [ProfileFetchRow] = try await Supa.client
+                .from("profiles")
+                .select("payload")
+                .eq("user_id", value: userID)
+                .limit(1)
+                .execute()
+                .value
+            return rows.first?.payload
+        } catch {
+            return nil
+        }
+    }
+
+    /// Deletes the signed-in user's server-side profile row, used by the
+    /// "Delete account & data" flow. Cancels any in-flight upsert first so a
+    /// debounced write can't re-create the row after we delete it. Must be
+    /// awaited *before* sign-out, while the session (and thus RLS `auth.uid()`)
+    /// is still valid. Throws so the caller can surface a real failure rather
+    /// than silently leaving server data behind.
+    func deleteProfile() async throws {
+        pendingTask?.cancel()
+        pendingTask = nil
+        guard let userID = Supa.currentUserID else {
+            // No session → no server row scoped to us to delete.
+            return
+        }
+        try await Supa.client
+            .from("profiles")
+            .delete()
+            .eq("user_id", value: userID)
+            .execute()
+    }
 }
 
 private struct ProfileRow: Encodable {
     let user_id: UUID
     let payload: OnboardingProfile
     let updated_at: String
+}
+
+/// Decode-only shape for `fetchProfile()` — we only select the `payload`
+/// column, so this mirrors just that one field.
+private struct ProfileFetchRow: Decodable {
+    let payload: OnboardingProfile
 }

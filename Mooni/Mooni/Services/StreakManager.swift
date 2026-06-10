@@ -96,8 +96,8 @@ final class StreakManager: ObservableObject {
            Calendar.current.isDate(lastDate, inSameDayAs: yesterday) {
             current += 1
         } else {
-            current = max(current, 1)
-            if current == 0 { current = 1 }
+            // No continuous prior day — this log starts a fresh streak.
+            current = 1
         }
 
         longest = max(longest, current)

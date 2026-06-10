@@ -160,7 +160,7 @@ enum HomeIntelligence {
         let hero = heroCopy(for: aura, entry: entry, petName: petName, seed: seed)
         let speech = speechCopy(for: aura, entry: entry, petName: petName, seed: seed)
         let achievement = achievement(for: entry, all: all, targetBedtime: targetBedtime, seed: seed)
-        let rare = rareEvent(for: entry, all: all, seed: seed)
+        let rare = rareEvent(for: entry, all: all, petName: petName, seed: seed)
         let why = whyLine(for: entry, all: all, targetBedtime: targetBedtime, seed: seed)
 
         // Build a ranked list of auras so the badge can show the top
@@ -568,6 +568,7 @@ enum HomeIntelligence {
     private static func rareEvent(
         for entry: SleepEntry,
         all: [SleepEntry],
+        petName: String,
         seed: UInt64
     ) -> RareEvent? {
         let score = entry.score
@@ -591,12 +592,15 @@ enum HomeIntelligence {
             )
         }
 
-        // Sprinkle a "SleepOwl feels amazing" rare card on ~1 in 12 days
-        // when score is good — adds variability without lying.
+        // Sprinkle a "<pet> feels amazing" rare card on ~1 in 12 days
+        // when score is good — adds variability without lying. Use the user's
+        // own pet name when they've set one; fall back only when truly unknown.
         if score >= 80 && (seed % 12) == 0 {
+            let trimmedName = petName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let displayName = trimmedName.isEmpty ? petNameFallback : trimmedName
             return RareEvent(
                 icon: "moon.stars.fill",
-                title: "\(petNameFallback) feels amazing",
+                title: "\(displayName) feels amazing",
                 body: "Catch the vibe — today is a charged-up kind of day.",
                 tint: MooniColor.accentSoft
             )

@@ -1124,7 +1124,7 @@ private struct PipelineStage: View {
                 HStack(spacing: 6) {
                     Image(systemName: "atom")
                         .font(.system(size: 9, weight: .bold))
-                    Text("METHODOLOGY · HOW MOONI WORKS")
+                    Text("METHODOLOGY · HOW SLEEPOWL WORKS")
                         .font(MooniFont.caption(9))
                         .tracking(1.5)
                 }

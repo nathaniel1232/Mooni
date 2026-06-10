@@ -418,9 +418,12 @@ struct HomeView: View {
         if level > lastCelebratedLevel && level > 1 {
             celebration = .init(
                 kind: .levelUp(newLevel: level, title: appState.pet.levelTitle),
+                // No "See unlocks" CTA — the unlocks/Pet screen is hidden in
+                // this slim build, so the button would dangle. The toast's
+                // primary button only ever dismisses, so keep the copy honest.
                 title: "Level \(level)!",
-                subtitle: "You unlocked \(appState.pet.levelTitle). New colors and freezes available.",
-                ctaTitle: "See unlocks",
+                subtitle: "You reached \(appState.pet.levelTitle), and a fresh streak freeze is ready.",
+                ctaTitle: "Nice!",
                 pet: appState.pet
             )
             lastCelebratedLevel = level
@@ -516,13 +519,6 @@ struct HomeView: View {
                         )
                             .shadow(color: MooniColor.petGlow.opacity(0.3),
                                     radius: 18, y: 8)
-                            .overlay(alignment: .top) {
-                                if let line = heroSpeech {
-                                    PetSpeechBubble(text: line, maxWidth: 200)
-                                        .offset(y: -36)
-                                        .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .bottom)))
-                                }
-                            }
                         Text(scoreStatus(entry.score))
                             .font(MooniFont.title(13))
                             .foregroundColor(scoreColor(entry.score))
@@ -532,6 +528,18 @@ struct HomeView: View {
                             .clipShape(Capsule())
                     }
                     .frame(width: 128)
+                }
+                // Speech bubble overlays the full score+owl row (the whole card
+                // width) rather than just the 104pt owl, so a long line wraps
+                // and stays inside the card. Pinned .topTrailing so its right
+                // edge hugs the owl side and it grows leftward into the card
+                // interior — never clipping off the right card edge.
+                .overlay(alignment: .topTrailing) {
+                    if let line = heroSpeech {
+                        PetSpeechBubble(text: line, maxWidth: 200)
+                            .offset(y: -8)
+                            .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .bottomTrailing)))
+                    }
                 }
 
                 // Timing (bottom)
@@ -605,19 +613,13 @@ struct HomeView: View {
                 .frame(height: 200)
 
                 VStack(spacing: 6) {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(MooniColor.success)
-                            .frame(width: 6, height: 6)
-                        Text("AUTO-TRACKING ON")
-                            .font(MooniFont.caption(10))
-                            .foregroundColor(MooniColor.success)
-                            .tracking(1.2)
-                    }
+                    trackingStatusPill
                     Text("Your first night")
                         .font(MooniFont.display(28))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text("Just sleep — \(appState.pet.name) will track everything automatically. Your score appears in the morning.")
+                    Text(subscriptionManager.isPro
+                         ? "Just sleep — \(appState.pet.name) will track everything automatically. Your score appears in the morning."
+                         : "Set your bedtime, then log it in the morning and \(appState.pet.name) scores your night. Auto-tracking comes with Pro.")
                         .font(MooniFont.body(14))
                         .foregroundColor(MooniColor.textSecondary)
                         .multilineTextAlignment(.center)
@@ -666,15 +668,7 @@ struct HomeView: View {
                 .frame(height: 180)
 
                 VStack(spacing: 6) {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(MooniColor.success)
-                            .frame(width: 6, height: 6)
-                        Text("AUTO-TRACKING TONIGHT")
-                            .font(MooniFont.caption(10))
-                            .foregroundColor(MooniColor.success)
-                            .tracking(1.2)
-                    }
+                    trackingStatusPill
                     Text("\(appState.pet.name) is getting sleepy")
                         .font(MooniFont.display(24))
                         .foregroundColor(MooniColor.textPrimary)
@@ -688,6 +682,45 @@ struct HomeView: View {
                 }
 
             }
+        }
+    }
+
+    /// Tracking-status pill shown at the top of the first-night and evening
+    /// heroes. Auto-tracking is Pro-only, so for free users we show an honest,
+    /// muted "manual logging" pill that taps through to the paywall rather
+    /// than a false green "auto-tracking on" claim.
+    @ViewBuilder
+    private var trackingStatusPill: some View {
+        if subscriptionManager.isPro {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(MooniColor.success)
+                    .frame(width: 6, height: 6)
+                Text("AUTO-TRACKING ON")
+                    .font(MooniFont.caption(10))
+                    .foregroundColor(MooniColor.success)
+                    .tracking(1.2)
+            }
+        } else {
+            Button {
+                Haptics.tap()
+                showPaywall = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(MooniColor.accentSoft)
+                    Text("UNLOCK AUTO-TRACKING")
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(MooniColor.accentSoft)
+                        .tracking(1.2)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(MooniColor.accentSoft.opacity(0.12))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -721,39 +754,83 @@ struct HomeView: View {
     private var tonightPlanCard: some View {
         MooniCard(padding: 18, cornerRadius: 26) {
             VStack(alignment: .leading, spacing: 14) {
-                // Automation status header
-                HStack(spacing: 10) {
-                    ZStack {
-                        Circle()
-                            .fill(MooniColor.success.opacity(0.18))
-                            .frame(width: 36, height: 36)
-                        Image(systemName: "waveform.path.ecg")
-                            .foregroundColor(MooniColor.success)
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
+                // Tracking status header. Auto-tracking is Pro-only, so free
+                // users get an honest "log in the morning" header that taps
+                // through to the paywall instead of a false "active" claim.
+                if subscriptionManager.isPro {
+                    HStack(spacing: 10) {
+                        ZStack {
                             Circle()
-                                .fill(MooniColor.success)
-                                .frame(width: 6, height: 6)
-                            Text("AUTO-TRACKING ACTIVE")
-                                .font(MooniFont.caption(10))
+                                .fill(MooniColor.success.opacity(0.18))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: "waveform.path.ecg")
                                 .foregroundColor(MooniColor.success)
-                                .tracking(1.2)
+                                .font(.system(size: 14, weight: .semibold))
                         }
-                        Text("Sleep detection starts automatically tonight")
-                            .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.textSecondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(MooniColor.success)
+                                    .frame(width: 6, height: 6)
+                                Text("AUTO-TRACKING ACTIVE")
+                                    .font(MooniFont.caption(10))
+                                    .foregroundColor(MooniColor.success)
+                                    .tracking(1.2)
+                            }
+                            Text("Sleep detection starts automatically tonight")
+                                .font(MooniFont.caption(12))
+                                .foregroundColor(MooniColor.textSecondary)
+                        }
+                        Spacer()
                     }
-                    Spacer()
+                    .padding(12)
+                    .background(MooniColor.success.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(MooniColor.success.opacity(0.22), lineWidth: 1)
+                    )
+                } else {
+                    Button {
+                        Haptics.tap()
+                        showPaywall = true
+                    } label: {
+                        HStack(spacing: 10) {
+                            ZStack {
+                                Circle()
+                                    .fill(MooniColor.accentSoft.opacity(0.18))
+                                    .frame(width: 36, height: 36)
+                                Image(systemName: "bed.double.fill")
+                                    .foregroundColor(MooniColor.accentSoft)
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text("MANUAL LOGGING")
+                                        .font(MooniFont.caption(10))
+                                        .foregroundColor(MooniColor.textMuted)
+                                        .tracking(1.2)
+                                    Image(systemName: "lock.fill")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundColor(MooniColor.textMuted)
+                                }
+                                Text("Log your night in the morning · Unlock auto-tracking")
+                                    .font(MooniFont.caption(12))
+                                    .foregroundColor(MooniColor.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(12)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .padding(12)
-                .background(MooniColor.success.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(MooniColor.success.opacity(0.22), lineWidth: 1)
-                )
 
                 // Schedule at a glance
                 HStack(spacing: 8) {
@@ -795,11 +872,23 @@ struct HomeView: View {
                 }
 
                 if !isHealthConnected {
-                    Button { connectAppleHealth() } label: {
+                    Button {
+                        // Apple Health import is Pro-only — connectAppleHealth()
+                        // silently no-ops for free users, so don't request
+                        // sensitive health permission for nothing. Route free
+                        // users to the paywall instead (mirrors ProfileView).
+                        if subscriptionManager.isPro {
+                            connectAppleHealth()
+                        } else {
+                            showPaywall = true
+                        }
+                    } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "heart.text.square.fill")
+                            Image(systemName: subscriptionManager.isPro ? "heart.text.square.fill" : "lock.fill")
                                 .font(.system(size: 11, weight: .bold))
-                            Text("Connect Apple Health for richer data")
+                            Text(subscriptionManager.isPro
+                                 ? "Connect Apple Health for richer data"
+                                 : "Connect Apple Health — Pro feature")
                                 .font(MooniFont.caption(12))
                         }
                         .foregroundColor(MooniColor.accentSoft)

@@ -2,16 +2,52 @@ import Foundation
 import Combine
 import RevenueCat
 
+/// Result of a purchase attempt, rich enough for the UI to distinguish a
+/// charged-but-not-yet-activated user from a hard failure or a cancel.
+enum PurchaseOutcome {
+    /// Entitlement is visible — the user is Pro right now.
+    case active
+    /// The StoreKit purchase succeeded but the entitlement is not yet visible
+    /// (sandbox lag / receipt sync). The UI must NOT strand a charged user on
+    /// the buy screen — show a "finalizing" state and keep observing isPro.
+    case pendingActivation
+    /// The user backed out of the StoreKit sheet.
+    case cancelled
+    /// The purchase threw. Associated value is a user-presentable message.
+    case failed(String)
+}
+
+/// Result of a restore attempt so the UI can give explicit feedback.
+enum RestoreOutcome {
+    case restored
+    case nothingToRestore
+    case failed(String)
+}
+
 @MainActor
 final class SubscriptionManager: ObservableObject {
 
     static let shared = SubscriptionManager()
 
+    /// UserDefaults key for the last-known Pro state. Lets the UI render the
+    /// correct (Pro) chrome on launch instead of flashing the free state for
+    /// the moment before the async customerInfo fetch returns. Entitlement
+    /// remains the source of truth — this cache is only a paint-time hint.
+    private static let cachedIsProKey = "mooni.cachedIsPro"
+
     // MARK: - Published
 
-    /// Sourced from RevenueCat at launch. Intentionally not persisted —
-    /// entitlement status is the source of truth and is re-fetched on app start.
-    @Published var isPro: Bool = false
+    /// Sourced from RevenueCat at launch and seeded from a UserDefaults cache so
+    /// the UI doesn't flash the free state before the async fetch returns.
+    /// Entitlement status remains the source of truth and is re-fetched on app
+    /// start; the cache is kept in sync via didSet.
+    @Published var isPro: Bool = false {
+        didSet {
+            if oldValue != isPro {
+                UserDefaults.standard.set(isPro, forKey: Self.cachedIsProKey)
+            }
+        }
+    }
     @Published var currentOffering: Offering?
     @Published var discountOffering: Offering?
     @Published var isLoading: Bool = false
@@ -32,6 +68,10 @@ final class SubscriptionManager: ObservableObject {
 
     private init() {
         UserDefaults.standard.removeObject(forKey: "mooni.devForcePro")
+        // Seed from the last-known cache so the UI paints the correct chrome
+        // immediately. refreshCustomerInfo() (called from configure()) will
+        // reconcile against the real entitlement a moment later.
+        isPro = UserDefaults.standard.bool(forKey: Self.cachedIsProKey)
     }
 
     // MARK: - Configuration
@@ -74,7 +114,9 @@ final class SubscriptionManager: ObservableObject {
     /// Treat the user as Pro if our named entitlement is active OR any
     /// entitlement is active (defensive: protects against an entitlement
     /// rename/typo in the RevenueCat dashboard locking out paying users).
-    private static func hasProEntitlement(in info: CustomerInfo) -> Bool {
+    /// Non-private so the purchases delegate can reuse the exact same check
+    /// rather than re-implementing it against the literal entitlement string.
+    static func hasProEntitlement(in info: CustomerInfo) -> Bool {
         if info.entitlements.active[entitlementID] != nil { return true }
         return !info.entitlements.active.isEmpty
     }
@@ -143,43 +185,71 @@ final class SubscriptionManager: ObservableObject {
     // MARK: - Purchase
 
     @discardableResult
-    func purchase(package: Package) async -> Bool {
+    func purchase(package: Package) async -> PurchaseOutcome {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
             let result = try await Purchases.shared.purchase(package: package)
-            if result.userCancelled { return false }
+            if result.userCancelled { return .cancelled }
 
             // The customerInfo on the purchase result is the freshest source
             // of truth — use it directly rather than racing a second fetch.
             isPro = Self.hasProEntitlement(in: result.customerInfo)
+            if isPro { return .active }
 
-            // If the entitlement still isn't visible (sandbox lag, missing
-            // entitlement attachment in App Store Connect, or first-time
-            // receipt sync) retry once after a short delay before giving up.
-            if !isPro {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            // Entitlement not yet visible (sandbox lag, missing entitlement
+            // attachment in App Store Connect, or first-time receipt sync).
+            // Poll a few times with backoff, re-fetching customerInfo between
+            // attempts, and break the moment the entitlement appears. The
+            // delegate may also flip isPro from underneath us — honour that.
+            let backoffsNanos: [UInt64] = [
+                800_000_000,   // 0.8s
+                1_500_000_000, // 1.5s
+                2_500_000_000, // 2.5s
+                4_000_000_000  // 4s
+            ]
+            for delay in backoffsNanos {
+                try? await Task.sleep(nanoseconds: delay)
+                if isPro { break }
                 await refreshCustomerInfo()
+                if isPro { break }
             }
-            return isPro
+
+            // Charged but not yet activated: never strand the user on the buy
+            // screen — the UI shows a "finalizing" state and keeps watching isPro.
+            return isPro ? .active : .pendingActivation
         } catch {
             errorMessage = error.localizedDescription
-            return false
+            return .failed(error.localizedDescription)
         }
+    }
+
+    // MARK: - Identity
+
+    /// Attach RevenueCat to a signed-in user so their purchases follow them
+    /// across devices/reinstalls. Call this after sign-in. Best-effort: a
+    /// failed logIn must not block the app, so we swallow the error and still
+    /// refresh entitlements (which fall back to the anonymous identity).
+    func identify(_ userID: String) async {
+        _ = try? await Purchases.shared.logIn(userID)
+        await refreshCustomerInfo()
     }
 
     // MARK: - Restore
 
-    func restorePurchases() async {
+    @discardableResult
+    func restorePurchases() async -> RestoreOutcome {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
             let info = try await Purchases.shared.restorePurchases()
             isPro = Self.hasProEntitlement(in: info)
+            return isPro ? .restored : .nothingToRestore
         } catch {
             errorMessage = error.localizedDescription
+            return .failed(error.localizedDescription)
         }
     }
 }
@@ -192,12 +262,9 @@ private final class MooniPurchasesDelegate: NSObject, RevenueCat.PurchasesDelega
 
     func purchases(_ purchases: Purchases, receivedUpdated customerInfo: CustomerInfo) {
         Task { @MainActor in
-            if customerInfo.entitlements.active["SleepOwl Pro"] != nil
-                || !customerInfo.entitlements.active.isEmpty {
-                SubscriptionManager.shared.isPro = true
-            } else {
-                SubscriptionManager.shared.isPro = false
-            }
+            // Reuse the single source-of-truth entitlement check rather than
+            // re-implementing it against the literal entitlement string.
+            SubscriptionManager.shared.isPro = SubscriptionManager.hasProEntitlement(in: customerInfo)
         }
     }
 }

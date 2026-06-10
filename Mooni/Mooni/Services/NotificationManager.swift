@@ -118,10 +118,79 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
     /// the user never entered sleep mode. This is the core fix for the
     /// "I didn't touch the app and it did nothing" failure.
     func reconcileSafetyNetNotifications(petName: String, bedtime: Date, wakeTime: Date) {
+        // The bedtime wind-down nudge is benign and stays unconditional for
+        // everyone — it never asks the user to confirm a night, it just nudges.
         scheduleNightlyBedtimeNudge(petName: petName, bedtime: bedtime)
-        scheduleDailyWakeProbes(wakeTime: wakeTime, petName: petName)
-        scheduleCatchUpPrompt(wakeTime: wakeTime, petName: petName)
-        SleepAutomationLog.shared.log("Reconciled safety-net notifications (wake \(wakeTime.hourMinuteString))")
+
+        // The daily-repeating wake probes + catch-up only make sense for users
+        // who can have a night auto-confirmed. Gate them behind Pro to match
+        // the auto-tracking gate (HealthKitManager.startSleepObserverIfNeeded).
+        // We also suppress them once tonight's night is already logged, and
+        // while per-night probes are active (see scheduleWakeProbes) so the
+        // user never gets the same morning ping twice. In every suppressed
+        // case we CLEAR any previously-scheduled daily probes so a user who
+        // lapsed from Pro — or who logged early — stops getting them.
+        let suppressDailyProbes = !SubscriptionManager.shared.isPro
+            || isTonightAlreadyLogged()
+            || perNightProbesActive
+
+        if suppressDailyProbes {
+            clearDailyWakeProbes()
+            clearCatchUpPrompt()
+        } else {
+            scheduleDailyWakeProbes(wakeTime: wakeTime, petName: petName)
+            scheduleCatchUpPrompt(wakeTime: wakeTime, petName: petName)
+        }
+        SleepAutomationLog.shared.log("Reconciled safety-net notifications (wake \(wakeTime.hourMinuteString), dailyProbes=\(suppressDailyProbes ? "suppressed" : "scheduled"))")
+    }
+
+    /// UserDefaults flag set while per-night wake probes are pending (i.e. the
+    /// user is in sleep mode). Used to suppress the overlapping daily-repeating
+    /// safety-net probes so the same morning isn't double-pinged.
+    private static let perNightProbesActiveKey = "mooni.perNightWakeProbesActive"
+    /// Unix time after which the per-night probe window is considered spent,
+    /// so a stale `active` flag can't suppress the daily safety net forever.
+    private static let perNightProbesEndKey = "mooni.perNightWakeProbesEnd"
+
+    /// True while per-night wake probes are scheduled for the upcoming wake
+    /// window. Read in `reconcileSafetyNetNotifications` to de-duplicate.
+    /// Self-expires: the per-night probes are one-shot, so once their window
+    /// (incl. the late catch-up) has passed they're spent — even if the user
+    /// never tapped a probe or relaunched the app to clear the flag. Without
+    /// this, an un-tapped night would leave the flag stuck `true` and mask the
+    /// daily safety-net probes indefinitely, defeating their whole purpose.
+    private var perNightProbesActive: Bool {
+        guard UserDefaults.standard.bool(forKey: Self.perNightProbesActiveKey) else { return false }
+        let end = UserDefaults.standard.double(forKey: Self.perNightProbesEndKey)
+        if end > 0, Date().timeIntervalSince1970 > end { return false }
+        return true
+    }
+
+    /// Whether an entry for tonight (keyed by today's wake date) already exists.
+    /// Decoded directly from the persisted entry store so this works even in the
+    /// background-refresh path, which has no `AppState` instance. Mirrors the
+    /// `entries.contains { $0.dayKey == Date().dayKey }` check AppState uses.
+    private func isTonightAlreadyLogged() -> Bool {
+        guard let data = UserDefaults.standard.data(forKey: "mooni.entries"),
+              let entries = try? JSONDecoder().decode([SleepEntry].self, from: data)
+        else { return false }
+        let today = Date().dayKey
+        return entries.contains { $0.dayKey == today }
+    }
+
+    /// Removes any pending daily-repeating wake probes without re-adding them.
+    private func clearDailyWakeProbes() {
+        let ids = (0..<Self.dailyWakeProbeCount).map { "\(Self.dailyWakeProbePrefix)\($0)" }
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ids)
+        center.removeDeliveredNotifications(withIdentifiers: ids)
+    }
+
+    /// Removes the pending daily catch-up prompt without re-adding it.
+    private func clearCatchUpPrompt() {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [Self.catchUpIdentifier])
+        center.removeDeliveredNotifications(withIdentifiers: [Self.catchUpIdentifier])
     }
 
     /// SAFETY NET (mechanism 8 companion). Rebuilds bedtime/wake from the
@@ -208,6 +277,20 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
     func scheduleWakeProbes(wakeTime: Date, petName: String) {
         let center = UNUserNotificationCenter.current()
         cancelWakeProbes()
+
+        // De-duplicate: the per-night probes scheduled here fire at the same
+        // clock times as the daily-repeating safety-net probes (and catch-up).
+        // Cancel the daily set for this window and flag per-night probes as
+        // active so the next safety-net reconcile won't re-add the overlap.
+        UserDefaults.standard.set(true, forKey: Self.perNightProbesActiveKey)
+        // Window end = past the last probe (+60m) and the daily catch-up (+2h),
+        // plus a grace hour. After this the flag self-expires (see getter).
+        UserDefaults.standard.set(
+            wakeTime.addingTimeInterval(3 * 3600).timeIntervalSince1970,
+            forKey: Self.perNightProbesEndKey
+        )
+        clearDailyWakeProbes()
+        clearCatchUpPrompt()
 
         // -60, -30, 0, +30, +60 (30-minute cadence, 2-hour window).
         let offsets: [Int] = [-60, -30, 0, 30, 60]
@@ -298,6 +381,10 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
             .removePendingNotificationRequests(withIdentifiers: ids)
         UNUserNotificationCenter.current()
             .removeDeliveredNotifications(withIdentifiers: ids)
+        // Per-night probes are no longer active; the daily safety-net probes
+        // may resume on the next reconcile (gated by Pro / not-yet-logged).
+        UserDefaults.standard.set(false, forKey: Self.perNightProbesActiveKey)
+        UserDefaults.standard.removeObject(forKey: Self.perNightProbesEndKey)
     }
 
     private func registerCategories() {

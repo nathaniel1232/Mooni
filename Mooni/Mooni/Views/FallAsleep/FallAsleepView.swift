@@ -81,7 +81,7 @@ struct FallAsleepView: View {
                 .font(MooniFont.display(28))
                 .foregroundColor(MooniColor.textPrimary)
             Text(player.current == nil
-                 ? "Tap a tile to start. Pull down on volume to fade out slowly."
+                 ? "Tap a tile to start."
                  : "Playing softly. Tap again to stop.")
                 .font(MooniFont.body(14))
                 .foregroundColor(MooniColor.textSecondary)
@@ -93,14 +93,20 @@ struct FallAsleepView: View {
     private var soundsGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
             ForEach(AmbientSound.catalog) { sound in
+                let isAvailable = AmbientSoundPlayer.isBundled(sound)
                 let isFree = Self.freeSoundIDs.contains(sound.id)
-                let locked = !isFree && !subscriptionManager.isPro
+                // Only an actually-bundled, paid sound is ever "locked". A
+                // sound with no audio file is "Coming soon" — never Pro-gated,
+                // so no user is sent to the paywall (or charged) for something
+                // that cannot play.
+                let locked = isAvailable && !isFree && !subscriptionManager.isPro
                 SoundTile(
                     sound: sound,
                     isPlaying: player.current?.id == sound.id,
-                    isAvailable: AmbientSoundPlayer.isBundled(sound),
+                    isAvailable: isAvailable,
                     isLocked: locked
                 ) {
+                    guard isAvailable else { return }
                     if locked {
                         showPaywall = true
                     } else {
@@ -193,7 +199,9 @@ private struct SoundTile: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: { if isAvailable || isLocked { action() } }) {
+        // Only available tiles are tappable. Unavailable ("Coming soon")
+        // tiles are inert — they neither play nor route to the paywall.
+        Button(action: { if isAvailable { action() } }) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     ZStack {
@@ -251,6 +259,8 @@ private struct SoundTile: View {
             .opacity(isAvailable ? (isLocked ? 0.75 : 1) : 0.55)
         }
         .buttonStyle(.plain)
+        // "Coming soon" tiles are non-playable: no tap highlight, no action.
+        .disabled(!isAvailable)
     }
 }
 

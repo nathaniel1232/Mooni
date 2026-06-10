@@ -25,6 +25,23 @@ enum WidgetSnapshotPublisher {
         let updatedAt: Date
     }
 
+    /// Locale-aware clock formatter (e.g. "11:42 PM" in 12-hour locales,
+    /// "23:42" in 24-hour locales).
+    ///
+    /// The widget renders these strings verbatim. `timeStyle = .short` honors
+    /// the user's locale (12/24-hour) and produces output identical to the
+    /// app-wide `Date.hourMinuteString` (which is also locale-aware), so the
+    /// app and widget stay consistent. This formatter lives here only to keep
+    /// the widget data layer self-contained (no dependency on the app target's
+    /// Date extension).
+    private static let clockFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = .current
+        f.timeStyle = .short
+        f.dateStyle = .none
+        return f
+    }()
+
     /// Encode + write the entry to the shared store, then nudge WidgetKit
     /// to refresh all timelines.
     static func publish(_ entry: SleepEntry) {
@@ -32,8 +49,8 @@ enum WidgetSnapshotPublisher {
             score: entry.score,
             quality: qualityLabel(for: entry.score),
             sleepDuration: entry.formattedDuration,
-            sleepStart: entry.bedtime.hourMinuteString,
-            wakeTime: entry.wakeTime.hourMinuteString,
+            sleepStart: clockFormatter.string(from: entry.bedtime),
+            wakeTime: clockFormatter.string(from: entry.wakeTime),
             energyScore: entry.readinessScore ?? entry.score,
             updatedAt: Date()
         )

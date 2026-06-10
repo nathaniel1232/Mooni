@@ -121,9 +121,23 @@ enum SleepScoringManager {
         )
     }
 
+    /// Healthy adult sleep efficiency benchmark (TST/TIB). Used only to give
+    /// activity-ESTIMATED nights a realistic time-in-bed when we have no
+    /// measured in-bed window — without it TIB == TST and efficiency reads a
+    /// fake, always-perfect 100%, inflating the score.
+    private static let estimatedSleepEfficiency = 0.90
+
     private static func fallbackTimeInBed(for entry: SleepEntry, totalSleep: TimeInterval) -> TimeInterval? {
         switch entry.resolvedSource {
-        case .appActivityEstimate, .userAdjusted:
+        case .appActivityEstimate:
+            // Pure activity estimate: the bedtime/wake window is itself a guess,
+            // so duration ≈ TST and TIB == TST would imply flawless efficiency.
+            // Assume a conservative, healthy-but-not-perfect efficiency instead.
+            guard totalSleep > 0 else { return max(entry.duration, totalSleep) }
+            let assumedTIB = totalSleep / estimatedSleepEfficiency
+            return max(entry.duration, assumedTIB)
+        case .userAdjusted:
+            // User-supplied bedtime/wake is a real in-bed signal — trust it.
             return max(entry.duration, totalSleep)
         case .healthKit:
             return nil

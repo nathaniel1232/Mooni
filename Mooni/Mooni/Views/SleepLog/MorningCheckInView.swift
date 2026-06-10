@@ -1116,11 +1116,26 @@ struct MorningCheckInView: View {
     // MARK: - Flow
 
     private func setupInitialTimes() {
+        // Make sure the flow ALWAYS has a concrete entry to refine. For free
+        // users (no HealthKit / no auto-capture) there may be no seeded entry
+        // for last night — without this the recap shows "still settling in",
+        // no times can be entered, and completeMorningCheckIn produces nothing
+        // (an empty, unscored night). Seed an editable placeholder from the
+        // target schedule and drop straight into edit-times mode so the user
+        // confirms or manually corrects the real bed/wake times. Those flow
+        // through completeMorningCheckIn → a real, scored SleepEntry.
+        var seededPlaceholder = false
+        if entryOverride == nil && appState.entryNeedingMorningCheckIn == nil {
+            if appState.seedMissedNightEntry() != nil {
+                seededPlaceholder = true
+            }
+        }
+
         if let entry = entryOverride ?? appState.entryNeedingMorningCheckIn {
             editedBedtime = entry.bedtime
             editedWakeTime = entry.wakeTime
         }
-        if startInEditMode {
+        if startInEditMode || seededPlaceholder {
             accuracy = .wayOff
         }
     }

@@ -47,6 +47,11 @@ struct OnboardingView: View {
     // Loading screen state — drives planComputing's main ring + sub-bars.
     @State private var analyzingProgress: Double = 0
     @State private var analyzingStep: Int = 0
+    // True once the 12-second "Building your plan" loader has finished for
+    // this session. Navigating BACK from the plan reveal used to re-enter
+    // .planComputing and replay the whole animation; this flag makes the
+    // loader a one-time beat (`shouldSkip` hops over it once it's done).
+    @State private var planComputingDone: Bool = false
 
     // TrackingCompareScreen sets this true once its play() animation finishes;
     // it gates the footer Continue so the user can't skip past the reveal.
@@ -119,7 +124,7 @@ struct OnboardingView: View {
         // ─ In-app "Allow notifications" mock that triggers the real prompt ─
         case notifAllowMock
 
-        // ─ Rating (no skip — only path forward is "I rated it") ───────────
+        // ─ Rating (optional — "Maybe later"/Skip always advances) ─────────
         case ratingPledge
 
         // ─ Sign in ────────────────────────────────────────────────────────
@@ -499,9 +504,8 @@ struct OnboardingView: View {
                 },
                 selection: $selWindDown)
         case .sleepGoal:            GoalScreen(selection: $sleepGoal, page: 0,
-                                                onAdvance: { advance() })
-        case .sleepGoalMore:        GoalScreen(selection: $sleepGoal, page: 1,
-                                                onAdvance: { advance() })
+                                                onMoreOptions: { goToSleepGoalMore() })
+        case .sleepGoalMore:        GoalScreen(selection: $sleepGoal, page: 1)
         case .targetReachable:      TargetReachableScreen(sleepGoal: sleepGoal)
         case .sleepMetricsTease:    SleepMetricsTeaseScreen()
         case .notifAllowMock:       NotifAllowMockScreen(petName: petName,
@@ -545,6 +549,9 @@ struct OnboardingView: View {
                             let ok = await performAppleSignIn()
                             if ok {
                                 authState = .signedIn
+                                // Returning user: pull their previously-synced
+                                // profile so they don't restart with defaults.
+                                await restoreServerProfileIfAvailable()
                                 finishOnboarding()
                             }
                         }
@@ -585,38 +592,36 @@ struct OnboardingView: View {
                         authState = .skipped
                         advance()
                     }
-                    Text("Used to back up your sleep history and unlock shared widgets later.")
+                    Text("Used to sync your preferences across devices and unlock shared widgets later.")
                         .font(MooniFont.caption(11))
                         .foregroundColor(MooniColor.textMuted)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 12)
                 }
             case .ratingPledge:
-                // No skip. Big button opens the App Store sheet; "I rated it"
-                // appears 2.5 s after the tap — long enough that users can't
-                // dismiss and bounce instantly, short enough not to feel stuck.
+                // App Store compliance (Guideline 1.4 / review-gating): the
+                // rating request must NEVER gate progress. "Leave a rating" is
+                // optional; a clear, always-available "Maybe later" advances
+                // onboarding without any rating. "I rated it" is an extra
+                // shortcut shown once the user actually opened the App Store
+                // prompt — but it's no longer the only way forward.
                 VStack(spacing: 14) {
                     PrimaryButton(title: "Leave a rating", icon: "star.fill", variant: .white) {
                         OnboardingRatingPrompt.request()
-                        // Surface "I rated it" quickly so users aren't stuck
-                        // staring at the screen wondering what's next.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 ratePromptShown = true
                             }
                         }
                     }
-                    if ratePromptShown {
-                        Button {
-                            advance()
-                        } label: {
-                            Text("I rated it")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .underline()
-                                .foregroundColor(.white.opacity(0.85))
-                                .padding(.vertical, 6)
-                        }
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    Button {
+                        advance()
+                    } label: {
+                        Text(ratePromptShown ? "I rated it" : "Maybe later")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .underline()
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(.vertical, 6)
                     }
                 }
             case .notifAllowMock, .signaturePledge:
@@ -638,7 +643,10 @@ struct OnboardingView: View {
     private var primaryTitle: String {
         switch step {
         case .welcome:             return "Get Started"
-        case .ageQuestion:         return profile.age == nil ? "Pick an age" : "Continue"
+        // Age is always set on appear (defaults to 25, or the saved value), so
+        // the old "Pick an age" branch was dead. The wheel can't produce a nil
+        // age — Continue is always the right label.
+        case .ageQuestion:         return "Continue"
         case .genderQuestion:      return "Continue"
         case .typicalSleepHours:   return "Continue"
         case .lifeTimeline:        return "Show me how"
@@ -677,7 +685,9 @@ struct OnboardingView: View {
     private var canAdvance: Bool {
         switch step {
         case .namePet:             return !petName.trimmingCharacters(in: .whitespaces).isEmpty
-        case .ageQuestion:         return profile.age != nil
+        // The wheel always yields a value (defaulted on appear), so age is
+        // never genuinely unset here — Continue is always enabled.
+        case .ageQuestion:         return true
         case .personalizeGoals:    return !selectedGoals.isEmpty
         case .personalizeBlockers: return !selBlockers.isEmpty
         case .personalizeTried:    return !selTried.isEmpty
@@ -710,6 +720,17 @@ struct OnboardingView: View {
         }
     }
 
+    /// Explicit jump to the opt-in "more goal options" page. Bypasses
+    /// `shouldSkip(.sleepGoalMore)` (which hides the page once a goal is
+    /// chosen) so the "More options" link still works even after a selection.
+    private func goToSleepGoalMore() {
+        guard step == .sleepGoal else { return }
+        transitionDirection = .forward
+        withAnimation(.easeInOut(duration: 0.35)) {
+            step = .sleepGoalMore
+        }
+    }
+
     private func goBack() {
         Haptics.tap()
         var prevIndex = step.index - 1
@@ -723,12 +744,23 @@ struct OnboardingView: View {
         }
     }
 
-    /// Reserved for future conditional question chains (e.g. "did you say
-    /// you drink caffeine? then ask cutoff"). For the current flow every
-    /// step is shown — the new Step enum is already the visible sequence,
-    /// not a superset.
+    /// Conditional steps that drop out of the linear sequence depending on
+    /// state. Used by both `advance()` and `goBack()` so forward and backward
+    /// navigation stay symmetric.
     private func shouldSkip(_ s: Step) -> Bool {
-        false
+        switch s {
+        case .sleepGoalMore:
+            // The "more options" goal page is opt-in. Once the user has picked
+            // a goal on the first page, Continue (and any back-nav) hops over
+            // it — they only land here via the explicit "More options" link.
+            return sleepGoal != nil
+        case .planComputing:
+            // One-time loader: once the 12s "Building your plan" animation has
+            // run, never replay it (e.g. backing out of the plan reveal).
+            return planComputingDone
+        default:
+            return false
+        }
     }
 
     // MARK: - Loading animations
@@ -757,6 +789,13 @@ struct OnboardingView: View {
     @State private var analyzingTimer: Timer? = nil
 
     private func runAnalyzingAnimation() {
+        // Already completed this session (e.g. user navigated back to the
+        // reveal and SwiftUI briefly re-mounted the loader): don't replay the
+        // 12-second animation — jump straight ahead to the plan reveal.
+        guard !planComputingDone else {
+            advance()
+            return
+        }
         analyzingTimer?.invalidate()
         analyzingTimer = nil
         analyzingProgress = 0
@@ -767,7 +806,10 @@ struct OnboardingView: View {
             stepIndex: { i in analyzingStep = i },
             messageGroups: PlanComputingScreen.stepBoundaries,
             timerSink: { analyzingTimer = $0 },
-            onDone: { advance() }
+            onDone: {
+                planComputingDone = true
+                advance()
+            }
         )
     }
 
@@ -890,6 +932,35 @@ struct OnboardingView: View {
         }
     }
 
+    /// Returning-user restore: after a successful sign-in via the "Already have
+    /// an account?" shortcut, pull the user's previously-synced OnboardingProfile
+    /// and apply it so `finishOnboarding()` completes with their real answers
+    /// instead of all defaults. Only the quiz profile is synced server-side
+    /// (sleep history and the pet stay on-device), so we restore what we can:
+    /// the personalization answers and a schedule seeded from typical hours.
+    /// No-op (and harmless) when there's no server profile or the fetch fails.
+    @MainActor
+    private func restoreServerProfileIfAvailable() async {
+        guard let restored = await ProfileSync.shared.fetchProfile() else { return }
+        profile = restored
+        // Repopulate the Set-backed selections so finishOnboarding()'s
+        // Set→profile mapping reproduces (rather than wipes) the restored answers.
+        selectedGoals = Set(restored.selectedGoals)
+        selBlockers   = Set(restored.sleepBlockers)
+        selImpacts    = Set(restored.sleepImpacts)
+        selTried      = Set(restored.triedBefore)
+        selWindDown   = Set(restored.windDownPrefs)
+        sleepGoal     = restored.selectedGoals.first ?? sleepGoal
+        if let bh = restored.typicalBedHour {
+            bedtime = Date.todayAt(hour: Int(bh),
+                                   minute: Int((bh.truncatingRemainder(dividingBy: 1) * 60).rounded()))
+        }
+        if let wh = restored.typicalWakeHour {
+            wakeTime = Date.todayAt(hour: Int(wh),
+                                    minute: Int((wh.truncatingRemainder(dividingBy: 1) * 60).rounded()))
+        }
+    }
+
     /// True when the error is the user backing out of the Apple sign-in sheet
     /// rather than a real authentication failure worth showing.
     private static func isUserCancellation(_ error: Error) -> Bool {
@@ -944,7 +1015,17 @@ struct OnboardingView: View {
         return "Pick everything that gets in the way — the more honest, the better."
     }
 
+    /// Latch so `finishOnboarding()` runs its body exactly once. A normal
+    /// paywall dismiss fires BOTH `onSoftDismiss` and the `onChange(paywallSheet
+    /// == nil)` fallback, which used to complete onboarding twice. Guarded by
+    /// the persisted `appState.hasCompletedOnboarding` as well so re-entrancy
+    /// from either path is a no-op after the first completion.
+    @State private var didFinishOnboarding = false
+
     private func finishOnboarding() {
+        guard !didFinishOnboarding, !appState.hasCompletedOnboarding else { return }
+        didFinishOnboarding = true
+
         profile.selectedGoals = SleepGoal.allCases.filter { selectedGoals.contains($0) }
         profile.sleepBlockers = OnboardingProfile.SleepBlocker.allCases.filter { selBlockers.contains($0) }
         profile.sleepImpacts = OnboardingProfile.SleepImpact.allCases.filter { selImpacts.contains($0) }
@@ -1215,10 +1296,29 @@ private struct SleepImpactStatScreen: View {
 
 // MARK: - Screen 3: Name pet
 
+/// Carries the measured width of the name string up to `NamePetScreen` so the
+/// underline can size itself to the typed text.
+private struct NameWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct NamePetScreen: View {
     let species: PetSpecies
     @Binding var name: String
     @FocusState private var focused: Bool
+    /// Width of the currently displayed name (or placeholder), measured from an
+    /// invisible mirror Text so the underline tracks long names instead of
+    /// sitting at a fixed 180pt.
+    @State private var nameWidth: CGFloat = 0
+
+    /// Underline width: hugs the typed text (mirror measurement) but never
+    /// shrinks below a tidy minimum or grows past the usable field width.
+    private var underlineWidth: CGFloat {
+        min(max(nameWidth + 24, 120), 300)
+    }
 
     /// One-tap name ideas under the field. Most users never type during
     /// onboarding — chips make naming a single tap, and the shuffle keeps
@@ -1277,11 +1377,29 @@ private struct NamePetScreen: View {
                     .focused($focused)
                     .submitLabel(.done)
                     .onSubmit { focused = false }
+                    // Invisible mirror of the on-screen string (typed name, or
+                    // the placeholder when empty) in the identical font, used
+                    // only to measure width for the adaptive underline.
+                    .background(
+                        Text(name.isEmpty ? species.defaultName : name)
+                            .font(.system(size: 30, weight: .heavy, design: .rounded))
+                            .fixedSize()
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear.preference(
+                                        key: NameWidthKey.self,
+                                        value: geo.size.width)
+                                }
+                            )
+                            .hidden()
+                    )
 
                     Capsule()
                         .fill(focused ? MooniColor.accent : Color.white.opacity(0.22))
-                        .frame(width: 180, height: 2)
+                        .frame(width: underlineWidth, height: 2)
+                        .animation(.easeInOut(duration: 0.18), value: underlineWidth)
                 }
+                .onPreferenceChange(NameWidthKey.self) { nameWidth = $0 }
 
                 HStack(spacing: 8) {
                     ForEach(suggestions, id: \.self) { suggestion in
@@ -1706,9 +1824,10 @@ private struct GoalScreen: View {
     /// 1 = continuation (remaining goals).
     let page: Int
     /// Called when the user explicitly asks to see more options on page 0.
-    /// Bypasses the footer's canAdvance gate so users can browse without
-    /// having to select prematurely.
-    var onAdvance: () -> Void = {}
+    /// Jumps to the opt-in second goal page even when a goal is already
+    /// selected (the normal footer Continue skips that page once a goal is
+    /// chosen). Browsing more options never requires a premature selection.
+    var onMoreOptions: () -> Void = {}
 
     /// Three goals per page in stable enum order.
     private var pageGoals: [SleepGoal] {
@@ -1753,7 +1872,7 @@ private struct GoalScreen: View {
             if page == 0 {
                 Button {
                     Haptics.tap()
-                    onAdvance()
+                    onMoreOptions()
                 } label: {
                     HStack(spacing: 6) {
                         Text("More options")

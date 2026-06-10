@@ -22,6 +22,7 @@ struct PaywallView: View {
     enum Plan { case annual, short }
 
     @StateObject private var manager = SubscriptionManager.shared
+    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
     /// When true (during onboarding), the close button is barely visible and
@@ -38,8 +39,17 @@ struct PaywallView: View {
     @State private var plan: Plan = .annual
     @State private var showCustomerCenter = false
     @State private var showSuccess = false
+    /// Set when a purchase succeeded but the entitlement isn't yet visible.
+    /// We show a calm "finalizing" state instead of bouncing the user back to
+    /// the buy screen, and watch manager.isPro to transition to success.
+    @State private var finalizing = false
     @State private var animateIn = false
     @State private var moonGlow = false
+
+    // Restore feedback
+    @State private var showRestoreAlert = false
+    @State private var restoreAlertTitle = ""
+    @State private var restoreAlertMessage = ""
 
     private var heroPet: Pet {
         var p = Pet()
@@ -87,6 +97,8 @@ struct PaywallView: View {
 
             if showSuccess {
                 successOverlay
+            } else if finalizing {
+                finalizingOverlay
             } else if manager.isLoadingOfferings {
                 ProgressView()
                     .tint(MooniColor.accentSoft)
@@ -100,6 +112,20 @@ struct PaywallView: View {
         .task { await manager.loadOfferings() }
         .sheet(isPresented: $showCustomerCenter) {
             CustomerCenterView()
+        }
+        .alert(restoreAlertTitle, isPresented: $showRestoreAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(restoreAlertMessage)
+        }
+        // If the entitlement lands while we're showing the finalizing state
+        // (delegate push or a late poll), promote to the success overlay.
+        .onChange(of: manager.isPro) { _, isPro in
+            if isPro && finalizing {
+                finalizing = false
+                withAnimation { showSuccess = true }
+                onPurchased?()
+            }
         }
     }
 
@@ -161,33 +187,45 @@ struct PaywallView: View {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
+            // Close stays pinned at the top so it's always reachable.
             closeRow
 
-            heroBlock
-                .padding(.top, 4)
-                .opacity(animateIn ? 1 : 0)
-                .offset(y: animateIn ? 0 : 12)
-                .animation(.spring(response: 0.65, dampingFraction: 0.78), value: animateIn)
+            // Scrollable region — on small devices (SE/mini) the full pitch no
+            // longer clips; on large devices it simply doesn't need to scroll.
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    heroBlock
+                        .padding(.top, 4)
+                        .opacity(animateIn ? 1 : 0)
+                        .offset(y: animateIn ? 0 : 12)
+                        .animation(.spring(response: 0.65, dampingFraction: 0.78), value: animateIn)
 
-            titleBlock
-                .padding(.horizontal, 24)
-                .padding(.top, 14)
-                .opacity(animateIn ? 1 : 0)
-                .animation(.easeOut(duration: 0.4).delay(0.10), value: animateIn)
+                    titleBlock
+                        .padding(.horizontal, 28)
+                        .padding(.top, 12)
+                        .opacity(animateIn ? 1 : 0)
+                        .animation(.easeOut(duration: 0.4).delay(0.10), value: animateIn)
 
-            planToggle
-                .padding(.top, 14)
-                .opacity(animateIn ? 1 : 0)
-                .animation(.easeOut(duration: 0.4).delay(0.14), value: animateIn)
+                    // Value / reassurance: trial timeline (trial) or benefits.
+                    content
+                        .padding(.horizontal, 28)
+                        .padding(.top, 18)
+                        .opacity(animateIn ? 1 : 0)
+                        .animation(.easeOut(duration: 0.45).delay(0.16), value: animateIn)
 
-            content
-                .padding(.horizontal, 28)
-                .padding(.top, 22)
-                .opacity(animateIn ? 1 : 0)
-                .animation(.easeOut(duration: 0.45).delay(0.18), value: animateIn)
+                    // The choice, sitting right above the CTA so picking a plan
+                    // flows straight into the action.
+                    planCards
+                        .padding(.horizontal, 22)
+                        .padding(.top, 18)
+                        .opacity(animateIn ? 1 : 0)
+                        .animation(.easeOut(duration: 0.4).delay(0.22), value: animateIn)
+                }
+                .padding(.bottom, 8)
+            }
 
-            Spacer(minLength: 8)
-
+            // CTA + trust row stay pinned at the bottom so the primary action
+            // is reliably reachable regardless of scroll position.
             bottomBlock
                 .opacity(animateIn ? 1 : 0)
                 .animation(.easeOut(duration: 0.4).delay(0.26), value: animateIn)
@@ -203,10 +241,13 @@ struct PaywallView: View {
 
     @ViewBuilder
     private var content: some View {
-        if plan == .annual {
+        // Trial selected → the reassurance timeline (the conversion driver:
+        // "here's exactly what happens, no surprises"). Otherwise → the
+        // scannable benefit pillars. Never both — that's what felt cluttered.
+        if plan == .annual, trialDays != nil {
             timeline
         } else {
-            monthlyBenefits
+            proBenefits
         }
     }
 
@@ -251,7 +292,7 @@ struct PaywallView: View {
                     center: .center,
                     startRadius: 6,
                     endRadius: 140))
-                .frame(width: 280, height: 200)
+                .frame(width: 230, height: 156)
                 .scaleEffect(moonGlow ? 1.04 : 0.96)
                 .blur(radius: 6)
 
@@ -263,67 +304,46 @@ struct PaywallView: View {
                     ],
                     startPoint: .top,
                     endPoint: .bottom))
-                .frame(width: 140, height: 140)
+                .frame(width: 112, height: 112)
                 .overlay(
                     Circle()
                         .stroke(Color.white.opacity(0.20), lineWidth: 1)
                 )
                 .shadow(color: MooniColor.accent.opacity(0.45), radius: 24, y: 6)
 
-            DreamSpiritView(pet: heroPet, size: 95)
+            DreamSpiritView(pet: heroPet, size: 78)
                 .scaleEffect(animateIn ? 1 : 0.85)
         }
-        .frame(height: 170)
+        .frame(height: 128)
     }
 
     // MARK: - Title
 
     private var titleBlock: some View {
-        VStack(spacing: 6) {
-            Text(plan == .annual && trialDays != nil ? "How your free trial works" : "Unlock SleepOwl Pro")
-                .font(MooniFont.display(24))
+        VStack(spacing: 8) {
+            Text("Unlock your best sleep")
+                .font(MooniFont.display(26))
                 .foregroundStyle(LinearGradient(
                     colors: [MooniColor.textPrimary, MooniColor.accentSoft],
                     startPoint: .leading,
                     endPoint: .trailing))
                 .multilineTextAlignment(.center)
 
-            Text(planSubtitle)
-                .font(MooniFont.body(13))
+            Text(headlineSubtitle)
+                .font(MooniFont.body(14))
                 .foregroundColor(MooniColor.textSecondary)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var planSubtitle: String {
-        if plan == .annual {
-            guard let pkg = annualPackage else {
-                return "Yearly subscription. Cancel anytime."
-            }
-            let price = pkg.storeProduct.localizedPriceString
-            let weeklyEquiv = (pkg.storeProduct.price as Decimal) / 52
-            let symbol = pkg.storeProduct.priceFormatter?.currencySymbol ?? "$"
-            let weeklyStr = String(format: "%@%.2f/week",
-                                   symbol,
-                                   NSDecimalNumber(decimal: weeklyEquiv).floatValue)
-            if let days = trialDays {
-                return "First \(days) day\(days == 1 ? "" : "s") free, then \(price) (\(weeklyStr))"
-            }
-            return "\(price) per year (\(weeklyStr)) · cancel anytime"
-        } else {
-            guard let pkg = shortPackage else {
-                return "Billed \(shortPeriodLabel.lowercased()). Cancel anytime."
-            }
-            let unit = shortPackage?.packageType == .weekly ? "week" : "month"
-            return "\(pkg.storeProduct.localizedPriceString) per \(unit) · cancel anytime"
+    /// One clean value line — no price (price + terms live on the plan cards),
+    /// so the header reads as a promise rather than a wall of numbers.
+    private var headlineSubtitle: String {
+        if let days = trialDays {
+            return "Auto-tracking, deep insights and every sound — free for \(days) days."
         }
-    }
-
-    // MARK: - Plan toggle
-
-    private var annualPriceLabel: String {
-        guard let pkg = annualPackage else { return "" }
-        return "\(pkg.storeProduct.localizedPriceString)/yr"
+        return "Auto-tracking, deep insights and every sound. Cancel anytime."
     }
 
     /// Number of trial days configured on the annual product in StoreKit, or
@@ -355,52 +375,116 @@ struct PaywallView: View {
         return "\(pkg.storeProduct.localizedPriceString)/\(unit)"
     }
 
-    private var planToggle: some View {
-        HStack(spacing: 0) {
-            toggleSegment(title: "Annual", subtitle: trialDays != nil ? "Free trial" : "Best value", price: annualPriceLabel, value: .annual)
-            toggleSegment(title: shortPeriodLabel, subtitle: "No trial", price: shortPriceLabel, value: .short)
+    // MARK: - Plan cards (the choice)
+
+    /// Two clean, tappable cards. Each carries its own price + terms once, so
+    /// there's no scattered price text elsewhere. The annual card leads with a
+    /// trial/savings badge; the selected card gets an accent border + filled
+    /// radio. Falls back to a single card if no short package is configured.
+    private var planCards: some View {
+        VStack(spacing: 12) {
+            planCard(
+                title: "Annual",
+                badge: annualBadge,
+                detail: annualCardDetail,
+                trailing: annualWeeklyEquivLabel,
+                value: .annual
+            )
+            if shortPackage != nil {
+                planCard(
+                    title: shortPeriodLabel,
+                    badge: nil,
+                    detail: shortCardDetail,
+                    trailing: shortPriceLabel,
+                    value: .short
+                )
+            }
         }
-        .padding(4)
-        .background(
-            Capsule().fill(Color.white.opacity(0.08))
-        )
-        .overlay(
-            Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
-        .padding(.horizontal, 60)
     }
 
-    private func toggleSegment(title: String, subtitle: String, price: String, value: Plan) -> some View {
+    private func planCard(title: String, badge: String?, detail: String, trailing: String?, value: Plan) -> some View {
         let active = plan == value
         return Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { plan = value }
+            Haptics.tap()
         } label: {
-            VStack(spacing: 1) {
-                Text(title)
-                    .font(MooniFont.title(14))
-                    .foregroundColor(active ? .white : MooniColor.textSecondary)
-                Text(subtitle)
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .foregroundColor(active ? Color.white.opacity(0.85) : MooniColor.textMuted)
-                if !price.isEmpty {
-                    Text(price)
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundColor(active ? Color.white.opacity(0.9) : MooniColor.textMuted)
-                        .padding(.top, 1)
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .stroke(active ? MooniColor.accentSoft : Color.white.opacity(0.25), lineWidth: 2)
+                        .frame(width: 22, height: 22)
+                    if active {
+                        Circle().fill(MooniColor.accentSoft).frame(width: 12, height: 12)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text(title)
+                            .font(MooniFont.title(17))
+                            .foregroundColor(MooniColor.textPrimary)
+                        if let badge { badgePill(badge) }
+                    }
+                    Text(detail)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                if let trailing {
+                    Text(trailing)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(active ? MooniColor.accentSoft : MooniColor.textMuted)
+                        .fixedSize()
                 }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
             .background(
-                Capsule()
-                    .fill(active
-                          ? LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent],
-                                           startPoint: .leading, endPoint: .trailing)
-                          : LinearGradient(colors: [.clear, .clear],
-                                           startPoint: .leading, endPoint: .trailing))
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(active ? MooniColor.accent.opacity(0.14) : Color.white.opacity(0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(active ? MooniColor.accentSoft : Color.white.opacity(0.10),
+                            lineWidth: active ? 2 : 1)
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private func badgePill(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .tracking(0.4)
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule().fill(LinearGradient(
+                    colors: [MooniColor.accentSoft, MooniColor.accent],
+                    startPoint: .leading, endPoint: .trailing))
+            )
+    }
+
+    /// Annual badge: real savings vs the short plan if computable, else a
+    /// neutral "BEST VALUE" / "FREE TRIAL" label. Never fabricates a number.
+    private var annualBadge: String? {
+        if let pct = annualSavingsPercent { return "SAVE \(pct)%" }
+        return trialDays != nil ? "FREE TRIAL" : "BEST VALUE"
+    }
+
+    private var annualCardDetail: String {
+        guard let pkg = annualPackage else { return "Yearly plan" }
+        let price = pkg.storeProduct.localizedPriceString
+        if let days = trialDays {
+            return "\(days) days free, then \(price)/yr"
+        }
+        return "\(price) per year, billed yearly"
+    }
+
+    private var shortCardDetail: String {
+        let unit = shortPackage?.packageType == .weekly ? "weekly" : "monthly"
+        return "No free trial · billed \(unit)"
     }
 
     // MARK: - Annual: trial timeline
@@ -468,10 +552,10 @@ struct PaywallView: View {
                     ZStack(alignment: .top) {
                         Capsule()
                             .fill(Color.white.opacity(0.08))
-                            .frame(width: 2, height: 44)
+                            .frame(width: 2, height: 30)
                         Capsule()
                             .fill(tint.opacity(0.55))
-                            .frame(width: 2, height: 44 * connectorFill)
+                            .frame(width: 2, height: 30 * connectorFill)
                     }
                     .padding(.top, 2)
                 }
@@ -486,25 +570,60 @@ struct PaywallView: View {
                     .foregroundColor(MooniColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.bottom, showConnector ? 14 : 0)
+            .padding(.bottom, showConnector ? 9 : 0)
             Spacer(minLength: 0)
         }
     }
 
-    // MARK: - Monthly: benefit list (no trial framing)
+    // MARK: - Pro benefits (scannable value section)
 
-    private var monthlyBenefits: some View {
+    /// The four pillars of Pro, kept tight and scannable. No fabricated stats,
+    /// ratings, or testimonials — App Review forbids those. Just the features.
+    private var proBenefits: some View {
         VStack(alignment: .leading, spacing: 14) {
             benefitRow(icon: "waveform", tint: MooniColor.accent,
                        title: "Auto sleep tracking",
                        body: "Just sleep. SleepOwl scores your night while you rest.")
             benefitRow(icon: "chart.bar.fill", tint: MooniColor.accentSoft,
-                       title: "Full history & insights",
-                       body: "Deep dives into REM, debt, and recovery — every night.")
+                       title: "Full history & deep insights",
+                       body: "Every night, with REM, sleep debt, and recovery trends.")
             benefitRow(icon: "sparkles", tint: MooniColor.warning,
-                       title: "Every sound & scene",
-                       body: "All meditations and soundscapes unlocked.")
+                       title: "All sounds & scenes",
+                       body: "Every meditation and soundscape, fully unlocked.")
+            benefitRow(icon: "moon.stars.fill", tint: MooniColor.accentSoft,
+                       title: "Your sleep companion",
+                       body: "Grow your companion as your sleep improves.")
         }
+    }
+
+    /// Kept for the trial-timeline fallback; mirrors the Pro benefit list.
+    private var monthlyBenefits: some View { proBenefits }
+
+    // MARK: - Annual vs short value math
+
+    /// Honest annual saving vs paying the short (weekly/monthly) plan for a full
+    /// year. Returns a whole-number percent only when it's real and positive —
+    /// never a fabricated figure. Surfaced as the "SAVE X%" card badge.
+    private var annualSavingsPercent: Int? {
+        guard let annual = annualPackage, let short = shortPackage else { return nil }
+        let annualPrice = NSDecimalNumber(decimal: annual.storeProduct.price as Decimal).doubleValue
+        let shortPrice  = NSDecimalNumber(decimal: short.storeProduct.price as Decimal).doubleValue
+        guard annualPrice > 0, shortPrice > 0 else { return nil }
+        let yearlyAtShortRate = short.packageType == .weekly ? shortPrice * 52 : shortPrice * 12
+        guard yearlyAtShortRate > annualPrice else { return nil }
+        let pct = Int(round((1 - annualPrice / yearlyAtShortRate) * 100))
+        return pct >= 1 ? pct : nil
+    }
+
+    /// Per-week equivalent of the annual plan (e.g. "$0.77/week"), shown as the
+    /// annual card's trailing price so the headline reads as a tiny number.
+    private var annualWeeklyEquivLabel: String? {
+        guard let pkg = annualPackage else { return nil }
+        let weekly = (pkg.storeProduct.price as Decimal) / 52
+        guard weekly > 0 else { return nil }
+        let symbol = pkg.storeProduct.priceFormatter?.currencySymbol ?? "$"
+        return String(format: "%@%.2f/week", symbol,
+                      NSDecimalNumber(decimal: weekly).doubleValue)
     }
 
     private func benefitRow(icon: String, tint: Color, title: String, body: String) -> some View {
@@ -545,49 +664,80 @@ struct PaywallView: View {
                     .padding(.horizontal, 24)
             }
 
-            Button { Task { await manager.restorePurchases() } } label: {
-                Text("Restore purchase")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundColor(MooniColor.accentSoft)
-            }
-            .padding(.bottom, 2)
-
-            Text("Cancel anytime in the App Store")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundColor(MooniColor.textMuted)
-
+            // One confident primary CTA, always pinned and reachable.
             purchaseButton
                 .padding(.horizontal, 20)
+                .padding(.top, 2)
+
+            if let reassurance = ctaReassurance {
+                Text(reassurance)
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+
+            // Trust row: cancel anytime + restore, then the legal/manage links.
+            HStack(spacing: 16) {
+                Label("Cancel anytime", systemImage: "checkmark.shield.fill")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(MooniColor.textMuted)
+                Button { Task { await runRestore() } } label: {
+                    Text("Restore")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(MooniColor.accentSoft)
+                }
+            }
+            .padding(.top, 2)
 
             footerLinks
                 .padding(.horizontal, 20)
-                .padding(.top, 2)
         }
         .padding(.bottom, 14)
     }
 
     // MARK: - CTA
 
+    /// Clean action verb — the price + terms are already on the selected card,
+    /// so the button doesn't need to repeat them.
     private var ctaText: String {
-        if plan == .annual {
-            guard let pkg = annualPackage else { return "Continue" }
-            if trialDays != nil {
-                return "Try Free · \(pkg.storeProduct.localizedPriceString)/yr after"
-            }
-            return "Continue — \(pkg.storeProduct.localizedPriceString)/yr"
-        }
-        guard let pkg = shortPackage else { return "Continue" }
-        return "Continue — \(pkg.storeProduct.localizedPriceString)\(shortPerLabel)"
+        if plan == .annual, trialDays != nil { return "Start my free trial" }
+        if plan == .annual { return "Get SleepOwl Pro" }
+        return "Get SleepOwl Pro"
+    }
+
+    /// One short anxiety-reducer under the CTA for the trial (the most common
+    /// drop-off worry). Paid plans rely on the card's terms + the trust row.
+    private var ctaReassurance: String? {
+        (plan == .annual && trialDays != nil) ? "You won't be charged today" : nil
     }
 
     private var purchaseButton: some View {
         Button {
             guard let pkg = selectedPackage else { return }
             Task {
-                let success = await manager.purchase(package: pkg)
-                if success {
-                    showSuccess = true
+                let outcome = await manager.purchase(package: pkg)
+                switch outcome {
+                case .active:
+                    withAnimation { showSuccess = true }
                     onPurchased?()
+                case .pendingActivation:
+                    // Charged but entitlement not yet visible — never bounce
+                    // the user back to the buy screen. Show the calm
+                    // finalizing state and keep watching manager.isPro.
+                    // (If the delegate already flipped isPro in the meantime,
+                    // go straight to success rather than getting stuck.)
+                    if manager.isPro {
+                        withAnimation { showSuccess = true }
+                        onPurchased?()
+                    } else {
+                        withAnimation { finalizing = true }
+                    }
+                case .cancelled:
+                    // Stay on the buy UI; nothing to do.
+                    break
+                case .failed:
+                    // Error is surfaced inline via manager.errorMessage in
+                    // bottomBlock; keep the buy UI visible.
+                    break
                 }
             }
         } label: {
@@ -645,7 +795,89 @@ struct PaywallView: View {
         .frame(maxWidth: .infinity)
     }
 
+    // MARK: - Restore
+
+    private func runRestore() async {
+        let outcome = await manager.restorePurchases()
+        switch outcome {
+        case .restored:
+            restoreAlertTitle = "Purchases restored"
+            restoreAlertMessage = "Your SleepOwl Pro subscription is active again."
+        case .nothingToRestore:
+            restoreAlertTitle = "No purchases to restore"
+            restoreAlertMessage = "We couldn't find an active subscription for this Apple ID."
+        case .failed(let message):
+            restoreAlertTitle = "Restore failed"
+            restoreAlertMessage = message
+        }
+        showRestoreAlert = true
+    }
+
+    // MARK: - Finalizing overlay (charged, awaiting entitlement)
+
+    private var finalizingOverlay: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [MooniColor.accent.opacity(0.45), MooniColor.accent.opacity(0.0)],
+                        center: .center,
+                        startRadius: 6,
+                        endRadius: 120))
+                    .frame(width: 200, height: 200)
+                    .scaleEffect(moonGlow ? 1.04 : 0.96)
+                    .blur(radius: 6)
+                DreamSpiritView(pet: heroPet, size: 120)
+            }
+            ProgressView()
+                .tint(MooniColor.accentSoft)
+                .scaleEffect(1.2)
+            VStack(spacing: 10) {
+                Text("Finalizing your subscription…")
+                    .font(MooniFont.title(20))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                Text("Your payment went through. We're just confirming your access with the App Store — this only takes a moment.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+            }
+            .padding(.horizontal, 32)
+
+            Button { Task { await runRestore() } } label: {
+                Text("Restore")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundColor(MooniColor.accentSoft)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 28)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                moonGlow = true
+            }
+        }
+        .transition(.opacity)
+    }
+
     // MARK: - Success overlay
+
+    /// Reassuring success copy that personalises to the user's companion when
+    /// we have a name, with a safe name-free fallback when it's blank.
+    private var successMessage: String {
+        let name = appState.pet.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty {
+            return "Your sleep companion is glowing brighter than ever.\nEnjoy all of SleepOwl Pro."
+        }
+        return "\(name) is glowing brighter than ever.\nEnjoy all of SleepOwl Pro."
+    }
 
     private var successOverlay: some View {
         VStack(spacing: 28) {
@@ -656,7 +888,7 @@ struct PaywallView: View {
                     .font(MooniFont.display(30))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("Lumi is glowing brighter than ever.\nEnjoy all of SleepOwl Pro.")
+                Text(successMessage)
                     .font(MooniFont.body(16))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)

@@ -464,14 +464,18 @@ struct ProfileView: View {
         isDeleting = true
         defer { isDeleting = false }
         do {
-            // Best-effort Supabase sign-out (also unlinks RevenueCat user);
-            // failures don't block local wipe — Apple still requires the
-            // local data to be removed.
-            await AppleSignInService.shared.signOut()
+            // Delete the server-side profile row (while the session is still
+            // valid), then sign out + unlink RevenueCat. Throws if the server
+            // delete fails so we can surface it.
+            try await AppleSignInService.shared.deleteAccount()
             appState.eraseAllUserData()
             deleteError = nil
         } catch {
-            deleteError = error.localizedDescription
+            // Server delete failed (e.g. offline). Still wipe ALL local data —
+            // Apple requires on-device data removal regardless — but tell the
+            // user the server copy couldn't be removed so they can retry.
+            appState.eraseAllUserData()
+            deleteError = "Your data was removed from this device, but we couldn't reach the server to finish deleting your account. Please try again when you're back online."
         }
     }
 

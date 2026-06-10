@@ -56,11 +56,21 @@
 			);
 			target = C57889F32FAE3ED200D8DB9E /* MooniSleepWidgetExtension */;
 		};
+		FE11FE11FE11FE11FE11FE11 /* Exceptions for "Mooni" folder in "Mooni" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 782C88902FA679F10001B773 /* Mooni */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		782C88932FA679F10001B773 /* Mooni */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FE11FE11FE11FE11FE11FE11 /* Exceptions for "Mooni" folder in "Mooni" target */,
+			);
 			path = Mooni;
 			sourceTree = "<group>";
 		};
@@ -397,6 +407,7 @@
 				DEVELOPMENT_TEAM = 5MUKX6TL86;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Mooni/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SleepOwl;
 				INFOPLIST_KEY_NSCameraUsageDescription = "SleepOwl uses the camera to detect sunlight when you point your phone outside, helping you wake up gently with natural light. No video is recorded or sent off the device.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "SleepOwl reads your sleep data from Apple Health to track bedtime and wake time automatically, so you don't have to log nights manually.";
@@ -434,6 +445,7 @@
 				DEVELOPMENT_TEAM = 5MUKX6TL86;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Mooni/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SleepOwl;
 				INFOPLIST_KEY_NSCameraUsageDescription = "SleepOwl uses the camera to detect sunlight when you point your phone outside, helping you wake up gently with natural light. No video is recorded or sent off the device.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "SleepOwl reads your sleep data from Apple Health to track bedtime and wake time automatically, so you don't have to log nights manually.";

@@ -8,9 +8,14 @@ extension Date {
         return Calendar.current.date(from: comps) ?? self
     }
 
+    /// Locale-aware clock string: "11:42 PM" in 12-hour locales, "23:42" in
+    /// 24-hour locales. Uses the user's device setting rather than a hardcoded
+    /// 24-hour format so times read naturally everywhere (and match the widget,
+    /// which formats with the same locale-aware convention).
     var hourMinuteString: String {
         let f = DateFormatter()
-        f.dateFormat = "HH:mm"
+        f.locale = .current
+        f.setLocalizedDateFormatFromTemplate("jmm")
         return f.string(from: self)
     }
 

@@ -41,17 +41,12 @@ final class AppState: ObservableObject {
     @Published var entries: [SleepEntry] {
         didSet {
             persistEntries()
-            if let latest = entries.sorted(by: { $0.wakeTime > $1.wakeTime }).first {
-                WidgetSnapshotPublisher.publish(latest)
-                // Keep the FriendsSleepWidget in step with the user's latest
-                // night so the "You" slot updates the same day the score is
-                // logged. Friends' rows refresh only when the friends list
-                // mutates (handled in FriendsManager).
-                FriendsManager.shared.syncToWidget(
-                    myLatest: latest,
-                    petName: pet.name
-                )
-            }
+            // Coalesce widget reloads. The didSet fires on EVERY mutation, and
+            // backfill / HealthKit-import loops append entries one at a time —
+            // firing a WidgetCenter reload per element caused a reload storm.
+            // Debounce so a batch collapses into a single refresh, while a
+            // lone mutation still reloads ~promptly.
+            scheduleWidgetSync()
         }
     }
 
@@ -102,6 +97,12 @@ final class AppState: ObservableObject {
                 let comps = Calendar.current.dateComponents([.hour, .minute], from: t)
                 UserDefaults.standard.set(comps.hour ?? 8, forKey: Key.weekendWakeHour)
                 UserDefaults.standard.set(comps.minute ?? 0, forKey: Key.weekendWakeMinute)
+            } else {
+                // Turning off the separate weekend wake must actually forget
+                // the persisted value — otherwise init() reads the stale
+                // hour/minute back on the next launch and it silently returns.
+                UserDefaults.standard.removeObject(forKey: Key.weekendWakeHour)
+                UserDefaults.standard.removeObject(forKey: Key.weekendWakeMinute)
             }
         }
     }
@@ -120,6 +121,11 @@ final class AppState: ObservableObject {
     /// Currently used to watch SubscriptionManager.isPro so newly-Pro users
     /// get auto-tracking enabled immediately, not on next launch.
     private var cancellables = Set<AnyCancellable>()
+
+    /// Debounce handle for coalescing widget reloads triggered by `entries`
+    /// mutations (see `scheduleWidgetSync`). Cancelled and replaced on each
+    /// mutation so a batch of appends collapses into a single refresh.
+    private var widgetSyncTask: Task<Void, Never>?
 
     // MARK: - Init
     init() {
@@ -750,6 +756,29 @@ final class AppState: ObservableObject {
         showMorningCheckIn = true
     }
 
+    /// Always-available escape hatch from the sleep-lock overlay. If the user
+    /// armed the night by accident (including during the day), this exits
+    /// sleep mode cleanly WITHOUT recording anything: no phantom SleepEntry,
+    /// no morning check-in. It only clears the armed/sleeping state and
+    /// cancels the pending wake/onset probes so the user is never trapped
+    /// behind the overlay waiting for `canWake`.
+    func cancelSleepMode() {
+        isSleeping = false
+        // Forget this (false) night entirely so nothing downstream treats it
+        // as real sleep or a missed wake.
+        UserDefaults.standard.removeObject(forKey: Key.sleepStartedAt)
+        UserDefaults.standard.removeObject(forKey: Key.wakeTappedAt)
+        UserDefaults.standard.removeObject(forKey: Key.appOpenedAfterWakeAt)
+        UserDefaults.standard.removeObject(forKey: "mooni.lastStillAwakeAt")
+        WindDownDimController.shared.end()
+        NotificationManager.shared.cancelWakeProbes()
+        NotificationManager.shared.cancelOnsetProbes()
+        var p = pet
+        p.mood = .calm
+        self.pet = p
+        // Explicitly do NOT seed an entry and do NOT open the morning check-in.
+    }
+
     private func seedSleepModeEntry(wakeTime: Date, notes: String) {
         // Create a SleepEntry from the captured sleep window so morning
         // check-in has something to refine. The check-in step can shift
@@ -904,6 +933,12 @@ final class AppState: ObservableObject {
         )
         entries[idx] = entry
         applyReward(energy: max(0, entry.energyEarned - previousEnergy), score: entry.score)
+        // Advance the nightly streak from the canonical bed → sleep mode →
+        // wake → check-in flow. Without this the flame only moved on the
+        // manual logSleep / Pro HealthKit-import paths, so the intended
+        // (sleep-mode) user stayed stuck at 0. registerSleepLogged dedups
+        // per wake-day, so this never double-counts with logSleep.
+        StreakManager.shared.registerSleepLogged(on: entry.wakeTime, durationHours: entry.hours)
         UserDefaults.standard.set(dayKey, forKey: Key.lastMorningPrompt)
         showMorningCheckIn = false
         WidgetSnapshotPublisher.publish(entry)
@@ -1172,6 +1207,30 @@ final class AppState: ObservableObject {
             UserDefaults.standard.set(data, forKey: Key.entriesData)
         }
     }
+
+    /// Debounced widget refresh. Coalesces the bursts of `entries` mutations
+    /// from backfill / import loops into a single WidgetCenter reload instead
+    /// of one per element. A short delay keeps a single user-driven log
+    /// responsive while collapsing batches.
+    private func scheduleWidgetSync() {
+        widgetSyncTask?.cancel()
+        widgetSyncTask = Task { [weak self] in
+            // ~0.4s window: long enough to swallow a tight append loop, short
+            // enough that a normal single log still updates the widget fast.
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled, let self else { return }
+            guard let latest = self.entries.sorted(by: { $0.wakeTime > $1.wakeTime }).first else { return }
+            WidgetSnapshotPublisher.publish(latest)
+            // Keep the FriendsSleepWidget in step with the user's latest night
+            // so the "You" slot updates the same day the score is logged.
+            // Friends' rows refresh only when the friends list mutates
+            // (handled in FriendsManager).
+            FriendsManager.shared.syncToWidget(
+                myLatest: latest,
+                petName: self.pet.name
+            )
+        }
+    }
     private func persistProfile() {
         if let data = try? JSONEncoder().encode(profile) {
             UserDefaults.standard.set(data, forKey: Key.profileData)
@@ -1184,21 +1243,27 @@ final class AppState: ObservableObject {
     /// Review Guideline 5.1.1(v) for apps that support account creation.
     func eraseAllUserData() {
         let defaults = UserDefaults.standard
-        let knownKeys: [String] = [
-            Key.onboarded, Key.petData, Key.routineData, Key.entriesData,
-            Key.goalHours, Key.targetBedHour, Key.targetBedMinute,
-            Key.targetWakeHour, Key.targetWakeMinute, Key.lastMorningPrompt,
-            Key.sleepGoal, Key.weekendWakeHour, Key.weekendWakeMinute,
-            Key.dreamStars, Key.profileData, Key.questRewardDay,
-            Key.questRewardedSteps, Key.isSleeping, Key.sleepStartedAt,
-            Key.wakeTappedAt, Key.appOpenedAfterWakeAt,
-            Key.lastSystemTaskShown, Key.lastSystemTaskIndex,
-            // Auxiliary state owned by other services
-            "mooni.health.didConnect", "mooni.lastStillAwakeAt",
-            "mooni.estimator.lastBackground", "mooni.estimator.lastWakeDay",
-            "mooni.estimator.intervals"
-        ]
-        for key in knownKeys { defaults.removeObject(forKey: key) }
+
+        // App Group suite shared with the widget extension (snapshot + friends
+        // data live here). Keep this in sync with WidgetSnapshotPublisher /
+        // FriendsManager / the widget's WidgetDataStore.
+        let appGroupSuite = "group.com.nathanielfiskaa.sleepowl"
+
+        // Robust wipe: blow away the WHOLE persistent domain for both the app
+        // and the shared App Group, instead of hand-listing keys (which had
+        // already drifted — it missed morning check-in history and the App
+        // Group entirely, leaving user data behind after "delete account").
+        if let appDomain = Bundle.main.bundleIdentifier {
+            defaults.removePersistentDomain(forName: appDomain)
+        }
+        if let groupDefaults = UserDefaults(suiteName: appGroupSuite) {
+            groupDefaults.removePersistentDomain(forName: appGroupSuite)
+            groupDefaults.synchronize()
+        }
+
+        // Morning check-in history persists under its own key — clear it
+        // explicitly so nothing survives even if the domain wipe is partial.
+        MorningCheckInStore.clear()
         StreakManager.shared.resetAll()
         defaults.synchronize()
 

@@ -61,13 +61,16 @@ final class AppleSignInService: NSObject {
             )
         )
 
-        // Tie RevenueCat to the Supabase user. Without this, RevenueCat keeps
-        // a device-bound anonymous ID and a reinstall would orphan the user's
-        // entitlement. With this, signing in with Apple on a new install
-        // automatically re-attaches the existing entitlement.
+        // Tie RevenueCat to the now-signed-in Supabase user. Routed through
+        // SubscriptionManager.identify() so there's a single source of truth
+        // for the logIn + refresh sequence. Without this, RevenueCat keeps a
+        // device-bound anonymous ID, so an anonymous onboarding purchase would
+        // be orphaned instead of following the user — and a reinstall would
+        // lose the entitlement until the user signed in again. With it, an
+        // anonymous purchase is aliased onto the Supabase user and re-attaches
+        // automatically on a new install.
         if let uid = Supa.currentUserID {
-            _ = try? await Purchases.shared.logIn(uid.uuidString)
-            await SubscriptionManager.shared.refreshCustomerInfo()
+            await SubscriptionManager.shared.identify(uid.uuidString)
         }
     }
 
@@ -77,6 +80,33 @@ final class AppleSignInService: NSObject {
         try? await Supa.client.auth.signOut()
         _ = try? await Purchases.shared.logOut()
         await SubscriptionManager.shared.refreshCustomerInfo()
+    }
+
+    /// Backs the "Delete account & data" flow. Deletes the user's server-side
+    /// data *before* signing out, because the row-level-security policies on
+    /// `profiles` are scoped to `auth.uid()` — once the session is gone the
+    /// client can no longer prove ownership and the delete would be rejected.
+    ///
+    /// Order matters and is deliberate:
+    ///   1. Delete the server-side profile row while the session is still live.
+    ///   2. Sign out of Supabase + unlink RevenueCat (local-side teardown).
+    ///
+    /// We rethrow a server-delete failure so the caller can surface it (and
+    /// keep the session, letting the user retry) instead of silently signing
+    /// out and orphaning the row. We still sign out on success.
+    ///
+    /// NOTE (backend): this removes only rows the *client* can delete under
+    /// existing RLS — currently just `public.profiles`. The Supabase
+    /// `auth.users` record itself can only be removed by a privileged
+    /// (service-role) call, e.g. an Edge Function or admin job; the client
+    /// anon key cannot delete an auth user. See crossFileNeeds.
+    func deleteAccount() async throws {
+        // 1. Server-side data wipe (throws on failure so we don't sign out
+        //    and strand an undeletable row behind an expired session).
+        try await ProfileSync.shared.deleteProfile()
+
+        // 2. Local/session teardown — same path as a normal sign-out.
+        await signOut()
     }
 
     /// Wraps the delegate-based ASAuthorizationController in async/await.

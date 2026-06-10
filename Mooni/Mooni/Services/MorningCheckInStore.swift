@@ -34,4 +34,10 @@ enum MorningCheckInStore {
             UserDefaults.standard.set(data, forKey: key)
         }
     }
+
+    /// Wipes the entire morning check-in history. Used by the "delete account
+    /// & data" flow so no check-in records survive a full erase.
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
 }

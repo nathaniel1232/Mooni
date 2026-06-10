@@ -132,6 +132,36 @@ struct Pet: Codable {
     var equippedColor: String = "default_color"
     var equippedBackground: String? = nil
 
+    // MARK: - Codable
+    init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case name, species, room, stage
+        case level, dreamEnergy, mood, lastSleepScore
+        case unlockedItems, equippedHat, equippedColor, equippedBackground
+    }
+
+    /// Tolerant decode so an existing user's previously-saved Pet survives an
+    /// upgrade that adds new stored fields. Every property uses
+    /// `decodeIfPresent(...) ?? <default>` so missing keys fall back to sensible
+    /// defaults instead of failing the whole decode and silently resetting the
+    /// pet (name, level, dreamEnergy, unlocked items, equipped cosmetics).
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "SleepOwl"
+        species = try container.decodeIfPresent(PetSpecies.self, forKey: .species) ?? .owl
+        room = try container.decodeIfPresent(PetRoom.self, forKey: .room) ?? .moonBedroom
+        stage = try container.decodeIfPresent(EvolutionStage.self, forKey: .stage) ?? .baby
+        level = try container.decodeIfPresent(Int.self, forKey: .level) ?? 1
+        dreamEnergy = try container.decodeIfPresent(Int.self, forKey: .dreamEnergy) ?? 0
+        mood = try container.decodeIfPresent(Mood.self, forKey: .mood) ?? .calm
+        lastSleepScore = try container.decodeIfPresent(Int.self, forKey: .lastSleepScore)
+        unlockedItems = try container.decodeIfPresent(Set<String>.self, forKey: .unlockedItems) ?? ["default_color"]
+        equippedHat = try container.decodeIfPresent(String.self, forKey: .equippedHat)
+        equippedColor = try container.decodeIfPresent(String.self, forKey: .equippedColor) ?? "default_color"
+        equippedBackground = try container.decodeIfPresent(String.self, forKey: .equippedBackground)
+    }
+
     // MARK: - Derived
     var energyForNextLevel: Int {
         // Slightly steeper curve so higher levels feel earned.

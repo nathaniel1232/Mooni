@@ -222,9 +222,18 @@ struct DiscountPaywallView: View {
                             guard let pkg = purchasePackage else { return }
                             isPurchasing = true
                             Task {
-                                let success = await manager.purchase(package: pkg)
+                                let outcome = await manager.purchase(package: pkg)
                                 isPurchasing = false
-                                if success { onAccept() }
+                                // Treat charged-but-finalizing the same as
+                                // active here — this win-back screen has no
+                                // separate finalizing state and is dead in the
+                                // shipped flow; entitlement reconciles shortly.
+                                switch outcome {
+                                case .active, .pendingActivation:
+                                    onAccept()
+                                case .cancelled, .failed:
+                                    break
+                                }
                             }
                         } label: {
                             ZStack {

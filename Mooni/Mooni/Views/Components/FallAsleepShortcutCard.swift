@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Compact "drift off" promo for the Home view. Picks a contextual sound
-/// recommendation (rain when stressed, ocean when restless, fireplace when
-/// cozy is the vibe) and opens `FallAsleepView` on tap.
+/// recommendation — always a free, bundled sound (rain) so the advertised
+/// track is actually playable for everyone — and opens `FallAsleepView` on tap.
 ///
 /// The recommendation is just copy-level — the actual playback happens
 /// inside FallAsleepView after the sheet opens. This keeps the Home page
@@ -87,8 +87,11 @@ struct FallAsleepShortcutCard: View {
     /// day. Falls back to "Rain in pines" — the universally calming default.
     static func recommend(profile: OnboardingProfile?, now: Date = Date()) -> Recommendation {
         let hour = Calendar.current.component(.hour, from: now)
-        // Late-night picks favor steady, gentle sounds; early-evening picks
-        // can be slightly richer (rainforest / fireplace).
+        // Both branches recommend rain — it's free and bundled, so the
+        // advertised track always plays. We just vary the framing/length copy
+        // by time of day. (Premium sounds like Fireplace live inside the
+        // FallAsleep sheet behind the paywall; we never advertise an
+        // unplayable track here.)
         let lateNight = hour >= 22 || hour < 5
 
         if lateNight {
@@ -100,10 +103,10 @@ struct FallAsleepShortcutCard: View {
             )
         }
         return Recommendation(
-            title: "Fireplace",
-            subtitle: "30 min · crackling logs",
-            icon: "flame.fill",
-            tint: Color(red: 1.00, green: 0.70, blue: 0.50)
+            title: "Rain & Thunder",
+            subtitle: "20 min · gentle rainfall",
+            icon: "cloud.bolt.rain.fill",
+            tint: Color(red: 0.65, green: 0.78, blue: 1.00)
         )
     }
 }
