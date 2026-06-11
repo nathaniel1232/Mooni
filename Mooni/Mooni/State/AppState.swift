@@ -130,7 +130,22 @@ final class AppState: ObservableObject {
     // MARK: - Init
     init() {
         let defaults = UserDefaults.standard
-        self.hasCompletedOnboarding = defaults.bool(forKey: Key.onboarded)
+        // Treat the user as onboarded if the flag is set OR they clearly have
+        // prior data (saved pet, sleep schedule, or logged nights). This stops
+        // a cold launch — e.g. tapping a wake-probe notification after iOS has
+        // terminated the app overnight — from throwing a returning user back
+        // into onboarding if the flag was ever lost. A fresh install has none
+        // of these, so new users still see onboarding. (Onboarding commits the
+        // pet + schedule only at completion, so this never misfires mid-flow.)
+        let onboardedFlag = defaults.bool(forKey: Key.onboarded)
+        let hasPriorData = defaults.data(forKey: Key.petData) != nil
+            || defaults.data(forKey: Key.entriesData) != nil
+            || defaults.object(forKey: Key.targetBedHour) != nil
+        self.hasCompletedOnboarding = onboardedFlag || hasPriorData
+        if hasPriorData && !onboardedFlag {
+            // Self-heal the persisted flag (didSet doesn't fire during init).
+            defaults.set(true, forKey: Key.onboarded)
+        }
 
         // Pet
         if let data = defaults.data(forKey: Key.petData),

@@ -237,7 +237,11 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
             }
             content.sound = .default
             content.categoryIdentifier = "mooni.wakeProbe"
-            content.interruptionLevel = .timeSensitive
+            // .active (not .timeSensitive): a sleep app must NOT punch through
+            // the user's Sleep Focus / Do Not Disturb — an early wake probe
+            // doing so could wake them ahead of their alarm. These show
+            // normally once Focus ends (i.e. when they're actually awake).
+            content.interruptionLevel = .active
             content.userInfo = ["safetyNet": true]
 
             let comps = cal.dateComponents([.hour, .minute], from: fire)
@@ -311,7 +315,11 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
             }
             content.sound = .default
             content.categoryIdentifier = "mooni.wakeProbe"
-            content.interruptionLevel = .timeSensitive
+            // .active (not .timeSensitive): a sleep app must NOT punch through
+            // the user's Sleep Focus / Do Not Disturb — an early wake probe
+            // doing so could wake them ahead of their alarm. These show
+            // normally once Focus ends (i.e. when they're actually awake).
+            content.interruptionLevel = .active
             content.userInfo = ["fireDate": fireDate.timeIntervalSince1970]
 
             let comps = Calendar.current.dateComponents(
