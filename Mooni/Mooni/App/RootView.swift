@@ -192,6 +192,7 @@ struct MainTabView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selection: Tab
     @State private var showPaywall = false
+    @State private var showDiscountPaywall = false
 
     init() {
         Self.configureTabBarAppearance()
@@ -245,13 +246,24 @@ struct MainTabView: View {
             MorningCheckInView()
         }
         .mooniPaywall(isPresented: $showPaywall)
+        .fullScreenCover(isPresented: $showDiscountPaywall) {
+            DiscountPaywallView(
+                petName: appState.pet.name,
+                onAccept: { showDiscountPaywall = false },
+                onDecline: { showDiscountPaywall = false }
+            )
+        }
         .task {
             await appState.runAutomationMaintenance(reason: "launch task")
+            await refreshProAndMaybeOfferDiscount()
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
-                Task { await appState.runAutomationMaintenance(reason: "foreground") }
+                Task {
+                    await appState.runAutomationMaintenance(reason: "foreground")
+                    await refreshProAndMaybeOfferDiscount()
+                }
             case .background, .inactive:
                 // SAFETY NET (mechanism 2): phone put down at night → arm the
                 // night automatically so probes fire even with no "going to
@@ -263,6 +275,26 @@ struct MainTabView: View {
                 break
             }
         }
+    }
+
+    /// Re-confirm entitlement on launch/foreground (belt-and-suspenders on top
+    /// of the RevenueCat delegate, so Pro stays correct for the whole paid
+    /// period and flips off promptly when it lapses), then decide whether to
+    /// surface the one-time win-back discount offer.
+    @MainActor
+    private func refreshProAndMaybeOfferDiscount() async {
+        await subscriptionManager.refreshCustomerInfo()
+
+        // Never stack the win-back offer on another modal or the sleep lock,
+        // and only show it when a GENUINE discount package is configured —
+        // otherwise we'd be advertising a "special offer" at full price.
+        guard !showPaywall, !showDiscountPaywall,
+              !appState.isSleeping, !appState.showMorningCheckIn,
+              subscriptionManager.discountAnnualPackage != nil,
+              appState.shouldPresentDiscountPaywall() else { return }
+
+        appState.markDiscountPaywallShown()
+        showDiscountPaywall = true
     }
 
     private static func configureTabBarAppearance() {

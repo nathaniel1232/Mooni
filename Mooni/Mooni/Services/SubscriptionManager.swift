@@ -59,12 +59,12 @@ final class SubscriptionManager: ObservableObject {
     /// dashboard typo doesn't lock a paying user out.
     private static let entitlementID = "SleepOwl Pro"
 
-    /// Identifier of the discounted offering configured in RevenueCat. Create
-    /// an Offering named `discount` in the dashboard with a separate, lower-
-    /// priced annual product (e.g. `sleepowl_annual_discount_4999`). The
-    /// discount paywall charges THIS package — never half-prices the regular
+    /// Identifier of the discounted offering configured in RevenueCat. This is
+    /// the Offering named `discounted` in the dashboard, which holds a separate,
+    /// lower-priced annual product (`com.nathanielfiska.sleepowl.subscription.discount`).
+    /// The discount paywall charges THIS package — never half-prices the regular
     /// one, which would charge full price while showing a discount.
-    private static let discountOfferingID = "discount"
+    private static let discountOfferingID = "discounted"
 
     private init() {
         UserDefaults.standard.removeObject(forKey: "mooni.devForcePro")
