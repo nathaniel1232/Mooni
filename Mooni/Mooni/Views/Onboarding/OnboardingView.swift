@@ -250,7 +250,11 @@ struct OnboardingView: View {
                     hideCloseButton: false,
                     onSoftDismiss: {
                         // Guideline 5.6 fix: dismissing the paywall goes straight
-                        // to the app — no automatic second/discount paywall.
+                        // to the app — no automatic second/discount paywall here.
+                        // Instead, record the decline so a single win-back
+                        // discount offer can surface days later, once the user
+                        // has actually used the app (see AppState.shouldPresentDiscountPaywall).
+                        appState.recordFirstPaywallDeclined()
                         // Finish onboarding immediately so the underlying
                         // Color.clear placeholder never becomes visible (would
                         // otherwise flash blank during the dismiss animation).

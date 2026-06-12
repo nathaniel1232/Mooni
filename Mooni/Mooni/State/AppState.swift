@@ -32,6 +32,11 @@ final class AppState: ObservableObject {
         static let trackingStartedAt = "mooni.trackingStartedAt"
         static let lastSeenDayKey = "mooni.lastSeenDayKey"
         static let lastBrainRunAt = "mooni.lastBrainRunAt"
+        // Win-back discount paywall (shown once, days after the user declines
+        // the onboarding paywall, once they've used the app a bit).
+        static let firstPaywallDeclinedAt = "mooni.firstPaywallDeclinedAt"
+        static let discountPaywallShown = "mooni.discountPaywallShown"
+        static let discountPaywallTargetNights = "mooni.discountPaywallTargetNights"
     }
 
     // MARK: - Published state
@@ -660,6 +665,53 @@ final class AppState: ObservableObject {
     /// Maximum habits the current user is allowed to have in their nightly routine.
     var maxHabits: Int {
         SubscriptionManager.shared.isPro ? Int.max : 4
+    }
+
+    // MARK: - Win-back discount paywall
+
+    /// Records that the user dismissed the FIRST (onboarding) paywall without
+    /// buying. This anchors the delayed win-back discount offer. No-op if the
+    /// user is already Pro or a decline was already recorded — we only track
+    /// the first decline.
+    func recordFirstPaywallDeclined() {
+        guard !SubscriptionManager.shared.isPro else { return }
+        let d = UserDefaults.standard
+        guard d.object(forKey: Key.firstPaywallDeclinedAt) == nil else { return }
+        d.set(Date(), forKey: Key.firstPaywallDeclinedAt)
+        // Pick a random number of real nights the user must log before the
+        // win-back offer surfaces, so it appears at a non-deterministic point
+        // rather than always after the same fixed action.
+        d.set(Int.random(in: 2...4), forKey: Key.discountPaywallTargetNights)
+    }
+
+    /// Whether the delayed win-back discount paywall should be presented now.
+    /// True only when ALL hold: not Pro, the onboarding paywall was declined,
+    /// the offer hasn't already been shown, the user has used the app a bit
+    /// (≥1 day since the decline AND has logged at least the randomly-chosen
+    /// number of real nights), and a coin-flip passes so the exact moment of
+    /// appearance feels organic rather than mechanical. Checked on every
+    /// launch/foreground, so it reliably surfaces within a few app opens once
+    /// eligible. The caller is responsible for confirming a genuine discount
+    /// package exists before presenting — we never show a fake "special offer".
+    func shouldPresentDiscountPaywall() -> Bool {
+        guard !SubscriptionManager.shared.isPro else { return false }
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: Key.discountPaywallShown) else { return false }
+        guard let declinedAt = d.object(forKey: Key.firstPaywallDeclinedAt) as? Date else { return false }
+
+        let daysSince = Date().timeIntervalSince(declinedAt) / 86_400
+        guard daysSince >= 1 else { return false }
+
+        let target = max(1, d.integer(forKey: Key.discountPaywallTargetNights))
+        let realNights = entries.filter { !$0.isScheduleBackfill }.count
+        guard realNights >= target else { return false }
+
+        return Int.random(in: 0..<2) == 0
+    }
+
+    /// Marks the win-back offer as shown so it is presented at most once.
+    func markDiscountPaywallShown() {
+        UserDefaults.standard.set(true, forKey: Key.discountPaywallShown)
     }
 
     private func rolloverRoutineIfNeeded() {
