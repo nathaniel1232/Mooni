@@ -57,28 +57,14 @@ struct SmallSleepWidgetView: View {
 
     private var scoreHero: some View {
         ZStack {
-            // Soft halo
-            Circle()
-                .fill(data.scoreTint.opacity(0.20))
-                .frame(width: 92, height: 92)
-                .blur(radius: 14)
-
-            // Track + progress
+            // Track + progress — flat solid arc, no halo, no white hot-spot.
             Circle()
                 .stroke(SleepWidgetPalette.ringTrack, lineWidth: 5)
                 .frame(width: 84, height: 84)
             Circle()
                 .trim(from: 0, to: data.ringProgress)
                 .stroke(
-                    AngularGradient(
-                        colors: [
-                            data.scoreTint.opacity(0.5),
-                            data.scoreTint,
-                            .white,
-                            data.scoreTint
-                        ],
-                        center: .center
-                    ),
+                    data.scoreTint,
                     style: StrokeStyle(lineWidth: 5, lineCap: .round)
                 )
                 .frame(width: 84, height: 84)
@@ -87,16 +73,7 @@ struct SmallSleepWidgetView: View {
             VStack(spacing: -2) {
                 Text("\(data.score)")
                     .font(.system(size: 38, weight: .heavy, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                SleepWidgetPalette.textPrimary,
-                                data.scoreTint
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                    .foregroundStyle(SleepWidgetPalette.textPrimary)
                 Text("SCORE")
                     .font(.system(size: 7, weight: .heavy, design: .rounded))
                     .tracking(1.1)

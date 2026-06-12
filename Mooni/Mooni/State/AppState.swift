@@ -29,6 +29,9 @@ final class AppState: ObservableObject {
         static let appOpenedAfterWakeAt = "mooni.appOpenedAfterWakeAt"
         static let lastSystemTaskShown = "mooni.lastSystemTaskShownAt"
         static let lastSystemTaskIndex = "mooni.lastSystemTaskIndex"
+        static let trackingStartedAt = "mooni.trackingStartedAt"
+        static let lastSeenDayKey = "mooni.lastSeenDayKey"
+        static let lastBrainRunAt = "mooni.lastBrainRunAt"
     }
 
     // MARK: - Published state
@@ -70,6 +73,12 @@ final class AppState: ObservableObject {
     @Published var lastEarnedEnergy: Int? = nil
     @Published var lastLevelUp: Int? = nil
 
+    /// True while the maintenance pass is actively fusing last night's
+    /// signals (HealthKit import + sleep brain). The home screen shows a
+    /// "reading your night" state instead of stale or empty data, so a user
+    /// who opens the app mid-calculation always knows something is happening.
+    @Published var isResolvingNight: Bool = false
+
     /// True while the user has tapped "Going to bed now" / "Ready for sleep"
     /// and hasn't completed the morning check-in. The app shows a sleep-lock
     /// overlay so the pet (and the user) actually rests.
@@ -83,6 +92,13 @@ final class AppState: ObservableObject {
     }
     var sleepStartedAt: Date? {
         UserDefaults.standard.object(forKey: Key.sleepStartedAt) as? Date
+    }
+
+    /// The moment onboarding completed. The brain never fabricates, backfills
+    /// or auto-detects a night that ended before tracking actually began —
+    /// this is what keeps a brand-new user from seeing a made-up "last night".
+    var trackingStartedAt: Date? {
+        UserDefaults.standard.object(forKey: Key.trackingStartedAt) as? Date
     }
 
     /// Primary goal the user picked during onboarding. Drives personalized copy.
@@ -222,6 +238,15 @@ final class AppState: ObservableObject {
             self.profile = OnboardingProfile()
         }
 
+        // Migration: installs that predate trackingStartedAt get anchored to
+        // their earliest real data (or now). Backfill keeps working for them
+        // without ever inventing pre-install nights.
+        if self.hasCompletedOnboarding,
+           defaults.object(forKey: Key.trackingStartedAt) == nil {
+            let anchor = self.entries.map(\.bedtime).min() ?? Date()
+            defaults.set(anchor, forKey: Key.trackingStartedAt)
+        }
+
         backfillDerivedSleepData()
         // Reset routine completion if it's a new day
         rolloverRoutineIfNeeded()
@@ -297,17 +322,37 @@ final class AppState: ObservableObject {
         } else {
             // SAFETY NET (mechanism 2 companion): the user tapped a daily
             // safety-net probe but never entered sleep mode (the exact
-            // "didn't touch the app" failure). We still have a confirmed
-            // wake moment — make sure last night exists as an editable
-            // entry so the morning check-in has something to refine.
-            seedMissedNightEntry()
+            // "didn't touch the app" failure). Let the sleep brain resolve
+            // the night from real signals first; only fall back to a
+            // schedule-shaped editable entry when it can't.
             SleepAutomationLog.shared.log("Wake confirmed via safety-net probe (was not in sleep mode)")
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let resolved = await self.runSleepBrainEstimate(reason: "wake probe tap")
+                if !resolved,
+                   !self.entries.contains(where: { $0.dayKey == Date().dayKey }) {
+                    self.seedMissedNightEntry()
+                }
+                self.showMorningCheckIn = true
+            }
+            return
         }
         showMorningCheckIn = true
     }
 
     // MARK: - Computed helpers
     var lastEntry: SleepEntry? { entries.sorted(by: { $0.wakeTime > $1.wakeTime }).first }
+
+    /// Most recent night backed by real evidence — schedule backfills are
+    /// excluded. Anything user-facing that presents "last night" (home hero,
+    /// sleep story, share cards) must use this, so a placeholder night is
+    /// never shown as if it were tracked.
+    var lastRealEntry: SleepEntry? {
+        entries
+            .filter { !$0.isScheduleBackfill }
+            .sorted(by: { $0.wakeTime > $1.wakeTime })
+            .first
+    }
 
     var recentEntries: [SleepEntry] {
         Array(entries.sorted(by: { $0.wakeTime > $1.wakeTime }).prefix(7))
@@ -319,6 +364,10 @@ final class AppState: ObservableObject {
             .filter {
                 $0.dayKey == today &&
                 !$0.didCompleteMorningCheckIn &&
+                // Schedule backfills are placeholders, not tracked nights —
+                // never ambush the user with a check-in for a night the app
+                // only invented from their target times.
+                !$0.isScheduleBackfill &&
                 MorningCheckInStore.checkIn(for: $0.dayKey) == nil
             }
             .sorted(by: { $0.wakeTime > $1.wakeTime })
@@ -390,6 +439,7 @@ final class AppState: ObservableObject {
         self.goalHours = goalHours
         self.targetBedtime = bedtime
         self.targetWakeTime = wakeTime
+        UserDefaults.standard.set(Date(), forKey: Key.trackingStartedAt)
         self.hasCompletedOnboarding = true
     }
 
@@ -416,6 +466,7 @@ final class AppState: ObservableObject {
         self.targetBedtime = bedtime
         self.targetWakeTime = wakeTime
         self.weekendWakeTime = weekendWake
+        UserDefaults.standard.set(Date(), forKey: Key.trackingStartedAt)
         self.hasCompletedOnboarding = true
     }
 
@@ -885,7 +936,10 @@ final class AppState: ObservableObject {
             // Auto-backfilled nights are NOT user-adjusted — keep them
             // flagged as an estimate so the UI can explain why and HealthKit
             // can still replace them later if data arrives.
-            source: autoBackfilled ? .appActivityEstimate : .userAdjusted
+            source: autoBackfilled ? .appActivityEstimate : .userAdjusted,
+            // Backfills are pure schedule fabrications: editable placeholders
+            // that must never trigger the morning check-in or read as real.
+            isScheduleBackfill: autoBackfilled
         )
         SleepScoringManager.update(
             entry: &entry,
@@ -937,6 +991,9 @@ final class AppState: ObservableObject {
         entry.timeInBed = max(0, entry.wakeTime.timeIntervalSince(entry.bedtime))
         entry.totalSleep = entry.timeInBed
         entry.didCompleteMorningCheckIn = true
+        // The user just vouched for this night — whatever placeholder it
+        // started as, it's confirmed data now.
+        entry.isScheduleBackfill = false
 
         SleepScoringManager.update(
             entry: &entry,
@@ -960,47 +1017,127 @@ final class AppState: ObservableObject {
         return entry
     }
 
-    // MARK: - Passive sleep detection
+    // MARK: - Passive sleep detection (the sleep brain)
 
-    /// Last-resort fallback: if no sleep entry exists for last night AND the
-    /// app is opening during morning hours, seed an estimated entry from the
-    /// user's target schedule. Marks it as an activity-estimate so HealthKit
-    /// data can still replace it later. Never overwrites existing entries.
-    func autoSeedLastNightIfMissing() {
+    /// Tracks the last day the app was active. The first activity on a new
+    /// day (≥ 4 AM) means the user is demonstrably up and using the phone —
+    /// the maintenance pass that follows resolves the night and surfaces the
+    /// morning flow immediately instead of waiting for a probe.
+    private func noteDayRollover(now: Date = Date()) {
+        let today = now.dayKey
+        let previous = UserDefaults.standard.string(forKey: Key.lastSeenDayKey)
+        guard previous != today else { return }
+        UserDefaults.standard.set(today, forKey: Key.lastSeenDayKey)
+        guard let previous,
+              Calendar.current.component(.hour, from: now) >= 4 else { return }
+        SleepAutomationLog.shared.log("Day rollover (\(previous) → \(today)) — resolving last night")
+    }
+
+    /// SAFETY NET (mechanism 11) — the sleep brain. Fuses screen, motion,
+    /// lock-state and tap signals (`SleepSessionEngine`) into last night's
+    /// entry: creates it when none exists, refines schedule backfills and raw
+    /// activity estimates, and never touches HealthKit or user-confirmed
+    /// nights. Pro-only, like all auto-tracking. Returns true when an entry
+    /// was created or refined.
+    @discardableResult
+    func runSleepBrainEstimate(reason: String) async -> Bool {
+        guard SubscriptionManager.shared.isPro else { return false }
         let now = Date()
-        let cal = Calendar.current
-        let hour = cal.component(.hour, from: now)
-        // Only attempt during morning open (4 AM – 2 PM local time).
-        guard hour >= 4 && hour < 14 else { return }
+        let hour = Calendar.current.component(.hour, from: now)
+        // Only resolve a night during plausible post-wake hours.
+        guard hour >= 4 && hour < 16 else { return false }
+        // A night can only exist if tracking began before it — this is what
+        // keeps day-one users from ever seeing an invented "last night".
+        guard let started = trackingStartedAt,
+              now.timeIntervalSince(started) >= 4 * 3600 else { return false }
 
         let todayKey = now.dayKey
-        guard !entries.contains(where: { $0.dayKey == todayKey }) else { return }
-
-        // Build an estimated bed/wake from the user's target times.
-        let bedComps  = cal.dateComponents([.hour, .minute], from: targetBedtime)
-        let wakeComps = cal.dateComponents([.hour, .minute], from: targetWakeTime)
-        guard let bH = bedComps.hour, let bM = bedComps.minute,
-              let wH = wakeComps.hour, let wM = wakeComps.minute else { return }
-
-        var estimatedBed = cal.date(bySettingHour: bH, minute: bM, second: 0, of: now) ?? now
-        if estimatedBed > now {
-            estimatedBed = cal.date(byAdding: .day, value: -1, to: estimatedBed) ?? estimatedBed
+        let existingIdx = entries.firstIndex(where: { $0.dayKey == todayKey })
+        if let idx = existingIdx {
+            let existing = entries[idx]
+            // Real data wins: only refine placeholders and raw estimates.
+            guard existing.isScheduleBackfill
+                    || existing.resolvedSource == .appActivityEstimate else { return false }
+            // Throttle: signals barely change minute-to-minute. Once a
+            // non-placeholder estimate exists, re-fuse at most every 30 min
+            // (motion + pedometer queries aren't free).
+            if !existing.isScheduleBackfill,
+               let last = UserDefaults.standard.object(forKey: Key.lastBrainRunAt) as? Date,
+               now.timeIntervalSince(last) < 30 * 60 {
+                return false
+            }
         }
-        var estimatedWake = cal.date(bySettingHour: wH, minute: wM, second: 0, of: now) ?? now
-        if estimatedWake <= estimatedBed {
-            estimatedWake = cal.date(byAdding: .day, value: 1, to: estimatedWake) ?? estimatedWake
+        UserDefaults.standard.set(now, forKey: Key.lastBrainRunAt)
+
+        guard let estimate = await SleepSessionEngine.shared.estimateNight(
+            now: now,
+            armedSleepStart: sleepStartedAt,
+            stillAwakeAt: UserDefaults.standard.object(forKey: "mooni.lastStillAwakeAt") as? Date,
+            wakeTappedAt: wakeTappedAt
+        ), estimate.bedtime >= started else { return false }
+
+        if let idx = existingIdx {
+            var entry = entries[idx]
+            // Avoid churn: a non-placeholder entry that already matches the
+            // estimate within 10 minutes doesn't need rewriting.
+            if !entry.isScheduleBackfill,
+               abs(entry.bedtime.timeIntervalSince(estimate.bedtime)) < 10 * 60,
+               abs(entry.wakeTime.timeIntervalSince(estimate.wakeTime)) < 10 * 60 {
+                return false
+            }
+            let previousEnergy = entry.energyEarned
+            entry.bedtime = estimate.bedtime
+            entry.wakeTime = estimate.wakeTime
+            entry.totalSleep = estimate.duration
+            entry.timeInBed = estimate.duration
+            entry.isEstimated = true
+            entry.isScheduleBackfill = false
+            entry.confidence = estimate.confidence
+            entry.source = .appActivityEstimate
+            entry.notes = "Auto-tracked (\(estimate.sourceSummary))"
+            SleepScoringManager.update(
+                entry: &entry,
+                goalHours: goalHours,
+                targetBedtime: targetBedtime,
+                consistencyDays: bedtimeConsistencyDays,
+                checkIn: MorningCheckInStore.checkIn(for: todayKey),
+                age: profile.age
+            )
+            entries[idx] = entry
+            applyReward(energy: max(0, entry.energyEarned - previousEnergy), score: entry.score)
+            StreakManager.shared.registerSleepLogged(on: entry.wakeTime, durationHours: entry.hours)
+            WidgetSnapshotPublisher.publish(entry)
+            SleepAutomationLog.shared.log(
+                "Brain refined tonight (\(reason)): \(estimate.sourceSummary), confidence \(Int(estimate.confidence * 100))%")
+        } else {
+            var entry = SleepEntry(
+                bedtime: estimate.bedtime,
+                wakeTime: estimate.wakeTime,
+                quality: .good,
+                mood: .okay,
+                notes: "Auto-tracked (\(estimate.sourceSummary))",
+                isEstimated: true,
+                totalSleep: estimate.duration,
+                timeInBed: estimate.duration,
+                source: .appActivityEstimate,
+                confidence: estimate.confidence
+            )
+            SleepScoringManager.update(
+                entry: &entry,
+                goalHours: goalHours,
+                targetBedtime: targetBedtime,
+                consistencyDays: bedtimeConsistencyDays,
+                checkIn: nil,
+                age: profile.age
+            )
+            entries.append(entry)
+            applyReward(energy: entry.energyEarned, score: entry.score)
+            StreakManager.shared.registerSleepLogged(on: entry.wakeTime, durationHours: entry.hours)
+            WidgetSnapshotPublisher.publish(entry)
+            SleepAutomationLog.shared.log(
+                "Brain created tonight (\(reason)): \(estimate.sourceSummary), confidence \(Int(estimate.confidence * 100))%")
         }
-
-        let duration = estimatedWake.timeIntervalSince(estimatedBed)
-        // Sanity: 2 h – 14 h and wake must already be in the past.
-        guard duration >= 2 * 3600, duration <= 14 * 3600,
-              estimatedWake <= now.addingTimeInterval(2 * 3600) else { return }
-
-        insertImportedIntervals(
-            [SleepInterval(start: estimatedBed, end: estimatedWake)],
-            source: .appActivityEstimate,
-            sourceLabel: "Auto-estimated from your schedule"
-        )
+        return true
     }
 
     // MARK: - Safety net automation
@@ -1013,6 +1150,9 @@ final class AppState: ObservableObject {
     /// structurally impossible once every entry point calls this.
     func runAutomationMaintenance(reason: String) async {
         SleepAutomationLog.shared.log("Maintenance start — \(reason)")
+        // Brain: notice when a new day has started (the activity itself is a
+        // wake signal — the steps below resolve the night right away).
+        noteDayRollover()
         // M1/M6/M7: ensure the full notification safety net is scheduled.
         NotificationManager.shared.reconcileSafetyNetNotifications(
             petName: pet.name, bedtime: targetBedtime, wakeTime: targetWakeTime
@@ -1025,8 +1165,23 @@ final class AppState: ObservableObject {
         // history. Gating here ensures non-Pro users don't get auto-detected
         // sleep updates without subscribing.
         if SubscriptionManager.shared.isPro {
+            // Surface the "reading your night" state only when this pass
+            // could plausibly produce tonight's entry — morning hours with
+            // no real night resolved yet. Otherwise the flag would flash on
+            // every foreground.
+            let hour = Calendar.current.component(.hour, from: Date())
+            let todayKey = Date().dayKey
+            let mightResolve = hour >= 4 && hour < 16
+                && !entries.contains { $0.dayKey == todayKey && !$0.isScheduleBackfill }
+            if mightResolve { isResolvingNight = true }
+            defer { isResolvingNight = false }
+
             await importHealthKitSleep()
             HealthKitManager.shared.startSleepObserverIfNeeded()
+            // M11: the sleep brain — fuse motion / screen / lock / tap
+            // signals into tonight's entry (creates or refines; never
+            // invents a night from the schedule alone).
+            await runSleepBrainEstimate(reason: reason)
         }
         // M4: make sure every elapsed night exists as an editable entry.
         backfillMissedNights()
@@ -1038,16 +1193,16 @@ final class AppState: ObservableObject {
     /// SAFETY NET (mechanism 4). Fills EVERY elapsed night between the
     /// earliest known data and today with an editable estimated entry, so
     /// sleep data can never silently show "same as yesterday" again. Bounded
-    /// to real history (earliest existing entry, or just last night for a
-    /// brand-new user) so we never fabricate pre-install nights. Never
-    /// overwrites real or user-adjusted data.
+    /// to real history AND to `trackingStartedAt`, so it never fabricates
+    /// pre-install nights — a brand-new user gets NO invented "last night"
+    /// right after onboarding. Never overwrites real or user-adjusted data.
     func backfillMissedNights() {
         guard hasCompletedOnboarding else { return }
         let cal = Calendar.current
         let now = Date()
 
-        let earliest: Date = entries.map { $0.wakeTime }.min()
-            ?? cal.date(byAdding: .day, value: -1, to: now) ?? now
+        let trackingStart = trackingStartedAt ?? now
+        let earliest: Date = entries.map { $0.wakeTime }.min() ?? trackingStart
         let startDay = cal.startOfDay(for: earliest)
 
         let wakeComps = cal.dateComponents([.hour, .minute], from: targetWakeTime)
@@ -1059,9 +1214,11 @@ final class AppState: ObservableObject {
             defer { cursor = cal.date(byAdding: .day, value: 1, to: cursor) ?? now.addingTimeInterval(86_400) }
             let key = cursor.dayKey
             if entries.contains(where: { $0.dayKey == key }) { continue }
-            // Only backfill a night whose wake time has fully passed.
+            // Only backfill a night whose wake time has fully passed — and
+            // never one from before tracking began (the night must have
+            // elapsed entirely on the app's watch).
             guard let wake = cal.date(bySettingHour: wH, minute: wM, second: 0, of: cursor),
-                  wake <= now else { continue }
+                  wake <= now, wake >= trackingStart else { continue }
             if seedMissedNightEntry(for: cursor, autoBackfilled: true) != nil { seeded += 1 }
         }
         if seeded > 0 {

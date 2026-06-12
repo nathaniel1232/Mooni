@@ -1,5 +1,6 @@
 import Foundation
 import BackgroundTasks
+import UIKit
 
 /// SAFETY NET (mechanism 8). Opportunistic background refresh: even if the
 /// user never opens the app, iOS periodically wakes us to re-reconcile the
@@ -45,6 +46,12 @@ enum BackgroundRefreshManager {
         scheduleNext() // always chain the next refresh first
         SleepAutomationLog.shared.log("BGTask fired — reconciling notification safety net")
         let work = Task { @MainActor in
+            // Sample the lock state while iOS has us awake in the background —
+            // a passcode-locked device in the middle of the night is a strong
+            // "asleep" corroboration for the sleep brain (SleepSessionEngine).
+            LockStateSampleStore.record(
+                locked: !UIApplication.shared.isProtectedDataAvailable
+            )
             NotificationManager.shared.reconcileFromStoredSchedule()
             task.setTaskCompleted(success: true)
         }

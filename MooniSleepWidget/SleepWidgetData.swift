@@ -16,12 +16,12 @@ struct SleepWidgetData: Codable, Hashable {
     let updatedAt: Date
 
     static let sample = SleepWidgetData(
-        score: 76,
-        quality: "Good",
-        sleepDuration: "7h 36m",
+        score: 87,
+        quality: "Excellent",
+        sleepDuration: "7h 32m",
         sleepStart: "11:42 PM",
-        wakeTime: "7:18 AM",
-        energyScore: 72,
+        wakeTime: "7:14 AM",
+        energyScore: 84,
         updatedAt: Date()
     )
 

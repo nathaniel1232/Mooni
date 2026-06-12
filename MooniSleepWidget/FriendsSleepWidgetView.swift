@@ -65,36 +65,22 @@ struct FriendsSleepWidgetView: View {
 
     private func personCard(_ person: FriendSleepSnapshot, isMe: Bool, isWinner: Bool) -> some View {
         VStack(spacing: 5) {
-            // Avatar + glowing gradient ring + crown when applicable
+            // Avatar + score ring + crown when applicable
             ZStack {
-                // Outer glow — tighter so it doesn't bleed into adjacent cards
-                Circle()
-                    .fill(person.scoreTint.opacity(0.20))
-                    .frame(width: 50, height: 50)
-                    .blur(radius: 6)
-
                 // Track
                 Circle()
                     .stroke(SleepWidgetPalette.ringTrack, lineWidth: 4)
                     .frame(width: 44, height: 44)
 
-                // Gradient progress
+                // Progress — flat solid arc
                 Circle()
                     .trim(from: 0, to: person.ringProgress)
                     .stroke(
-                        AngularGradient(
-                            colors: [
-                                person.scoreTint.opacity(0.55),
-                                person.scoreTint,
-                                person.scoreTint.opacity(0.85)
-                            ],
-                            center: .center
-                        ),
+                        person.scoreTint,
                         style: StrokeStyle(lineWidth: 4, lineCap: .round)
                     )
                     .frame(width: 44, height: 44)
                     .rotationEffect(.degrees(-90))
-                    .shadow(color: person.scoreTint.opacity(0.5), radius: 4)
 
                 avatar(for: person)
 

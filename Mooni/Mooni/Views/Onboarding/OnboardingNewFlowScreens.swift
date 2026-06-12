@@ -689,7 +689,7 @@ struct TrackingCompareScreen: View {
                         .font(.system(size: 11, weight: .heavy))
                         .foregroundColor(.white)
                     Text("SleepOwl")
-                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .font(.system(size: 11, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                 }
                 Spacer(minLength: 0)
@@ -1357,23 +1357,16 @@ struct PlanComputingScreen: View {
 
     private var ringProgress: some View {
         ZStack {
-            // Soft halo so the ring glows rather than sitting flat.
-            Circle().fill(accent.opacity(0.18)).blur(radius: 26)
-
             Circle()
                 .stroke(Color.white.opacity(0.10),
                         style: StrokeStyle(lineWidth: 10, lineCap: .round))
             Circle()
                 .trim(from: 0, to: CGFloat(progress))
                 .stroke(
-                    AngularGradient(
-                        colors: [accent.opacity(0.4), accent, .white, accent],
-                        center: .center
-                    ),
+                    accent,
                     style: StrokeStyle(lineWidth: 10, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: accent.opacity(0.5), radius: 9)
                 .animation(.easeInOut(duration: 0.4), value: progress)
 
             VStack(spacing: 1) {
@@ -1416,9 +1409,7 @@ struct PlanComputingScreen: View {
                             ZStack(alignment: .leading) {
                                 Capsule().fill(Color.white.opacity(0.10))
                                 Capsule()
-                                    .fill(LinearGradient(colors: [accent, .white],
-                                                         startPoint: .leading,
-                                                         endPoint: .trailing))
+                                    .fill(accent)
                                     .frame(width: max(4, geo.size.width * local))
                                     .animation(.easeInOut(duration: 0.4), value: local)
                             }
@@ -1583,16 +1574,11 @@ struct PlanRevealScreen: View {
 
     // MARK: Hero ring
 
-    /// Big animated score ring — outer track + accent-gradient progress arc,
-    /// with the climbing score number at the center. Replaces the cramped
-    /// medium-widget mock from the previous design.
+    /// Big animated score ring — flat track + solid accent arc, with the
+    /// climbing score number at the center. Matches the ring style used
+    /// everywhere else in the app (no halo, no gradient hot-spot).
     private var heroRing: some View {
         ZStack {
-            // Soft halo
-            Circle()
-                .fill(scoreTint.opacity(0.18))
-                .blur(radius: 28)
-
             // Track
             Circle()
                 .stroke(Color.white.opacity(0.08),
@@ -1602,30 +1588,15 @@ struct PlanRevealScreen: View {
             Circle()
                 .trim(from: 0, to: ringTrim)
                 .stroke(
-                    AngularGradient(
-                        colors: [
-                            scoreTint.opacity(0.4),
-                            scoreTint,
-                            .white,
-                            scoreTint
-                        ],
-                        center: .center
-                    ),
+                    scoreTint,
                     style: StrokeStyle(lineWidth: 14, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: scoreTint.opacity(0.6), radius: 12)
 
             VStack(spacing: 2) {
                 Text("\(scoreCount)")
                     .font(.system(size: 76, weight: .heavy, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.white, scoreTint],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                    .foregroundColor(.white)
                     .contentTransition(.numericText())
                 Text("PROJECTED SCORE")
                     .font(.system(size: 10, weight: .heavy, design: .rounded))
@@ -2613,7 +2584,7 @@ struct WidgetShowcaseScreen: View {
                             startPoint: .top,
                             endPoint: .bottom)
                     )
-                    .frame(width: 290, height: 200)
+                    .frame(width: kind == .small ? 240 : 358, height: 212)
                     .overlay(
                         RoundedRectangle(cornerRadius: 28, style: .continuous)
                             .stroke(Color.white.opacity(0.10), lineWidth: 1)
@@ -2634,151 +2605,131 @@ struct WidgetShowcaseScreen: View {
         }
     }
 
+    /// The REAL widget views (shared with the MooniSleepWidget target),
+    /// wrapped in the same background + corner chrome WidgetKit applies.
+    /// Whatever ships on the home screen is exactly what's previewed here.
     @ViewBuilder
     private var widgetMock: some View {
         switch kind {
-        case .small: smallWidget
-        case .medium: mediumWidget
-        }
-    }
-
-    private var smallWidget: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.13, green: 0.10, blue: 0.28),
-                            Color(red: 0.07, green: 0.05, blue: 0.18)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing)
-                )
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 4) {
-                    Image(systemName: "moon.stars.fill")
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundColor(.white.opacity(0.75))
-                    Text("SLEEPOWL")
-                        .font(.system(size: 9, weight: .heavy, design: .rounded))
-                        .tracking(1.4)
-                        .foregroundColor(.white.opacity(0.75))
-                    Spacer()
-                }
-                Spacer(minLength: 0)
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text("87")
-                        .font(.system(size: 44, weight: .heavy, design: .rounded))
-                        .foregroundColor(.white)
-                    Text("/100")
-                        .font(.system(size: 12, weight: .heavy, design: .rounded))
-                        .foregroundColor(.white.opacity(0.55))
-                }
-                Text("7h 32m · 6 day streak")
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white.opacity(0.65))
+        case .small:
+            widgetChrome(width: 158, height: 158) {
+                SmallSleepWidgetView(data: .sample)
             }
-            .padding(14)
-        }
-        .frame(width: 150, height: 150)
-    }
-
-    private var mediumWidget: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.13, green: 0.10, blue: 0.28),
-                            Color(red: 0.07, green: 0.05, blue: 0.18)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing)
-                )
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "moon.stars.fill")
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundColor(.white.opacity(0.75))
-                        Text("SLEEPOWL")
-                            .font(.system(size: 9, weight: .heavy, design: .rounded))
-                            .tracking(1.4)
-                            .foregroundColor(.white.opacity(0.75))
-                    }
-                    Spacer(minLength: 0)
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("87")
-                            .font(.system(size: 36, weight: .heavy, design: .rounded))
-                            .foregroundColor(.white)
-                        Text("/100")
-                            .font(.system(size: 11, weight: .heavy, design: .rounded))
-                            .foregroundColor(.white.opacity(0.55))
-                    }
-                    Text("Last night")
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        .foregroundColor(.white.opacity(0.55))
-                }
-                .frame(width: 96, alignment: .leading)
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(width: 1)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("THIS WEEK")
-                        .font(.system(size: 8, weight: .heavy, design: .rounded))
-                        .tracking(1.4)
-                        .foregroundColor(.white.opacity(0.55))
-                    sparkline
-                        .frame(height: 36)
-                    HStack(spacing: 10) {
-                        miniStat(label: "Avg", value: "84")
-                        miniStat(label: "Streak", value: "6d")
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+        case .medium:
+            widgetChrome(width: 329, height: 155) {
+                MediumSleepWidgetView(data: .sample)
             }
-            .padding(14)
         }
-        .frame(width: 310, height: 150)
     }
 
-    private var sparkline: some View {
-        let pts: [CGFloat] = [0.55, 0.62, 0.58, 0.71, 0.74, 0.78, 0.87]
-        return GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            let step = w / CGFloat(pts.count - 1)
+    private func widgetChrome<Content: View>(
+        width: CGFloat, height: CGFloat,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        ZStack {
+            SleepWidgetBackground(tint: SleepWidgetData.sample.scoreTint)
+            content()
+                .padding(14)
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .environment(\.colorScheme, .dark)
+    }
+}
+
+// MARK: - motionAccess — pre-permission ask for Motion & Fitness
+
+/// Friendly explainer shown right before the OS Motion & Fitness prompt.
+/// Motion history is the highest-accuracy signal the sleep brain has that
+/// works with zero user effort, so this screen sells the benefit first —
+/// the footer button in OnboardingView triggers the real system dialog.
+struct MotionAccessScreen: View {
+    let petName: String
+    @State private var appear = false
+
+    private var accent: Color { Color(red: 0.62, green: 0.62, blue: 1.00) }
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer(minLength: 8)
+
             ZStack {
-                Path { p in
-                    p.move(to: CGPoint(x: 0, y: h - h * pts[0]))
-                    for i in 1..<pts.count {
-                        p.addLine(to: CGPoint(x: CGFloat(i) * step,
-                                              y: h - h * pts[i]))
-                    }
-                }
-                .stroke(Color.white,
-                        style: StrokeStyle(lineWidth: 1.6,
-                                           lineCap: .round,
-                                           lineJoin: .round))
                 Circle()
-                    .fill(Color.white)
-                    .frame(width: 5, height: 5)
-                    .position(x: w, y: h - h * pts.last!)
+                    .fill(accent.opacity(0.14))
+                    .frame(width: 96, height: 96)
+                Image(systemName: "figure.walk.motion")
+                    .font(.system(size: 40, weight: .semibold))
+                    .foregroundColor(accent)
+            }
+            .scaleEffect(appear ? 1 : 0.85)
+
+            VStack(spacing: 10) {
+                Text("One permission makes it automatic")
+                    .font(MooniFont.display(26))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                Text("Your iPhone already keeps a private 7-day motion history. Each morning \(petName.isEmpty ? "SleepOwl" : petName) reads it to find when you actually fell asleep and woke — nothing runs overnight, no wearable needed.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(.white.opacity(0.65))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+
+            VStack(spacing: 12) {
+                benefitRow(icon: "moon.zzz.fill",
+                           title: "Real bedtime, detected",
+                           sub: "When your body actually settled — not when you planned to.")
+                benefitRow(icon: "sunrise.fill",
+                           title: "Real wake time, detected",
+                           sub: "Your first steps in the morning end the night precisely.")
+                benefitRow(icon: "waveform.path.ecg",
+                           title: "Restless nights, visible",
+                           sub: "Tossing and night pickups show up in your score.")
+            }
+            .padding(.horizontal, 20)
+            .opacity(appear ? 1 : 0)
+            .offset(y: appear ? 0 : 10)
+
+            HStack(spacing: 8) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.5))
+                Text("Processed on your phone. Never uploaded.")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .onAppear {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.75)) {
+                appear = true
             }
         }
     }
 
-    private func miniStat(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label)
-                .font(.system(size: 8, weight: .heavy, design: .rounded))
-                .tracking(1.0)
-                .foregroundColor(.white.opacity(0.55))
-            Text(value)
-                .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundColor(.white)
+    private func benefitRow(icon: String, title: String, sub: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(accent)
+                .frame(width: 38, height: 38)
+                .background(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(accent.opacity(0.14))
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                Text(sub)
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundColor(.white.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
         }
     }
 }

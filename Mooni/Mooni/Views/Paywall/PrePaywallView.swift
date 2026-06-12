@@ -1374,9 +1374,7 @@ private struct ScoreVisual: View {
                 Circle()
                     .trim(from: 0, to: ringProgress)
                     .stroke(
-                        AngularGradient(
-                            colors: [MooniColor.success.opacity(0.7), MooniColor.success, MooniColor.accentSoft],
-                            center: .center),
+                        MooniColor.success,
                         style: StrokeStyle(lineWidth: 12, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))

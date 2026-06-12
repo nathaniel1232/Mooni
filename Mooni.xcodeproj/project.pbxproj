@@ -56,6 +56,21 @@
 			);
 			target = C57889F32FAE3ED200D8DB9E /* MooniSleepWidgetExtension */;
 		};
+		D4B81A7E9C2F4E5DA1B3C6F0 /* Exceptions for "MooniSleepWidget" folder in "Mooni" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Assets.xcassets,
+				FriendsSleepData.swift,
+				FriendsSleepWidget.swift,
+				FriendsSleepWidgetView.swift,
+				Info.plist,
+				MooniMascotView.swift,
+				MooniSleepWidget.swift,
+				MooniSleepWidgetBundle.swift,
+				SleepScoreRing.swift,
+			);
+			target = 782C88902FA679F10001B773 /* Mooni */;
+		};
 		FE11FE11FE11FE11FE11FE11 /* Exceptions for "Mooni" folder in "Mooni" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -78,6 +93,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				C5788A0A2FAE3ED300D8DB9E /* Exceptions for "MooniSleepWidget" folder in "MooniSleepWidgetExtension" target */,
+				D4B81A7E9C2F4E5DA1B3C6F0 /* Exceptions for "MooniSleepWidget" folder in "Mooni" target */,
 			);
 			path = MooniSleepWidget;
 			sourceTree = "<group>";
@@ -156,6 +172,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				782C88932FA679F10001B773 /* Mooni */,
+				C57889FA2FAE3ED200D8DB9E /* MooniSleepWidget */,
 			);
 			name = Mooni;
 			packageProductDependencies = (

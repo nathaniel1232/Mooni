@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Circular progress ring around the SleepOwl mascot.
-/// Track adapts to light/dark; progress arc uses an angular gradient + glow.
+/// Track adapts to light/dark; progress arc is a flat solid stroke.
 struct SleepScoreRing<Center: View>: View {
     let progress: Double
     let tint: Color
@@ -17,26 +17,14 @@ struct SleepScoreRing<Center: View>: View {
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
 
-            // Progress arc — angular gradient with a glow halo
+            // Progress arc
             Circle()
                 .trim(from: 0, to: max(0.001, progress))
                 .stroke(
-                    AngularGradient(
-                        gradient: Gradient(colors: [
-                            tint.opacity(0.45),
-                            tint,
-                            Color.white.opacity(0.85),
-                            tint,
-                            tint.opacity(0.45)
-                        ]),
-                        center: .center,
-                        startAngle: .degrees(-90),
-                        endAngle: .degrees(270)
-                    ),
+                    tint,
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: tint.opacity(0.55), radius: 6, x: 0, y: 0)
 
             center()
                 .padding(lineWidth + 4)

@@ -24,10 +24,7 @@ struct SleepScoreRing: View {
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
-                    AngularGradient(
-                        colors: [color.opacity(0.6), color, color.opacity(0.9)],
-                        center: .center
-                    ),
+                    color,
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))

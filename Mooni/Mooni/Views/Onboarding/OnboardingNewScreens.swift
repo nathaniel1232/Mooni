@@ -252,16 +252,11 @@ private struct BenefitHeroCard: View {
                     Circle()
                         .trim(from: 0, to: isVisible ? 0.78 : 0.08)
                         .stroke(
-                            LinearGradient(
-                                colors: [spec.color.opacity(0.55), spec.color],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
+                            spec.color,
                             style: StrokeStyle(lineWidth: 12, lineCap: .round)
                         )
                         .frame(width: 126, height: 126)
                         .rotationEffect(.degrees(-90))
-                        .shadow(color: spec.color.opacity(0.35), radius: 12)
 
                     Image(systemName: spec.icon)
                         .font(.system(size: 42, weight: .bold))

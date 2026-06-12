@@ -44,6 +44,9 @@ struct HomeView: View {
 
     private enum HomeMode {
         case firstNight
+        /// The sleep brain is fusing last night's signals right now — show a
+        /// "reading your night" state instead of stale or empty data.
+        case resolving
         case evening
         case morning(SleepEntry)
         case recovery(SleepEntry)
@@ -113,7 +116,7 @@ struct HomeView: View {
             StartSleepSheet()
         }
         .sheet(isPresented: $showWhy) {
-            if let entry = appState.lastEntry {
+            if let entry = appState.lastRealEntry {
                 MorningWhySheet(entry: entry, showPaywall: $showPaywall)
             }
         }
@@ -121,12 +124,12 @@ struct HomeView: View {
             RecoveryPlanSheet(showPaywall: $showPaywall)
         }
         .sheet(isPresented: $showAutoWakeUp) {
-            if let entry = appState.lastEntry {
+            if let entry = appState.lastRealEntry {
                 AutoWakeUpSheet(entry: entry, petName: appState.pet.name, showPaywall: $showPaywall)
             }
         }
         .fullScreenCover(isPresented: $showSleepStory) {
-            if let entry = appState.lastEntry {
+            if let entry = appState.lastRealEntry {
                 SleepStoryView(
                     context: SleepStoryContext(
                         entry: entry,
@@ -227,7 +230,9 @@ struct HomeView: View {
     // MARK: - Mode
 
     private var mode: HomeMode {
-        guard let entry = appState.lastEntry else { return .firstNight }
+        guard let entry = appState.lastRealEntry else {
+            return appState.isResolvingNight ? .resolving : .firstNight
+        }
 
         let now = Date()
         let isRecentMorningResult = Calendar.current.isDateInToday(entry.wakeTime)
@@ -235,6 +240,13 @@ struct HomeView: View {
 
         if isRecentMorningResult {
             return entry.score < 60 ? .recovery(entry) : .morning(entry)
+        }
+
+        // Last real night is older than today and the brain is currently
+        // fusing — tell the user their night is being read, don't show a
+        // stale score as if it were this morning's.
+        if appState.isResolvingNight {
+            return .resolving
         }
 
         if TimeOfDay.current == .evening || TimeOfDay.current == .night {
@@ -365,7 +377,7 @@ struct HomeView: View {
 
         return LeagueCard(
             tier: LeagueCard.Tier.from(streak: max(streak.longest, streak.current)),
-            userScore: appState.lastEntry?.score ?? 0,
+            userScore: appState.lastRealEntry?.score ?? 0,
             friends: members,
             onInviteFriends: {
                 showInviteFriends = true
@@ -380,6 +392,8 @@ struct HomeView: View {
         switch mode {
         case .firstNight:
             firstNightHero
+        case .resolving:
+            resolvingHero
         case .evening:
             eveningHero
         case .morning(let entry):
@@ -631,6 +645,43 @@ struct HomeView: View {
                     heroChip(icon: "moon.zzz.fill", value: windDownTime.hourMinuteString, label: "Wind down", color: MooniColor.success)
                     heroChip(icon: "bed.double.fill", value: appState.targetBedtime.hourMinuteString, label: "Bed", color: MooniColor.accent)
                     heroChip(icon: "sunrise.fill", value: appState.targetWakeTime.hourMinuteString, label: "Wake", color: MooniColor.warning)
+                }
+            }
+        }
+    }
+
+    /// Shown while the sleep brain is fusing last night's signals — the user
+    /// opened the app before the calculation finished. Replaces the old
+    /// behavior of flashing an empty/stale hero mid-import.
+    private var resolvingHero: some View {
+        MooniCard(padding: 26, cornerRadius: 32) {
+            VStack(spacing: 18) {
+                DreamSpiritView(
+                    pet: petForMood(.calm),
+                    size: 150,
+                    interactive: true,
+                    onTap: { handleOwlTap() }
+                )
+                .frame(height: 170)
+
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .tint(MooniColor.accentSoft)
+                        Text("READING YOUR NIGHT")
+                            .font(MooniFont.caption(10))
+                            .foregroundColor(MooniColor.accentSoft)
+                            .tracking(1.2)
+                    }
+                    Text("One moment…")
+                        .font(MooniFont.display(26))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text("\(appState.pet.name) is going through last night's signals — your score lands in a few seconds.")
+                        .font(MooniFont.body(14))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 12)
                 }
             }
         }
@@ -956,8 +1007,10 @@ struct HomeView: View {
 
     private func weekDayChip(_ day: Date) -> some View {
         let key = day.dayKey
-        let entry = appState.entries.first(where: { $0.dayKey == key })
-        let isSelected = (selectedDayKey ?? appState.lastEntry?.dayKey) == key
+        // Schedule backfills are placeholders — show those days as untracked
+        // rather than putting an invented score on the strip.
+        let entry = appState.entries.first(where: { $0.dayKey == key && !$0.isScheduleBackfill })
+        let isSelected = (selectedDayKey ?? appState.lastRealEntry?.dayKey) == key
         let isToday = Calendar.current.isDateInToday(day)
         let scoreTint: Color = entry.map { scoreColor($0.score) } ?? Color.white.opacity(0.18)
 
@@ -1308,10 +1361,10 @@ struct HomeView: View {
 
     private var displayEntry: SleepEntry? {
         if let key = selectedDayKey,
-           let match = appState.entries.first(where: { $0.dayKey == key }) {
+           let match = appState.entries.first(where: { $0.dayKey == key && !$0.isScheduleBackfill }) {
             return match
         }
-        return appState.lastEntry
+        return appState.lastRealEntry
     }
 
     private func petForMood(_ mood: Pet.Mood) -> Pet {
@@ -1409,7 +1462,7 @@ struct HomeView: View {
         guard hour >= 5 && hour < 13 else { return }
         let todayKey = Date().dayKey
         guard UserDefaults.standard.string(forKey: "mooni.autoWakeShownDay") != todayKey else { return }
-        guard let entry = appState.lastEntry, Calendar.current.isDateInToday(entry.wakeTime) else { return }
+        guard let entry = appState.lastRealEntry, Calendar.current.isDateInToday(entry.wakeTime) else { return }
         guard !appState.isSleeping else { return }
         UserDefaults.standard.set(todayKey, forKey: "mooni.autoWakeShownDay")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {

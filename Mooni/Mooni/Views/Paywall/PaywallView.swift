@@ -92,8 +92,23 @@ struct PaywallView: View {
         ZStack {
             MooniGradient.night
                 .ignoresSafeArea()
-            StarsBackground(count: 70)
+            // Stars stay in the middle band of the screen — faded out under
+            // the pinned close row (top) and CTA block (bottom) so nothing
+            // drifts behind the X button or through the purchase button.
+            StarsBackground(count: 54)
                 .opacity(0.9)
+                .mask(
+                    VStack(spacing: 0) {
+                        LinearGradient(colors: [.clear, .white],
+                                       startPoint: .top, endPoint: .bottom)
+                            .frame(height: 120)
+                        Color.white
+                        LinearGradient(colors: [.white, .clear],
+                                       startPoint: .top, endPoint: .bottom)
+                            .frame(height: 210)
+                    }
+                    .ignoresSafeArea()
+                )
 
             if showSuccess {
                 successOverlay
@@ -296,13 +311,13 @@ struct PaywallView: View {
             Circle()
                 .fill(RadialGradient(
                     colors: [
-                        MooniColor.accent.opacity(0.55),
+                        MooniColor.accent.opacity(0.40),
                         MooniColor.accent.opacity(0.0)
                     ],
                     center: .center,
                     startRadius: 6,
-                    endRadius: 140))
-                .frame(width: 230, height: 156)
+                    endRadius: 105))
+                .frame(width: 180, height: 120)
                 .scaleEffect(moonGlow ? 1.04 : 0.96)
                 .blur(radius: 6)
 
@@ -310,16 +325,16 @@ struct PaywallView: View {
             Image("app_icon")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 104, height: 104)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .frame(width: 82, height: 82)
+                .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    RoundedRectangle(cornerRadius: 19, style: .continuous)
                         .stroke(Color.white.opacity(0.16), lineWidth: 1)
                 )
-                .shadow(color: MooniColor.accent.opacity(0.45), radius: 22, y: 6)
+                .shadow(color: MooniColor.accent.opacity(0.3), radius: 12, y: 5)
                 .scaleEffect(animateIn ? 1 : 0.9)
         }
-        .frame(height: 128)
+        .frame(height: 102)
     }
 
     // MARK: - Title
@@ -815,14 +830,19 @@ struct PaywallView: View {
             .frame(maxWidth: .infinity)
             .frame(height: 56)
             .background(
+                // Saturated indigo, dark enough that the white label always
+                // reads — the old accentSoft start was nearly white-on-white.
                 LinearGradient(
-                    colors: [MooniColor.accentSoft, MooniColor.accent],
+                    colors: [
+                        Color(red: 0.48, green: 0.42, blue: 0.96),
+                        Color(red: 0.38, green: 0.30, blue: 0.88)
+                    ],
                     startPoint: .leading,
                     endPoint: .trailing
                 )
             )
             .clipShape(Capsule())
-            .shadow(color: MooniColor.accent.opacity(0.55), radius: 16, y: 6)
+            .shadow(color: MooniColor.accent.opacity(0.3), radius: 8, y: 4)
         }
         .buttonStyle(.plain)
         .disabled(manager.isLoading || selectedPackage == nil)

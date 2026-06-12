@@ -10,5 +10,7 @@
 	<array>
 		<string>com.nathanielfiskaa.sleepowl.refresh</string>
 	</array>
+	<key>NSMotionUsageDescription</key>
+	<string>SleepOwl uses your phone's motion history to detect when you fell asleep and woke up, so your nights are tracked automatically — no manual logging.</string>
 </dict>
 </plist>

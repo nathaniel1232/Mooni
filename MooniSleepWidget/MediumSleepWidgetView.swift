@@ -40,46 +40,21 @@ struct MediumSleepWidgetView: View {
 
     private var scoreRing: some View {
         ZStack {
-            // Soft halo
-            Circle()
-                .fill(data.scoreTint.opacity(0.22))
-                .frame(width: 110, height: 110)
-                .blur(radius: 12)
-
-            // Track
+            // Track + progress — flat solid arc, no halo, no white hot-spot.
             Circle()
                 .stroke(SleepWidgetPalette.ringTrack, lineWidth: 6)
-            // Progress
             Circle()
                 .trim(from: 0, to: data.ringProgress)
                 .stroke(
-                    AngularGradient(
-                        colors: [
-                            data.scoreTint.opacity(0.45),
-                            data.scoreTint,
-                            .white,
-                            data.scoreTint
-                        ],
-                        center: .center
-                    ),
+                    data.scoreTint,
                     style: StrokeStyle(lineWidth: 6, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: data.scoreTint.opacity(0.55), radius: 6)
 
             VStack(spacing: -2) {
                 Text("\(data.score)")
                     .font(.system(size: 42, weight: .heavy, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                SleepWidgetPalette.textPrimary,
-                                data.scoreTint
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                    .foregroundStyle(SleepWidgetPalette.textPrimary)
                 Text("SCORE")
                     .font(.system(size: 7, weight: .heavy, design: .rounded))
                     .tracking(1.1)

@@ -16,7 +16,16 @@ struct OnboardingView: View {
     @StateObject private var notifications = NotificationManager.shared
 
     // MARK: - Wizard state
-    @State private var step: Step = .welcome
+    // DEBUG: screenshot tooling can jump straight to a step via the
+    // "debug.onboardingStep" UserDefaults key (raw Step case name, e.g.
+    // "widgetSmall"). No effect in production unless the key is set.
+    @State private var step: Step = {
+        if let raw = UserDefaults.standard.string(forKey: "debug.onboardingStep"),
+           let match = Step.allCases.first(where: { "\($0)" == raw }) {
+            return match
+        }
+        return .welcome
+    }()
     @State private var transitionDirection: TransitionDirection = .forward
 
     // Pet
@@ -147,6 +156,9 @@ struct OnboardingView: View {
         case autoTrackStoneAge
         case autoTrackHow
         case autoTrackAccuracy
+
+        // ─ Motion & Fitness pre-permission (powers the sleep brain) ───────
+        case motionAccess
 
         // ─ Signature pledge ceremony ──────────────────────────────────────
         case signaturePledge
@@ -527,6 +539,7 @@ struct OnboardingView: View {
         case .autoTrackStoneAge:    AutoTrackStoneAgeScreen()
         case .autoTrackHow:         AutoTrackHowScreen()
         case .autoTrackAccuracy:    AutoTrackPhoneOnlyScreen()
+        case .motionAccess:         MotionAccessScreen(petName: petName)
         case .signaturePledge:      SignaturePledgeScreen(petName: petName)
         case .prePaywall:           EmptyView()    // rendered full-screen above; never reaches here
         }
@@ -630,6 +643,28 @@ struct OnboardingView: View {
                 // NotificationCenter event when the user completes the
                 // action, and the OnboardingView listener advances.
                 EmptyView()
+            case .motionAccess:
+                // Triggers the real Motion & Fitness system prompt, then
+                // advances regardless of the user's choice — the sleep brain
+                // degrades gracefully without motion data. "Not now" keeps
+                // App Review happy (permission never gates progress).
+                VStack(spacing: 10) {
+                    PrimaryButton(title: "Enable sleep detection", variant: .white) {
+                        Task { @MainActor in
+                            _ = await MotionSleepAnalyzer.shared.requestAccess()
+                            advance()
+                        }
+                    }
+                    Button {
+                        advance()
+                    } label: {
+                        Text("Not now")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .underline()
+                            .foregroundColor(.white.opacity(0.7))
+                            .padding(.vertical, 6)
+                    }
+                }
             case .planComputing, .prePaywall:
                 EmptyView()
             default:
@@ -3218,13 +3253,10 @@ private struct AnalyzingAnswersScreen: View {
                     .frame(width: 200, height: 200)
                 Circle()
                     .trim(from: 0, to: progress)
-                    .stroke(LinearGradient(
-                        colors: [MooniColor.accentSoft, MooniColor.accent],
-                        startPoint: .top, endPoint: .bottom),
-                        style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                    .stroke(MooniColor.accent,
+                            style: StrokeStyle(lineWidth: 12, lineCap: .round))
                     .frame(width: 200, height: 200)
                     .rotationEffect(.degrees(-90))
-                    .shadow(color: MooniColor.accent.opacity(0.4), radius: 18)
                     .animation(.easeInOut(duration: 0.55), value: progress)
                 ForEach(0..<3) { i in
                     Circle()
@@ -3376,18 +3408,11 @@ private struct SleepScoreRevealScreen: View {
                     .stroke(Color.white.opacity(0.08), lineWidth: 16)
                     .frame(width: 210, height: 210)
                 Circle()
-                    .fill(scoreColor.opacity(pulse ? 0.22 : 0.08))
-                    .frame(width: 190, height: 190)
-                    .blur(radius: 24)
-                Circle()
                     .trim(from: 0, to: CGFloat(animateNumber) / 100)
-                    .stroke(LinearGradient(
-                        colors: [MooniColor.danger, MooniColor.warning, MooniColor.accentSoft],
-                        startPoint: .leading, endPoint: .trailing),
-                        style: StrokeStyle(lineWidth: 16, lineCap: .round))
+                    .stroke(scoreColor,
+                            style: StrokeStyle(lineWidth: 16, lineCap: .round))
                     .frame(width: 210, height: 210)
                     .rotationEffect(.degrees(-90))
-                    .shadow(color: scoreColor.opacity(0.4), radius: 18)
 
                 VStack(spacing: -2) {
                     Text("\(Int(animateNumber))")
@@ -4153,21 +4178,14 @@ private struct WidgetPreviewScreen: View {
                           size: CGFloat, lineWidth: CGFloat) -> some View {
         ZStack {
             Circle()
-                .fill(tint.opacity(0.20))
-                .frame(width: size + 10, height: size + 10)
-                .blur(radius: size * 0.12)
-            Circle()
                 .stroke(Color.white.opacity(0.10), lineWidth: lineWidth)
                 .frame(width: size - lineWidth, height: size - lineWidth)
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(AngularGradient(
-                    colors: [tint.opacity(0.55), tint, tint.opacity(0.9)],
-                    center: .center),
+                .stroke(tint,
                         style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .frame(width: size - lineWidth, height: size - lineWidth)
                 .rotationEffect(.degrees(-90))
-                .shadow(color: tint.opacity(0.55), radius: 6)
             Image("spirit_awake")
                 .resizable()
                 .scaledToFit()
@@ -4208,13 +4226,10 @@ private struct WidgetPreviewScreen: View {
                 if !isInvite {
                     Circle()
                         .trim(from: 0, to: CGFloat(score ?? 0) / 100)
-                        .stroke(AngularGradient(
-                            colors: [tint.opacity(0.55), tint, tint.opacity(0.85)],
-                            center: .center),
+                        .stroke(tint,
                                 style: StrokeStyle(lineWidth: 4, lineCap: .round))
                         .frame(width: 44, height: 44)
                         .rotationEffect(.degrees(-90))
-                        .shadow(color: tint.opacity(0.5), radius: 4)
                 } else {
                     Circle()
                         .strokeBorder(MooniColor.textMuted.opacity(0.55),
@@ -4755,16 +4770,6 @@ private struct GeneratingPlanScreen: View {
                         .rotationEffect(.degrees(orbit * (i.isMultiple(of: 2) ? 1 : -1) * 0.6))
                         .opacity(0.85)
                 }
-
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [MooniColor.accent.opacity(0.4), MooniColor.accentSoft.opacity(0.2), .clear],
-                            center: .center, startRadius: 0, endRadius: 90)
-                    )
-                    .frame(width: 200, height: 200)
-                    .blur(radius: 22)
-                    .scaleEffect(sparkleScale)
 
                 DreamSpiritView(pet: previewPet, size: 110)
                     .scaleEffect(sparkleScale * 0.98)

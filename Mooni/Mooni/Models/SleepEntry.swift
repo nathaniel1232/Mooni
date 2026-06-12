@@ -75,6 +75,14 @@ struct SleepEntry: Identifiable, Codable, Hashable {
     var recoveryMessage: String?
     var source: SleepDataSource?
     var didCompleteMorningCheckIn: Bool
+    /// True when this entry was fabricated purely from the user's target
+    /// schedule because a night elapsed with zero real signals. These never
+    /// trigger the morning check-in and must not be presented as a tracked
+    /// night — they only exist so the night stays editable.
+    var isScheduleBackfill: Bool
+    /// Sleep-brain confidence (0–1) for auto-detected nights. nil for manual,
+    /// HealthKit, and legacy entries.
+    var confidence: Double?
 
     init(
         id: UUID = UUID(),
@@ -95,7 +103,9 @@ struct SleepEntry: Identifiable, Codable, Hashable {
         insight: String? = nil,
         recoveryMessage: String? = nil,
         source: SleepDataSource? = nil,
-        didCompleteMorningCheckIn: Bool = false
+        didCompleteMorningCheckIn: Bool = false,
+        isScheduleBackfill: Bool = false,
+        confidence: Double? = nil
     ) {
         self.id = id
         self.bedtime = bedtime
@@ -116,6 +126,8 @@ struct SleepEntry: Identifiable, Codable, Hashable {
         self.recoveryMessage = recoveryMessage
         self.source = source
         self.didCompleteMorningCheckIn = didCompleteMorningCheckIn
+        self.isScheduleBackfill = isScheduleBackfill
+        self.confidence = confidence
     }
 
     var duration: TimeInterval {
@@ -150,7 +162,7 @@ struct SleepEntry: Identifiable, Codable, Hashable {
         case id, bedtime, wakeTime, quality, mood, notes, routineCompleted
         case score, energyEarned, isEstimated, totalSleep, timeInBed, stages
         case readinessScore, energyLevel, insight, recoveryMessage, source
-        case didCompleteMorningCheckIn
+        case didCompleteMorningCheckIn, isScheduleBackfill, confidence
     }
 
     init(from decoder: Decoder) throws {
@@ -174,5 +186,7 @@ struct SleepEntry: Identifiable, Codable, Hashable {
         recoveryMessage = try container.decodeIfPresent(String.self, forKey: .recoveryMessage)
         source = try container.decodeIfPresent(SleepDataSource.self, forKey: .source)
         didCompleteMorningCheckIn = try container.decodeIfPresent(Bool.self, forKey: .didCompleteMorningCheckIn) ?? false
+        isScheduleBackfill = try container.decodeIfPresent(Bool.self, forKey: .isScheduleBackfill) ?? false
+        confidence = try container.decodeIfPresent(Double.self, forKey: .confidence)
     }
 }

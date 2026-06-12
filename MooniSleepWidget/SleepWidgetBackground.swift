@@ -23,32 +23,17 @@ struct SleepWidgetBackground: View {
                 endPoint: .bottomTrailing
             )
 
-            // Tinted halo from the top-left corner — replaces the old fixed
-            // accent glow with a per-widget colour so the score visually owns
-            // the surface.
+            // One quiet tint wash from the top-left corner so the score colour
+            // owns the surface without reading as a glow effect.
             RadialGradient(
                 colors: [
-                    haloColor.opacity(scheme == .dark ? 0.42 : 0.22),
+                    haloColor.opacity(scheme == .dark ? 0.20 : 0.12),
                     .clear
                 ],
                 center: .topLeading,
                 startRadius: 0,
                 endRadius: 260
             )
-            .blendMode(.plusLighter)
-
-            // Faint bottom-right counter-glow keeps the surface from feeling
-            // one-sided. Cool indigo to balance the warmer top corner.
-            RadialGradient(
-                colors: [
-                    accentGlow.opacity(scheme == .dark ? 0.22 : 0.10),
-                    .clear
-                ],
-                center: .bottomTrailing,
-                startRadius: 0,
-                endRadius: 220
-            )
-            .blendMode(.plusLighter)
 
             if scheme == .dark {
                 StarSpeckles().opacity(0.55)
