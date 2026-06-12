@@ -722,7 +722,7 @@ struct PaywallView: View {
     // MARK: - Bottom block
 
     private var bottomBlock: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             if let error = manager.errorMessage {
                 Text(error)
                     .font(MooniFont.caption(11))
@@ -750,17 +750,13 @@ struct PaywallView: View {
                 }
             }
 
-            Button { Task { await runRestore() } } label: {
-                Text("Restore purchase")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundColor(MooniColor.accentSoft)
-            }
-            .padding(.top, 2)
-
+            // Restore + legal links live on one compact row so the CTA block
+            // stays short and the scrollable pitch above always has room.
             footerLinks
                 .padding(.horizontal, 20)
+                .padding(.top, 2)
         }
-        .padding(.bottom, 14)
+        .padding(.bottom, 12)
     }
 
     // MARK: - CTA
@@ -852,6 +848,15 @@ struct PaywallView: View {
 
     private var footerLinks: some View {
         HStack(spacing: 14) {
+            // Restore reads as slightly more prominent than the legal links
+            // (accentSoft vs. muted) since it's the one with a real user task,
+            // but it no longer eats its own line above the footer.
+            Button { Task { await runRestore() } } label: {
+                Text("Restore")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(MooniColor.accentSoft)
+                    .underline()
+            }
             Link("Terms",
                  destination: URL(string: "https://sleepowlapp.vercel.app/terms")!)
                 .font(.system(size: 10, weight: .medium, design: .rounded))

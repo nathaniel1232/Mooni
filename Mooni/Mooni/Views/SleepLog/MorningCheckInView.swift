@@ -19,7 +19,7 @@ struct MorningCheckInView: View {
     /// home-screen edit pencil and the missed-night entry point.
     var startInEditMode: Bool = false
 
-    @State private var scene: Scene = .night
+    @State private var scene: Scene = .greeting
 
     // Night scene — recap + accuracy
     @State private var accuracy: SleepAccuracyRating? = nil
@@ -47,24 +47,27 @@ struct MorningCheckInView: View {
     @State private var showStory = false
 
     enum Scene: Int, CaseIterable, Hashable {
-        // One question per screen.
-        case night, onset, restless, dreams, morning, outOfBed, echoes, reveal
+        // A warm greeting opens the flow; the subjective questions come next;
+        // only THEN do we surface the tracked night for the user to confirm or
+        // adjust — so the check-in never leads with raw numbers. Reveal closes.
+        case greeting, onset, restless, dreams, morning, outOfBed, echoes, confirm, reveal
 
         var progressIndex: Int? {
             switch self {
-            case .night:    return 0
+            case .greeting: return 0
             case .onset:    return 1
             case .restless: return 2
             case .dreams:   return 3
             case .morning:  return 4
             case .outOfBed: return 5
             case .echoes:   return 6
+            case .confirm:  return 7
             case .reveal:   return nil
             }
         }
 
-        /// Number of question screens (drives the progress dots).
-        static let questionCount = 7
+        /// Number of step screens before the reveal (drives the progress dots).
+        static let questionCount = 8
 
         var showsDots: Bool { self != .reveal }
     }
@@ -197,7 +200,7 @@ struct MorningCheckInView: View {
 
     private func gradient(for s: Scene) -> LinearGradient {
         switch s {
-        case .night:
+        case .greeting:
             return LinearGradient(
                 colors: [Color(red: 0.03, green: 0.04, blue: 0.16),
                          Color(red: 0.08, green: 0.08, blue: 0.24)],
@@ -227,7 +230,7 @@ struct MorningCheckInView: View {
                          Color(red: 0.72, green: 0.42, blue: 0.40)],
                 startPoint: .top, endPoint: .bottom
             )
-        case .reveal:
+        case .confirm, .reveal:
             return LinearGradient(
                 colors: [Color(red: 0.10, green: 0.07, blue: 0.25),
                          Color(red: 0.34, green: 0.20, blue: 0.38)],
@@ -238,11 +241,11 @@ struct MorningCheckInView: View {
 
     private var starOpacity: Double {
         switch scene {
-        case .night, .onset:    return 0.55
-        case .restless, .dreams: return 0.40
-        case .morning, .outOfBed: return 0.22
-        case .echoes:           return 0.10
-        case .reveal:           return 0.30
+        case .greeting, .onset:    return 0.55
+        case .restless, .dreams:   return 0.40
+        case .morning, .outOfBed:  return 0.22
+        case .echoes:              return 0.10
+        case .confirm, .reveal:    return 0.30
         }
     }
 
@@ -282,7 +285,7 @@ struct MorningCheckInView: View {
                 PrimaryButton(title: "Done", icon: "checkmark") { dismiss() }
                     .frame(maxWidth: 320)
             } else {
-                if scene != .night {
+                if scene != .greeting {
                     SecondaryButton(title: "Back") {
                         withAnimation(.easeInOut(duration: 0.55)) {
                             scene = previous(of: scene)
@@ -301,16 +304,16 @@ struct MorningCheckInView: View {
 
     private var primaryTitle: String {
         switch scene {
-        case .night:   return "Continue"
-        case .echoes:  return "See last night"
-        default:       return "Next"
+        case .greeting: return "Let's check in"
+        case .confirm:  return "See last night"
+        default:        return "Next"
         }
     }
 
     private var canAdvance: Bool {
         switch scene {
-        case .night: return accuracy != nil
-        default:     return true
+        case .confirm: return accuracy != nil
+        default:       return true
         }
     }
 
@@ -319,32 +322,65 @@ struct MorningCheckInView: View {
     @ViewBuilder
     private var sceneContent: some View {
         switch scene {
-        case .night:    nightScene
+        case .greeting: greetingScene
         case .onset:    onsetScene
         case .restless: restlessScene
         case .dreams:   dreamsScene
         case .morning:  morningScene
         case .outOfBed: outOfBedScene
         case .echoes:   echoesScene
+        case .confirm:  confirmScene
         case .reveal:   revealScene
         }
     }
 
-    // MARK: - Scene 1: The Night
+    // MARK: - Scene 1: Greeting (warm intro, no numbers)
 
-    private var nightScene: some View {
-        VStack(spacing: 22) {
-            spirit(size: 120)
-                .padding(.top, 4)
+    private var greetingScene: some View {
+        VStack(spacing: 26) {
+            spirit(size: 132)
+                .padding(.top, 8)
 
-            VStack(spacing: 6) {
+            VStack(spacing: 10) {
                 Text("Good morning")
                     .font(MooniFont.display(34))
                     .foregroundColor(MooniColor.textPrimary)
-                Text("\(appState.pet.name) watched over you.")
-                    .font(MooniFont.body(15))
+                Text("\(petDisplayName) watched over you while you slept.")
+                    .font(MooniFont.body(16))
                     .foregroundColor(MooniColor.accentSoft)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
             }
+
+            Text("A few quick taps and we'll piece together how last night really went.")
+                .font(MooniFont.body(14))
+                .foregroundColor(MooniColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 26)
+        }
+    }
+
+    private var petDisplayName: String {
+        let name = appState.pet.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "SleepOwl" : name
+    }
+
+    // MARK: - Scene: Confirm the tracked night (recap + accuracy / adjust)
+
+    private var confirmScene: some View {
+        VStack(spacing: 20) {
+            spirit(size: 88)
+
+            VStack(spacing: 6) {
+                Text(isEditingTimes ? "Set your night" : "Here's your night")
+                    .font(MooniFont.display(26))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .animation(.easeInOut(duration: 0.25), value: isEditingTimes)
+                Text("One last look before we score it.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            .multilineTextAlignment(.center)
 
             if let entry = entryForRecap {
                 recapCard(entry: entry)
@@ -1045,9 +1081,9 @@ struct MorningCheckInView: View {
 
     private var spiritGlowColor: Color {
         switch scene {
-        case .night, .onset:                       return MooniColor.accent
-        case .restless, .dreams:                   return MooniColor.accentSoft
-        case .morning, .outOfBed, .echoes, .reveal: return MooniColor.warning
+        case .greeting, .onset:                              return MooniColor.accent
+        case .restless, .dreams:                             return MooniColor.accentSoft
+        case .morning, .outOfBed, .echoes, .confirm, .reveal: return MooniColor.warning
         }
     }
 
@@ -1138,10 +1174,16 @@ struct MorningCheckInView: View {
         if startInEditMode || seededPlaceholder {
             accuracy = .wayOff
         }
+        // Re-opening from the home edit pencil is a pure time-correction —
+        // jump straight to the night so the user isn't re-walked through every
+        // subjective question just to nudge a bedtime.
+        if startInEditMode {
+            scene = .confirm
+        }
     }
 
     private func advance() {
-        if scene == .echoes {
+        if scene == .confirm {
             save()
             withAnimation(.easeInOut(duration: 0.75)) { scene = .reveal }
             return
@@ -1151,27 +1193,29 @@ struct MorningCheckInView: View {
 
     private func next(of s: Scene) -> Scene {
         switch s {
-        case .night:    return .onset
+        case .greeting: return .onset
         case .onset:    return .restless
         case .restless: return .dreams
         case .dreams:   return .morning
         case .morning:  return .outOfBed
         case .outOfBed: return .echoes
-        case .echoes:   return .reveal
+        case .echoes:   return .confirm
+        case .confirm:  return .reveal
         case .reveal:   return .reveal
         }
     }
 
     private func previous(of s: Scene) -> Scene {
         switch s {
-        case .night:    return .night
-        case .onset:    return .night
+        case .greeting: return .greeting
+        case .onset:    return .greeting
         case .restless: return .onset
         case .dreams:   return .restless
         case .morning:  return .dreams
         case .outOfBed: return .morning
         case .echoes:   return .outOfBed
-        case .reveal:   return .echoes
+        case .confirm:  return .echoes
+        case .reveal:   return .confirm
         }
     }
 

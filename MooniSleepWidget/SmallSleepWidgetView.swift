@@ -10,16 +10,20 @@ struct SmallSleepWidgetView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ── Top: brand row
+            // ── Top: brand row. The brand keeps layout priority so "SleepOwl"
+            // never truncates to "SleepO…"; the quality pill yields first and
+            // fixed-sizes so it prints whole ("EXCELLENT", not "EXCEL…").
             HStack(spacing: 4) {
                 Image(systemName: "moon.stars.fill")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.system(size: 9, weight: .black))
                     .foregroundStyle(data.scoreTint)
                 Text("SleepOwl")
-                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .font(.system(size: 10, weight: .black, design: .rounded))
                     .foregroundStyle(SleepWidgetPalette.textSecondary)
-                    .tracking(0.2)
-                Spacer(minLength: 0)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .layoutPriority(1)
+                Spacer(minLength: 2)
                 qualityPill
             }
 
@@ -40,10 +44,11 @@ struct SmallSleepWidgetView: View {
     private var qualityPill: some View {
         Text(data.quality.uppercased())
             .font(.system(size: 8, weight: .heavy, design: .rounded))
-            .tracking(0.5)
+            .tracking(0.3)
             .foregroundStyle(data.scoreTint)
             .lineLimit(1)
-            .padding(.horizontal, 6)
+            .fixedSize()
+            .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .background(
                 Capsule().fill(data.scoreTint.opacity(0.22))
