@@ -206,6 +206,13 @@ struct PaywallView: View {
                         .opacity(animateIn ? 1 : 0)
                         .animation(.easeOut(duration: 0.4).delay(0.10), value: animateIn)
 
+                    // Honest social proof (hidden until real numbers are set).
+                    socialProofRow
+                        .padding(.horizontal, 28)
+                        .padding(.top, 10)
+                        .opacity(animateIn ? 1 : 0)
+                        .animation(.easeOut(duration: 0.4).delay(0.13), value: animateIn)
+
                     // Value / reassurance: trial timeline (trial) or benefits.
                     content
                         .padding(.horizontal, 28)
@@ -213,9 +220,12 @@ struct PaywallView: View {
                         .opacity(animateIn ? 1 : 0)
                         .animation(.easeOut(duration: 0.45).delay(0.16), value: animateIn)
 
-                    // The choice, sitting right above the CTA so picking a plan
-                    // flows straight into the action.
-                    planCards
+                    // The choice: one featured plan + a quiet switch link,
+                    // right above the CTA so picking flows straight into action.
+                    VStack(spacing: 12) {
+                        featuredPlan
+                        planSwitchLink
+                    }
                         .padding(.horizontal, 22)
                         .padding(.top, 18)
                         .opacity(animateIn ? 1 : 0)
@@ -279,7 +289,7 @@ struct PaywallView: View {
         .padding(.top, 8)
     }
 
-    // MARK: - Hero (moon halo + owl)
+    // MARK: - Hero (app logo on a soft halo)
 
     private var heroBlock: some View {
         ZStack {
@@ -296,23 +306,18 @@ struct PaywallView: View {
                 .scaleEffect(moonGlow ? 1.04 : 0.96)
                 .blur(radius: 6)
 
-            Circle()
-                .fill(LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.18),
-                        MooniColor.accent.opacity(0.35)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom))
-                .frame(width: 112, height: 112)
+            // The real App Store icon (squircle) instead of the in-app owl.
+            Image("app_icon")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 104, height: 104)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
                 )
-                .shadow(color: MooniColor.accent.opacity(0.45), radius: 24, y: 6)
-
-            DreamSpiritView(pet: heroPet, size: 78)
-                .scaleEffect(animateIn ? 1 : 0.85)
+                .shadow(color: MooniColor.accent.opacity(0.45), radius: 22, y: 6)
+                .scaleEffect(animateIn ? 1 : 0.9)
         }
         .frame(height: 128)
     }
@@ -321,7 +326,7 @@ struct PaywallView: View {
 
     private var titleBlock: some View {
         VStack(spacing: 8) {
-            Text("Unlock your best sleep")
+            Text("Your best sleep starts tonight")
                 .font(MooniFont.display(26))
                 .foregroundStyle(LinearGradient(
                     colors: [MooniColor.textPrimary, MooniColor.accentSoft],
@@ -344,6 +349,43 @@ struct PaywallView: View {
             return "Auto-tracking, deep insights and every sound — free for \(days) days."
         }
         return "Auto-tracking, deep insights and every sound. Cancel anytime."
+    }
+
+    // MARK: - Social proof (optional — REAL data only)
+
+    /// Set these to your ACTUAL App Store numbers to show a trust line under the
+    /// headline. Honest social proof reliably lifts conversion (e.g. Speak shows
+    /// "4.8 from 140k+ reviews"). LEAVE THESE nil to hide the row — and NEVER
+    /// fabricate a rating, review count, or testimonial: Apple rejects fake
+    /// social proof (guideline 3.1.x / 2.3) and it destroys trust. Fill in once
+    /// you have real numbers and the row appears automatically.
+    private let socialProofRating: String? = nil       // e.g. "4.8"
+    private let socialProofCount: String? = nil        // e.g. "1,200+ ratings"
+    private let socialProofTestimonial: String? = nil  // e.g. "I finally sleep through the night."
+
+    @ViewBuilder
+    private var socialProofRow: some View {
+        if let rating = socialProofRating, let count = socialProofCount {
+            VStack(spacing: 6) {
+                HStack(spacing: 4) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(MooniColor.warning)
+                    }
+                    Text("\(rating) · \(count)")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .padding(.leading, 4)
+                }
+                if let quote = socialProofTestimonial {
+                    Text("\u{201C}\(quote)\u{201D}")
+                        .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+        }
     }
 
     /// Number of trial days configured on the annual product in StoreKit, or
@@ -375,81 +417,112 @@ struct PaywallView: View {
         return "\(pkg.storeProduct.localizedPriceString)/\(unit)"
     }
 
-    // MARK: - Plan cards (the choice)
+    // MARK: - Plan (single-plan focus)
 
-    /// Two clean, tappable cards. Each carries its own price + terms once, so
-    /// there's no scattered price text elsewhere. The annual card leads with a
-    /// trial/savings badge; the selected card gets an accent border + filled
-    /// radio. Falls back to a single card if no short package is configured.
-    private var planCards: some View {
-        VStack(spacing: 12) {
-            planCard(
-                title: "Annual",
-                badge: annualBadge,
-                detail: annualCardDetail,
-                trailing: annualWeeklyEquivLabel,
-                value: .annual
-            )
-            if shortPackage != nil {
-                planCard(
-                    title: shortPeriodLabel,
-                    badge: nil,
-                    detail: shortCardDetail,
-                    trailing: shortPriceLabel,
-                    value: .short
-                )
+    /// Research-backed: lead with ONE plan as the hero and demote the other to a
+    /// quiet switch link, instead of a symmetric two-card grid (which causes
+    /// analysis paralysis and buries the trial — Calm/Headspace/Cal AI all focus
+    /// one plan). The featured card shows the currently-selected plan; the small
+    /// per-week number leads, with the real billed price + cancel terms beneath
+    /// it (kept prominent for App Store guideline 3.1.2).
+    @ViewBuilder
+    private var featuredPlan: some View {
+        let isAnnual = plan == .annual
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                if isAnnual, trialDays != nil { badgePill("7-DAY FREE TRIAL") }
+                if isAnnual, let pct = annualSavingsPercent { badgePill("SAVE \(pct)%") }
+                if !isAnnual { badgePill(shortPeriodLabel.uppercased()) }
+                Spacer(minLength: 0)
             }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(featuredHeroPrice)
+                    .font(MooniFont.display(30))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text(featuredHeroUnit)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            Text(featuredTerms)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundColor(MooniColor.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 18)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(MooniColor.accent.opacity(0.14))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(MooniColor.accentSoft, lineWidth: 2)
+        )
+        .shadow(color: MooniColor.accent.opacity(0.25), radius: 18, y: 6)
+    }
+
+    /// Quiet text link to switch to the non-featured plan (only when a short
+    /// plan exists). Keeps the choice available without a competing card.
+    @ViewBuilder
+    private var planSwitchLink: some View {
+        if shortPackage != nil {
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    plan = (plan == .annual) ? .short : .annual
+                }
+                Haptics.tap()
+            } label: {
+                Text(planSwitchLabel)
+                    .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(MooniColor.accentSoft)
+                    .underline()
+            }
+            .buttonStyle(.plain)
         }
     }
 
-    private func planCard(title: String, badge: String?, detail: String, trailing: String?, value: Plan) -> some View {
-        let active = plan == value
-        return Button {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { plan = value }
-            Haptics.tap()
-        } label: {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .stroke(active ? MooniColor.accentSoft : Color.white.opacity(0.25), lineWidth: 2)
-                        .frame(width: 22, height: 22)
-                    if active {
-                        Circle().fill(MooniColor.accentSoft).frame(width: 12, height: 12)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 8) {
-                        Text(title)
-                            .font(MooniFont.title(17))
-                            .foregroundColor(MooniColor.textPrimary)
-                        if let badge { badgePill(badge) }
-                    }
-                    Text(detail)
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundColor(MooniColor.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 8)
-                if let trailing {
-                    Text(trailing)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundColor(active ? MooniColor.accentSoft : MooniColor.textMuted)
-                        .fixedSize()
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(active ? MooniColor.accent.opacity(0.14) : Color.white.opacity(0.05))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(active ? MooniColor.accentSoft : Color.white.opacity(0.10),
-                            lineWidth: active ? 2 : 1)
-            )
+    // Featured-card content helpers --------------------------------------
+
+    /// Big hero number: the per-week equivalent for annual ("$0.77"), or the
+    /// real weekly/monthly price for the short plan.
+    private var featuredHeroPrice: String {
+        if plan == .annual {
+            if let w = annualWeeklyEquivLabel { return w.replacingOccurrences(of: "/week", with: "") }
+            return annualPackage?.storeProduct.localizedPriceString ?? ""
         }
-        .buttonStyle(.plain)
+        return shortPackage?.storeProduct.localizedPriceString ?? ""
+    }
+
+    private var featuredHeroUnit: String {
+        if plan == .annual { return "/ week" }
+        return shortPackage?.packageType == .weekly ? "/ week" : "/ month"
+    }
+
+    /// Real billed price + period + cancel terms. The per-week hero number only
+    /// SUPPLEMENTS this — the true charge stays prominent (guideline 3.1.2).
+    private var featuredTerms: String {
+        if plan == .annual {
+            guard let pkg = annualPackage else { return "Cancel anytime." }
+            let price = pkg.storeProduct.localizedPriceString
+            if let days = trialDays {
+                return "Free for \(days) days, then \(price)/year. Cancel anytime."
+            }
+            return "Billed \(price)/year. Cancel anytime."
+        }
+        guard let pkg = shortPackage else { return "Cancel anytime." }
+        let unit = shortPackage?.packageType == .weekly ? "week" : "month"
+        return "Billed \(pkg.storeProduct.localizedPriceString)/\(unit). Cancel anytime."
+    }
+
+    private var planSwitchLabel: String {
+        if plan == .annual {
+            return "Prefer to pay weekly? \(shortPriceLabel)"
+        }
+        if let pct = annualSavingsPercent {
+            return "Best value: 7-day free trial · save \(pct)% yearly"
+        }
+        return "Switch to the annual plan with a free trial"
     }
 
     private func badgePill(_ text: String) -> some View {
@@ -464,27 +537,6 @@ struct PaywallView: View {
                     colors: [MooniColor.accentSoft, MooniColor.accent],
                     startPoint: .leading, endPoint: .trailing))
             )
-    }
-
-    /// Annual badge: real savings vs the short plan if computable, else a
-    /// neutral "BEST VALUE" / "FREE TRIAL" label. Never fabricates a number.
-    private var annualBadge: String? {
-        if let pct = annualSavingsPercent { return "SAVE \(pct)%" }
-        return trialDays != nil ? "FREE TRIAL" : "BEST VALUE"
-    }
-
-    private var annualCardDetail: String {
-        guard let pkg = annualPackage else { return "Yearly plan" }
-        let price = pkg.storeProduct.localizedPriceString
-        if let days = trialDays {
-            return "\(days) days free, then \(price)/yr"
-        }
-        return "\(price) per year, billed yearly"
-    }
-
-    private var shortCardDetail: String {
-        let unit = shortPackage?.packageType == .weekly ? "weekly" : "monthly"
-        return "No free trial · billed \(unit)"
     }
 
     // MARK: - Annual: trial timeline
@@ -669,22 +721,24 @@ struct PaywallView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 2)
 
+            // Reassurance right at the tap point — the highest-leverage copy
+            // for trial starts (Cal AI / Blinkist): defuses the "I'll forget to
+            // cancel and get charged" fear that blocks Day-0 conversions.
             if let reassurance = ctaReassurance {
-                Text(reassurance)
-                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                    .foregroundColor(MooniColor.textSecondary)
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(MooniColor.accentSoft)
+                    Text(reassurance)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundColor(MooniColor.textSecondary)
+                }
             }
 
-            // Trust row: cancel anytime + restore, then the legal/manage links.
-            HStack(spacing: 16) {
-                Label("Cancel anytime", systemImage: "checkmark.shield.fill")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundColor(MooniColor.textMuted)
-                Button { Task { await runRestore() } } label: {
-                    Text("Restore")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundColor(MooniColor.accentSoft)
-                }
+            Button { Task { await runRestore() } } label: {
+                Text("Restore purchase")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(MooniColor.accentSoft)
             }
             .padding(.top, 2)
 
@@ -707,7 +761,10 @@ struct PaywallView: View {
     /// One short anxiety-reducer under the CTA for the trial (the most common
     /// drop-off worry). Paid plans rely on the card's terms + the trust row.
     private var ctaReassurance: String? {
-        (plan == .annual && trialDays != nil) ? "You won't be charged today" : nil
+        if plan == .annual, trialDays != nil {
+            return "No payment due now · cancel anytime"
+        }
+        return "Cancel anytime"
     }
 
     private var purchaseButton: some View {
