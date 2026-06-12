@@ -1142,11 +1142,12 @@ struct NotifAllowMockScreen: View {
             )
             .shadow(color: Color.black.opacity(0.4), radius: 30, y: 12)
 
-            // Animated pointing finger — hovers just above the Allow button
-            // (the right-hand action in the two-button row).
+            // Animated pointing finger — sits BELOW the button row so the
+            // fingertip (top of the glyph) actually touches the Allow button
+            // instead of hovering over the dialog body text.
             Text("👆")
                 .font(.system(size: 30))
-                .offset(x: 60, y: pointerBob ? 60 : 72)
+                .offset(x: 60, y: pointerBob ? 92 : 102)
                 .opacity(triggered ? 0 : 1)
                 .animation(.easeInOut(duration: 0.25), value: triggered)
         }
@@ -1490,6 +1491,10 @@ struct PlanRevealScreen: View {
     @State private var scoreCount: Int = 0
     @State private var ringTrim: CGFloat = 0
     @State private var widgetAppear: Bool = false
+    /// 0 = diagnosis (their real, bad score + what it costs them),
+    /// 1 = transformation (ring climbs to the projected score, plan unfolds).
+    @State private var phase: Int = 0
+    @State private var costShown: Int = 0
 
     private var projectedScore: Int { 87 }
 
@@ -1498,33 +1503,55 @@ struct PlanRevealScreen: View {
         Color(red: 0.62, green: 0.62, blue: 1.00)
     }
 
+    /// Diagnosis tint — red for the truly rough, orange otherwise.
+    private var diagnosisTint: Color {
+        currentScore < 46
+            ? Color(red: 1.00, green: 0.45, blue: 0.50)
+            : Color(red: 1.00, green: 0.66, blue: 0.40)
+    }
+
+    /// The 2–3 sharpest personalized costs, straight from their answers.
+    private var diagnosisCosts: [String] { Array(profile.topIssues.prefix(3)) }
+
     var body: some View {
         VStack(spacing: 22) {
             Spacer(minLength: 2)
 
-            // Title block
+            // Title block — flips with the phase: honest diagnosis first,
+            // then the plan that fixes it.
             VStack(spacing: 8) {
-                Text("Your plan is ready\(petName.isEmpty ? "" : ", \(petName)").")
+                Text(phase == 0
+                     ? "First, the honest news."
+                     : "Your plan is ready\(petName.isEmpty ? "" : ", \(petName)").")
                     .font(MooniFont.display(28))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
-                Text("Built from everything you told us — here's what changes.")
+                Text(phase == 0
+                     ? "Scored from your answers — this is where your sleep stands today."
+                     : "Built from everything you told us — here's what changes.")
                     .font(MooniFont.body(14))
                     .foregroundColor(.white.opacity(0.6))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8)
             }
+            .animation(.easeInOut(duration: 0.4), value: phase)
 
-            // Hero projected-score ring + the improvement it represents. This
-            // is the emotional anchor: where they are now → where they'll be.
+            // Hero ring: counts up to their CURRENT score in warning colors,
+            // sits with the personalized costs, then morphs to the projected
+            // score as the plan takes over. Before → after, one ring.
             VStack(spacing: 14) {
                 heroRing
                     .frame(width: 188, height: 188)
-                    .scaleEffect(widgetAppear ? 1 : 0.9)
-                improvementBadge
+
+                if phase == 0 {
+                    diagnosisCostList
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                } else {
+                    improvementBadge
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
             }
-            .opacity(widgetAppear ? 1 : 0)
 
             // Tonight's schedule — concrete and theirs.
             scheduleCard
@@ -1584,35 +1611,74 @@ struct PlanRevealScreen: View {
                 .stroke(Color.white.opacity(0.08),
                         style: StrokeStyle(lineWidth: 14, lineCap: .round))
 
-            // Progress arc
+            // Progress arc — warning-colored during the diagnosis, brand
+            // accent once the plan takes over. The color crossfade IS the
+            // transformation moment.
             Circle()
                 .trim(from: 0, to: ringTrim)
                 .stroke(
-                    scoreTint,
+                    phase == 0 ? diagnosisTint : scoreTint,
                     style: StrokeStyle(lineWidth: 14, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
+                .animation(.easeInOut(duration: 0.8), value: phase)
 
             VStack(spacing: 2) {
                 Text("\(scoreCount)")
                     .font(.system(size: 76, weight: .heavy, design: .rounded))
-                    .foregroundColor(.white)
+                    .foregroundColor(phase == 0 ? diagnosisTint : .white)
                     .contentTransition(.numericText())
-                Text("PROJECTED SCORE")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .animation(.easeInOut(duration: 0.8), value: phase)
+                Text(phase == 0 ? "YOUR SCORE TODAY" : "PROJECTED SCORE")
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
                     .tracking(1.6)
                     .foregroundColor(.white.opacity(0.5))
             }
         }
     }
 
+    /// The personalized "this is what it's costing you" list shown under the
+    /// diagnosis ring — their own answers, weaponized.
+    private var diagnosisCostList: some View {
+        VStack(spacing: 9) {
+            ForEach(Array(diagnosisCosts.enumerated()), id: \.offset) { idx, cost in
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(diagnosisTint)
+                        .padding(.top, 1)
+                    Text(cost)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .fill(diagnosisTint.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .stroke(diagnosisTint.opacity(0.25), lineWidth: 1)
+                )
+                .opacity(idx < costShown ? 1 : 0)
+                .offset(y: idx < costShown ? 0 : 8)
+            }
+        }
+        .padding(.horizontal, 8)
+    }
+
     // MARK: Plan data
 
     private var petNameOrDefault: String { petName.isEmpty ? "SleepOwl" : petName }
 
-    /// Where they are now (honest, derived from their answers) → drives the
-    /// "now → projected" improvement story.
-    private var currentScore: Int { profile.derivedSleepScore }
+    /// Where they are now (derived from their answers, clamped so it always
+    /// reads as "bad but plausible" — never so low it's absurd, never high
+    /// enough to feel like there's nothing to fix).
+    private var currentScore: Int { min(62, max(38, profile.derivedSleepScore)) }
 
     /// The personalized issues we already surface elsewhere, reframed here as
     /// things the plan will fix. Capped so the section stays scannable.
@@ -1660,16 +1726,24 @@ struct PlanRevealScreen: View {
 
     private var improvementBadge: some View {
         HStack(spacing: 9) {
+            Text("+\(projectedScore - currentScore)")
+                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                .foregroundColor(Color(red: 0.55, green: 0.85, blue: 0.78))
+            Text("points")
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundColor(.white)
+            Rectangle().fill(Color.white.opacity(0.15))
+                .frame(width: 1, height: 14)
             Text("\(currentScore)")
-                .font(.system(size: 16, weight: .heavy, design: .rounded))
+                .font(.system(size: 14, weight: .heavy, design: .rounded))
                 .foregroundColor(.white.opacity(0.55))
             Image(systemName: "arrow.right")
-                .font(.system(size: 11, weight: .heavy))
+                .font(.system(size: 10, weight: .heavy))
                 .foregroundColor(scoreTint)
             Text("\(projectedScore)")
-                .font(.system(size: 16, weight: .heavy, design: .rounded))
+                .font(.system(size: 14, weight: .heavy, design: .rounded))
                 .foregroundColor(.white)
-            Text("projected by week 4")
+            Text("by week 4")
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundColor(.white.opacity(0.5))
         }
@@ -1825,23 +1899,51 @@ struct PlanRevealScreen: View {
         widgetAppear = false
         ringTrim = 0
         scoreCount = 0
+        phase = 0
+        costShown = 0
 
-        try? await Task.sleep(nanoseconds: 200_000_000)
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
-            widgetAppear = true
+        // ── Phase 0: the diagnosis. Ring climbs to their REAL (bad) score.
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        let diagDuration: Double = 1.1
+        withAnimation(.easeOut(duration: diagDuration)) {
+            ringTrim = CGFloat(currentScore) / 100
         }
-
-        // Draw ring and tick number concurrently over ~1.6s.
-        let duration: Double = 1.6
-        withAnimation(.easeOut(duration: duration)) {
-            ringTrim = CGFloat(projectedScore) / 100
-        }
-        let totalTicks = projectedScore
-        let stepNanos = UInt64(duration / Double(max(1, totalTicks))
+        var stepNanos = UInt64(diagDuration / Double(max(1, currentScore))
                                * 1_000_000_000)
-        for _ in 0..<totalTicks {
+        for _ in 0..<currentScore {
             scoreCount += 1
             try? await Task.sleep(nanoseconds: stepNanos)
+        }
+        Haptics.warning()
+
+        // Their personalized costs stagger in while the bad score sits there.
+        for i in 1...max(1, diagnosisCosts.count) {
+            try? await Task.sleep(nanoseconds: 380_000_000)
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                costShown = i
+            }
+            Haptics.tick()
+        }
+
+        // Let the diagnosis land before the rescue arrives.
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+
+        // ── Phase 1: the transformation. Costs swap for the +N badge, the
+        // ring re-colors and climbs to the projected score, plan unfolds.
+        withAnimation(.easeInOut(duration: 0.5)) { phase = 1 }
+        let riseDuration: Double = 1.5
+        withAnimation(.easeOut(duration: riseDuration)) {
+            ringTrim = CGFloat(projectedScore) / 100
+        }
+        let remaining = projectedScore - currentScore
+        stepNanos = UInt64(riseDuration / Double(max(1, remaining))
+                           * 1_000_000_000)
+        for _ in 0..<remaining {
+            scoreCount += 1
+            try? await Task.sleep(nanoseconds: stepNanos)
+        }
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
+            widgetAppear = true
         }
         Haptics.success()
     }
@@ -1854,7 +1956,7 @@ struct AutoTrackStoneAgeScreen: View {
         OBStack(
             eyebrow: "Tracking, evolved",
             title: "Manual sleep journals are over.",
-            subtitle: "You will not remember to log every night. We don't ask you to."
+            subtitle: "You'll never log a night. It all happens while you sleep — your only job is waking up better."
         ) {
             ZStack {
                 Image(systemName: "book.closed.fill")
@@ -1912,7 +2014,7 @@ struct AutoTrackHowScreen: View {
                     .font(MooniFont.display(26))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                Text("Your phone activity already tells the story.\nWe just read it — no watch, no wearable.")
+                Text("It reads several signals at once and fuses them into one sleep timeline — the same trick wearables use.")
                     .font(MooniFont.body(14))
                     .foregroundColor(.white.opacity(0.65))
                     .multilineTextAlignment(.center)
@@ -1920,10 +2022,13 @@ struct AutoTrackHowScreen: View {
                     .padding(.horizontal, 12)
             }
 
+            sensorFusionStrip
+                .padding(.horizontal, 8)
+
             timelineCard
                 .padding(.horizontal, 8)
 
-            Text("Detected automatically. No alarms, no logging.")
+            Text("You do nothing. Wake up — the full story of your night is already waiting.")
                 .font(MooniFont.body(12))
                 .foregroundColor(.white.opacity(0.5))
                 .multilineTextAlignment(.center)
@@ -1933,6 +2038,56 @@ struct AutoTrackHowScreen: View {
         }
         .padding(.horizontal, 16)
         .onAppear { play() }
+    }
+
+    // MARK: - Sensor fusion strip
+
+    /// Three real input signals flowing into one output — makes "automatic"
+    /// concrete instead of magical, which is what skeptical users need.
+    private var sensorFusionStrip: some View {
+        HStack(spacing: 6) {
+            signalChip(icon: "waveform.path.ecg", label: "Motion")
+            fusePlus
+            signalChip(icon: "mic.fill", label: "Sound")
+            fusePlus
+            signalChip(icon: "bolt.fill", label: "Charging")
+            Image(systemName: "arrow.right")
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundColor(.white.opacity(0.4))
+            signalChip(icon: "moon.zzz.fill", label: "Your night", highlighted: true)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var fusePlus: some View {
+        Image(systemName: "plus")
+            .font(.system(size: 9, weight: .heavy))
+            .foregroundColor(.white.opacity(0.35))
+    }
+
+    private func signalChip(icon: String, label: String,
+                            highlighted: Bool = false) -> some View {
+        VStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(highlighted ? sleepTint : .white.opacity(0.8))
+            Text(label)
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
+                .foregroundColor(highlighted ? sleepTint : .white.opacity(0.55))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(highlighted ? sleepTint.opacity(0.14) : Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(highlighted ? sleepTint.opacity(0.5) : Color.white.opacity(0.10),
+                        lineWidth: 1)
+        )
     }
 
     // MARK: - Timeline card
@@ -2155,11 +2310,11 @@ struct AutoTrackPhoneOnlyScreen: View {
                     .padding(.horizontal, 12)
             }
 
-            // ── Old way (3 struck-out tiles)
+            // ── Old way (3 struck-out tiles, with what they'd cost you)
             HStack(spacing: 12) {
-                strikedTile(title: "Smartwatch", icon: "applewatch")
-                strikedTile(title: "Ring", icon: "circle.circle")
-                strikedTile(title: "Manual log", icon: "pencil.and.list.clipboard")
+                strikedTile(title: "Smartwatch", price: "$399", icon: "applewatch")
+                strikedTile(title: "Smart ring", price: "$299", icon: "circle.circle")
+                strikedTile(title: "Manual log", price: "every day", icon: "pencil.and.list.clipboard")
             }
             .padding(.horizontal, 8)
 
@@ -2181,6 +2336,10 @@ struct AutoTrackPhoneOnlyScreen: View {
                 .scaleEffect(iphoneVisible ? 1 : 0.95)
                 .offset(y: iphoneVisible ? 0 : 8)
 
+            accuracyFootnote
+                .padding(.horizontal, 24)
+                .opacity(iphoneVisible ? 1 : 0)
+
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
@@ -2189,7 +2348,7 @@ struct AutoTrackPhoneOnlyScreen: View {
 
     // MARK: - Building blocks
 
-    private func strikedTile(title: String, icon: String) -> some View {
+    private func strikedTile(title: String, price: String, icon: String) -> some View {
         VStack(spacing: 8) {
             ZStack {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -2214,10 +2373,15 @@ struct AutoTrackPhoneOnlyScreen: View {
                 }
                 .frame(width: 70, height: 70)
             }
-            Text(title)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundColor(.white.opacity(0.4))
-                .strikethrough(strikeProgress >= 1, color: .white.opacity(0.4))
+            VStack(spacing: 1) {
+                Text(title)
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white.opacity(0.4))
+                    .strikethrough(strikeProgress >= 1, color: .white.opacity(0.4))
+                Text(price)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(Color(red: 1.0, green: 0.55, blue: 0.55).opacity(0.75))
+            }
         }
     }
 
@@ -2237,10 +2401,18 @@ struct AutoTrackPhoneOnlyScreen: View {
                 )
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Your iPhone")
-                    .font(.system(size: 16, weight: .heavy, design: .rounded))
-                    .foregroundColor(.white)
-                Text("Already in your pocket. Already tracking.")
+                HStack(spacing: 6) {
+                    Text("Your iPhone")
+                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("$0")
+                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .foregroundColor(accentTint)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(accentTint.opacity(0.16)))
+                }
+                Text("Wearable-grade tracking. No watch, no ring, no strap — it's already on your nightstand.")
                     .font(.system(size: 12))
                     .foregroundColor(.white.opacity(0.65))
                     .fixedSize(horizontal: false, vertical: true)
@@ -2256,6 +2428,23 @@ struct AutoTrackPhoneOnlyScreen: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(accentTint.opacity(0.35), lineWidth: 1)
         )
+    }
+
+    /// Honest credibility line — motion-based (actigraphy) sleep/wake scoring
+    /// genuinely agrees with lab studies at ~90%; keep this claim real, it's
+    /// the one place exaggeration would cost us trust instead of buying it.
+    private var accuracyFootnote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(MooniColor.success.opacity(0.85))
+                .padding(.top, 1)
+            Text("Motion-based sleep detection agrees with lab sleep/wake scoring ~90% of the time in published studies.")
+                .font(MooniFont.caption(11))
+                .foregroundColor(.white.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
+        }
     }
 
     // MARK: - Animation
@@ -2443,31 +2632,33 @@ struct SleepMetricsTeaseScreen: View {
     @State private var deep: CGFloat = 0
     @State private var rem: CGFloat = 0
     @State private var light: CGFloat = 0
+    @State private var statsIn: Bool = false
+    @State private var consistency: CGFloat = 0
+
+    private var accent: Color { Color(red: 0.62, green: 0.62, blue: 1.00) }
 
     var body: some View {
-        VStack(spacing: 22) {
-            Spacer(minLength: 6)
+        VStack(spacing: 20) {
+            Spacer(minLength: 4)
 
             VStack(spacing: 10) {
                 Text("Every night, scored.")
-                    .font(MooniFont.display(26))
+                    .font(MooniFont.display(28))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                Text("Sleep Score, Deep, REM and Light — tracked automatically.")
+                Text("9 signals, tracked automatically — this is the report waiting for you every morning.")
                     .font(MooniFont.body(14))
                     .foregroundColor(.white.opacity(0.65))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 16)
             }
 
-            scoreRing
+            reportCard
 
-            VStack(spacing: 10) {
-                stageRow(label: "Deep",  minutes: "1h 22m", progress: deep,  color: Color(red: 0.55, green: 0.46, blue: 0.95))
-                stageRow(label: "REM",   minutes: "1h 38m", progress: rem,   color: Color(red: 0.42, green: 0.66, blue: 0.96))
-                stageRow(label: "Light", minutes: "4h 12m", progress: light, color: Color.white.opacity(0.55))
-            }
-            .padding(.horizontal, 24)
+            Text("Phone on your nightstand. That's the whole setup.")
+                .font(MooniFont.caption(12))
+                .foregroundColor(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
 
             Spacer(minLength: 0)
         }
@@ -2475,27 +2666,143 @@ struct SleepMetricsTeaseScreen: View {
         .onAppear { animateIn() }
     }
 
+    // MARK: - Report card
+
+    /// One unified "morning report" mock — ring + stages side by side, a
+    /// stat strip, and a consistency meter. Reads as a screenshot of the
+    /// real product instead of a pile of repeating chips.
+    private var reportCard: some View {
+        VStack(spacing: 14) {
+            // Header
+            HStack {
+                HStack(spacing: 5) {
+                    Image(systemName: "doc.text.fill")
+                        .font(.system(size: 10, weight: .heavy))
+                    Text("TONIGHT'S REPORT")
+                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .tracking(1.4)
+                }
+                .foregroundColor(.white.opacity(0.5))
+                Spacer()
+                Text("EXCELLENT")
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .tracking(0.6)
+                    .foregroundColor(Color(red: 0.55, green: 0.85, blue: 0.78))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color(red: 0.55, green: 0.85, blue: 0.78).opacity(0.16)))
+            }
+
+            // Ring + stage bars side by side
+            HStack(spacing: 18) {
+                scoreRing
+                    .frame(width: 104, height: 104)
+
+                VStack(spacing: 11) {
+                    stageRow(label: "Deep",  minutes: "1h 22m", progress: deep,  color: Color(red: 0.55, green: 0.46, blue: 0.95))
+                    stageRow(label: "REM",   minutes: "1h 38m", progress: rem,   color: Color(red: 0.42, green: 0.66, blue: 0.96))
+                    stageRow(label: "Light", minutes: "4h 12m", progress: light, color: Color.white.opacity(0.55))
+                }
+            }
+
+            cardDivider
+
+            // Stat strip — four big values, hairline-divided, no boxes.
+            HStack(spacing: 0) {
+                stat(value: "14m",  label: "to sleep")
+                statDivider
+                stat(value: "1×",   label: "wake-ups")
+                statDivider
+                stat(value: "6m",   label: "snoring")
+                statDivider
+                stat(value: "7:04", label: "smart wake")
+            }
+            .opacity(statsIn ? 1 : 0)
+            .offset(y: statsIn ? 0 : 8)
+
+            cardDivider
+
+            // Consistency meter
+            HStack(spacing: 10) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundColor(accent)
+                Text("Consistency")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.7))
+                    .lineLimit(1)
+                    .fixedSize()
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.08))
+                        Capsule()
+                            .fill(accent)
+                            .frame(width: geo.size.width * consistency)
+                    }
+                }
+                .frame(height: 5)
+                Text("92%")
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+            }
+            .opacity(statsIn ? 1 : 0)
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+        .padding(.horizontal, 4)
+    }
+
+    private var cardDivider: some View {
+        Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1)
+    }
+
+    private var statDivider: some View {
+        Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1, height: 30)
+    }
+
+    private func stat(value: String, label: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 19, weight: .heavy, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(.white.opacity(0.5))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     private var scoreRing: some View {
         ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.10), lineWidth: 8)
+                .stroke(Color.white.opacity(0.10), lineWidth: 7)
             Circle()
                 .trim(from: 0, to: CGFloat(score) / 100)
-                .stroke(Color.white,
-                        style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                .stroke(accent,
+                        style: StrokeStyle(lineWidth: 7, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            VStack(spacing: 0) {
+            VStack(spacing: -1) {
                 Text("\(score)")
-                    .font(.system(size: 44, weight: .heavy, design: .rounded))
+                    .font(.system(size: 36, weight: .heavy, design: .rounded))
                     .foregroundColor(.white)
                     .contentTransition(.numericText())
-                Text("Sleep Score")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                Text("SCORE")
+                    .font(.system(size: 8, weight: .heavy, design: .rounded))
                     .tracking(1.4)
                     .foregroundColor(.white.opacity(0.55))
             }
         }
-        .frame(width: 140, height: 140)
     }
 
     private func stageRow(label: String, minutes: String, progress: CGFloat, color: Color) -> some View {
@@ -2532,6 +2839,14 @@ struct SleepMetricsTeaseScreen: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             withAnimation(.easeOut(duration: 1.1)) { light = 0.72 }
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+                statsIn = true
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+            withAnimation(.easeOut(duration: 0.9)) { consistency = 0.92 }
+        }
         Timer.scheduledTimer(withTimeInterval: 0.025, repeats: true) { t in
             DispatchQueue.main.async {
                 if score < 87 {
@@ -2565,51 +2880,169 @@ struct WidgetShowcaseScreen: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
                 Text(kind == .small
-                     ? "A glance is all it takes."
-                     : "Last night, your trend, your streak — at a tap.")
+                     ? "Your night's score is just there every morning — you never open the app, never press a button."
+                     : "Last night, your trend, your streak — already filled in while you slept.")
                     .font(MooniFont.body(14))
                     .foregroundColor(.white.opacity(0.65))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 16)
             }
 
-            ZStack {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.05),
-                                Color.white.opacity(0.01)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom)
-                    )
-                    .frame(width: kind == .small ? 240 : 358, height: 212)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 28, style: .continuous)
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                    )
+            homeScreenMock
 
-                widgetMock
-                    .scaleEffect(pulse ? 1.0 : 0.96)
-                    .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
-            }
+            benefitChips
 
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
         .onAppear {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.7)) {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.72)) {
                 pulse = true
             }
         }
     }
 
+    // MARK: - Home-screen mock
+
+    /// A believable miniature home screen — wallpaper, app-icon grid with
+    /// label bars, dock — with the REAL widget sitting in it. Sells "this is
+    /// what your phone will look like" instead of a widget floating in an
+    /// abstract grey placeholder.
+    private var homeScreenMock: some View {
+        VStack(spacing: 14) {
+            iconRow(startIndex: 0)
+            scaledWidget
+                .scaleEffect(pulse ? 1.0 : 0.94)
+                .shadow(color: .black.opacity(0.45), radius: 16, y: 8)
+            iconRow(startIndex: 4)
+            dock
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 18)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity)
+        .background(wallpaper)
+        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+        )
+    }
+
+    private var wallpaper: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.10, green: 0.09, blue: 0.24),
+                    Color(red: 0.16, green: 0.11, blue: 0.32),
+                    Color(red: 0.07, green: 0.06, blue: 0.18)
+                ],
+                startPoint: .top, endPoint: .bottom)
+            RadialGradient(
+                colors: [Color(red: 0.62, green: 0.62, blue: 1.00).opacity(0.22),
+                         .clear],
+                center: .topTrailing, startRadius: 0, endRadius: 240)
+        }
+    }
+
+    /// Muted, varied tints so the grid reads like real third-party apps
+    /// without competing with the widget.
+    private static let iconTints: [Color] = [
+        Color(red: 0.42, green: 0.40, blue: 0.78),
+        Color(red: 0.30, green: 0.48, blue: 0.66),
+        Color(red: 0.58, green: 0.38, blue: 0.62),
+        Color(red: 0.34, green: 0.54, blue: 0.52),
+        Color(red: 0.62, green: 0.46, blue: 0.36),
+        Color(red: 0.36, green: 0.42, blue: 0.70),
+        Color(red: 0.52, green: 0.34, blue: 0.50),
+        Color(red: 0.30, green: 0.56, blue: 0.64),
+        Color(red: 0.48, green: 0.44, blue: 0.34),
+        Color(red: 0.40, green: 0.36, blue: 0.66),
+        Color(red: 0.56, green: 0.42, blue: 0.58),
+        Color(red: 0.32, green: 0.50, blue: 0.58)
+    ]
+
+    private func fakeIcon(_ index: Int) -> some View {
+        let tint = Self.iconTints[index % Self.iconTints.count]
+        return VStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [tint.opacity(0.85), tint.opacity(0.55)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing)
+                )
+                .frame(width: 50, height: 50)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 0.6)
+                )
+            // Label bar — suggests the app name without inventing one.
+            Capsule()
+                .fill(Color.white.opacity(0.22))
+                .frame(width: 30, height: 4)
+        }
+    }
+
+    private func iconRow(startIndex: Int) -> some View {
+        HStack(spacing: 0) {
+            ForEach(0..<4, id: \.self) { i in
+                fakeIcon(startIndex + i)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var dock: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<4, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Self.iconTints[(i + 6) % Self.iconTints.count].opacity(0.8),
+                                     Self.iconTints[(i + 6) % Self.iconTints.count].opacity(0.5)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
+                    .frame(width: 46, height: 46)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.white.opacity(0.10))
+        )
+    }
+
+    private var benefitChips: some View {
+        HStack(spacing: 8) {
+            benefitChip(icon: "sunrise.fill",
+                        text: kind == .small ? "Filled in by sunrise" : "Updates while you sleep")
+            benefitChip(icon: "hand.tap.fill",
+                        text: kind == .small ? "No tap needed" : "Tap for the full report")
+        }
+    }
+
+    private func benefitChip(icon: String, text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Color(red: 0.62, green: 0.62, blue: 1.00))
+            Text(text)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundColor(.white.opacity(0.75))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Capsule().fill(Color.white.opacity(0.06)))
+        .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
+    }
+
     /// The REAL widget views (shared with the MooniSleepWidget target),
-    /// wrapped in the same background + corner chrome WidgetKit applies.
+    /// rendered at their true WidgetKit size, then scaled to fit the mock.
     /// Whatever ships on the home screen is exactly what's previewed here.
     @ViewBuilder
-    private var widgetMock: some View {
+    private var scaledWidget: some View {
         switch kind {
         case .small:
             widgetChrome(width: 158, height: 158) {
@@ -2619,6 +3052,8 @@ struct WidgetShowcaseScreen: View {
             widgetChrome(width: 329, height: 155) {
                 MediumSleepWidgetView(data: .sample)
             }
+            .scaleEffect(0.92)
+            .frame(width: 329 * 0.92, height: 155 * 0.92)
         }
     }
 
@@ -2734,3 +3169,305 @@ struct MotionAccessScreen: View {
     }
 }
 
+
+// MARK: - sleepScience — cinematic research-stat beats
+//
+// Two full-bleed "the stakes are real" moments placed after the frustration
+// questions: the user has just admitted how bad it is, and these screens
+// confirm their fear with real, citable research. Emotional framing is
+// maximal; every fact and attribution is real (no invented quotes — one
+// screenshot of a fabricated Harvard claim kills more trust than ten of
+// these screens build).
+
+/// Shared scaffolding for the science beats: eyebrow → huge stat → headline
+/// → source row → quote card, staggered in.
+private struct ScienceStatLayout: View {
+    let eyebrow: String
+    let stat: String
+    let statTint: Color
+    let headline: String
+    let source: String
+    let quote: String
+    let quoteAuthor: String
+
+    @State private var stage: Int = 0
+
+    var body: some View {
+        VStack(spacing: 22) {
+            Spacer(minLength: 8)
+
+            HStack(spacing: 6) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 11, weight: .heavy))
+                Text(eyebrow.uppercased())
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .tracking(2)
+            }
+            .foregroundColor(.white.opacity(0.55))
+            .opacity(stage >= 1 ? 1 : 0)
+
+            Text(stat)
+                .font(.system(size: 88, weight: .black, design: .rounded))
+                .foregroundStyle(
+                    LinearGradient(colors: [statTint, statTint.opacity(0.55)],
+                                   startPoint: .top, endPoint: .bottom)
+                )
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .opacity(stage >= 2 ? 1 : 0)
+                .scaleEffect(stage >= 2 ? 1 : 0.8)
+
+            Text(headline)
+                .font(MooniFont.display(21))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .padding(.horizontal, 18)
+                .fixedSize(horizontal: false, vertical: true)
+                .opacity(stage >= 3 ? 1 : 0)
+                .offset(y: stage >= 3 ? 0 : 10)
+
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(MooniColor.success.opacity(0.85))
+                Text(source)
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(.white.opacity(0.55))
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 20)
+            .opacity(stage >= 3 ? 1 : 0)
+
+            // Quote card
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: "quote.opening")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundColor(statTint.opacity(0.8))
+                Text(quote)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .italic()
+                    .foregroundColor(.white)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(quoteAuthor)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white.opacity(0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(statTint.opacity(0.25), lineWidth: 1)
+            )
+            .padding(.horizontal, 8)
+            .opacity(stage >= 4 ? 1 : 0)
+            .offset(y: stage >= 4 ? 0 : 12)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .onAppear { play() }
+    }
+
+    private func play() {
+        for s in 1...4 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15 + Double(s - 1) * 0.45) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    stage = s
+                }
+                if s == 2 { Haptics.warning() }
+            }
+        }
+    }
+}
+
+/// Beat 1 — what short sleep does to the body (immune system).
+struct SleepScienceBodyScreen: View {
+    var body: some View {
+        ScienceStatLayout(
+            eyebrow: "What research found",
+            stat: "−70%",
+            statTint: Color(red: 1.00, green: 0.45, blue: 0.50),
+            headline: "A single night of 4–5 hours of sleep can cut your cancer-fighting immune cells by 70%.",
+            source: "Natural killer cell research · Dr. Matthew Walker, UC Berkeley",
+            quote: "The shorter your sleep, the shorter your life.",
+            quoteAuthor: "— Dr. Matthew Walker, neuroscientist · \u{201C}Why We Sleep\u{201D}"
+        )
+    }
+}
+
+/// Beat 2 — what short sleep does to the mind, plus the longevity angle.
+struct SleepScienceMindScreen: View {
+    var body: some View {
+        ScienceStatLayout(
+            eyebrow: "Right now, today",
+            stat: "Legally drunk",
+            statTint: Color(red: 1.00, green: 0.66, blue: 0.40),
+            headline: "Running on under 6 hours of sleep impairs your reaction time about as much as being over the legal alcohol limit.",
+            source: "Drowsy-driving research · AAA Foundation for Traffic Safety",
+            quote: "I treat sleep as a professional athletic endeavor.",
+            quoteAuthor: "— Bryan Johnson, founder of Don't Die · spends $2M/yr on longevity, ranks sleep #1"
+        )
+    }
+}
+
+// MARK: - viceSpend — "where does your money go?"
+
+/// Asked 2 steps before the paywall: the user picks something they already
+/// pay for, then watches it get compared against $0.77/week. By the time
+/// the price appears on the paywall, it's pre-framed as pocket change.
+struct ViceSpendScreen: View {
+    @Binding var selection: OnboardingProfile.Vice?
+
+    @State private var barsIn: Bool = false
+
+    private var accent: Color { Color(red: 0.62, green: 0.62, blue: 1.00) }
+    private var danger: Color { Color(red: 1.00, green: 0.50, blue: 0.55) }
+
+    private let sleepOwlWeekly: Double = 0.77
+
+    var body: some View {
+        VStack(spacing: 0) {
+            QuestionHeader(
+                title: "Where does your money go?",
+                subtitle: "Be honest — pick the one you actually spend on.")
+            Spacer(minLength: 20).frame(maxHeight: 32)
+
+            // 2-column vice grid
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
+                                GridItem(.flexible(), spacing: 10)],
+                      spacing: 10) {
+                ForEach(OnboardingProfile.Vice.allCases) { vice in
+                    viceCard(vice)
+                }
+            }
+
+            if let vice = selection {
+                comparison(for: vice)
+                    .padding(.top, 18)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
+            Spacer(minLength: 12)
+        }
+        .padding(.top, 14)
+        .onboardingEdge()
+        .animation(.spring(response: 0.45, dampingFraction: 0.82), value: selection)
+    }
+
+    private func viceCard(_ vice: OnboardingProfile.Vice) -> some View {
+        let isSelected = selection == vice
+        return Button {
+            Haptics.tap()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                selection = vice
+                barsIn = false
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                withAnimation(.easeOut(duration: 0.7)) { barsIn = true }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Text(vice.emoji)
+                    .font(.system(size: 22))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(vice.label)
+                        .font(.system(size: 13.5, weight: .heavy, design: .rounded))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    Text(vice.costLabel)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 11)
+            .background(Color.white.opacity(isSelected ? 0.12 : 0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isSelected ? accent : Color.white.opacity(0.10),
+                            lineWidth: isSelected ? 1.5 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Comparison beat
+
+    private func comparison(for vice: OnboardingProfile.Vice) -> some View {
+        let weeks = max(1, Int((vice.weeklyCost / sleepOwlWeekly).rounded()))
+        return VStack(spacing: 14) {
+            // Bars
+            VStack(spacing: 12) {
+                spendBar(emoji: vice.emoji,
+                         label: vice.label,
+                         amount: vice.weeklyCost,
+                         note: vice.sleepHarm,
+                         fraction: 1.0,
+                         tint: danger)
+                spendBar(emoji: "🦉",
+                         label: "SleepOwl",
+                         amount: sleepOwlWeekly,
+                         note: "repairs your sleep every single night",
+                         fraction: max(0.045, sleepOwlWeekly / vice.weeklyCost),
+                         tint: accent)
+            }
+
+            // Punchline
+            Text("One week of \(vice.label.lowercased()) pays for \(weeks) weeks of better sleep.")
+                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+    }
+
+    private func spendBar(emoji: String, label: String, amount: Double,
+                          note: String, fraction: Double, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Text(emoji).font(.system(size: 13))
+                Text(label)
+                    .font(.system(size: 12.5, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                Spacer(minLength: 4)
+                Text(amount < 1
+                     ? String(format: "$%.2f/wk", amount)
+                     : String(format: "$%.0f/wk", amount))
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundColor(tint)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.07))
+                    Capsule()
+                        .fill(tint)
+                        .frame(width: geo.size.width * (barsIn ? fraction : 0))
+                }
+            }
+            .frame(height: 8)
+            Text(note)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundColor(.white.opacity(0.5))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}

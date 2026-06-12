@@ -80,16 +80,16 @@ struct QuestionHeader: View {
     var subtitle: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(MooniFont.display(27))
+                .font(MooniFont.display(30))
                 .foregroundColor(MooniColor.textPrimary)
                 .multilineTextAlignment(.leading)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
             if let subtitle {
                 Text(subtitle)
-                    .font(MooniFont.body(14))
+                    .font(MooniFont.body(15))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.leading)
                     .lineSpacing(1)

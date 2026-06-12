@@ -65,6 +65,11 @@ struct OnboardingProfile: Codable, Equatable {
     var triedBefore: [TriedBefore] = []
     var windDownPrefs: [WindDownPref] = []
 
+    /// What the user admits to spending money on (picked right before the
+    /// paywall). Drives the "$X/week on this vs $0.77/week on sleep"
+    /// comparison there and lets the paywall reference it later.
+    var vice: Vice? = nil
+
     // MARK: - Derived presentation values
 
     /// Personalized starting "sleep score" we show on the analysis screen.
@@ -427,6 +432,64 @@ extension OnboardingProfile {
             case .cutCaffeine: return "cup.and.saucer"
             case .whiteNoise:  return "waveform"
             case .nothing:     return "hand.raised.slash"
+            }
+        }
+    }
+
+    enum Vice: String, Codable, CaseIterable, Identifiable {
+        case coffee, smoking, energyDrinks, gaming, eatingOut, streaming
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .coffee:       return "Coffee"
+            case .smoking:      return "Smoking / vaping"
+            case .energyDrinks: return "Energy drinks"
+            case .gaming:       return "Gaming"
+            case .eatingOut:    return "Eating out"
+            case .streaming:    return "Subscriptions"
+            }
+        }
+        var emoji: String {
+            switch self {
+            case .coffee:       return "☕️"
+            case .smoking:      return "🚬"
+            case .energyDrinks: return "⚡️"
+            case .gaming:       return "🎮"
+            case .eatingOut:    return "🍔"
+            case .streaming:    return "📺"
+            }
+        }
+        /// What they'd casually estimate it costs them.
+        var costLabel: String {
+            switch self {
+            case .coffee:       return "$5/day"
+            case .smoking:      return "$12/day"
+            case .energyDrinks: return "$4/day"
+            case .gaming:       return "$30/mo"
+            case .eatingOut:    return "$15/day"
+            case .streaming:    return "$25/mo"
+            }
+        }
+        /// Weekly spend used for the comparison bars.
+        var weeklyCost: Double {
+            switch self {
+            case .coffee:       return 35
+            case .smoking:      return 84
+            case .energyDrinks: return 28
+            case .gaming:       return 7
+            case .eatingOut:    return 105
+            case .streaming:    return 5.8
+            }
+        }
+        /// How the habit fights their sleep — shown next to the red bar.
+        var sleepHarm: String {
+            switch self {
+            case .coffee:       return "caffeine lingers 6+ hours and cuts deep sleep"
+            case .smoking:      return "nicotine is a stimulant — lighter, shorter sleep"
+            case .energyDrinks: return "spikes heart rate right into your wind-down"
+            case .gaming:       return "blue light + adrenaline push bedtime later"
+            case .eatingOut:    return "late heavy meals fragment your night"
+            case .streaming:    return "\u{201C}one more episode\u{201D} steals your bedtime"
             }
         }
     }

@@ -545,7 +545,7 @@ struct PaywallView: View {
             .font(.system(size: 9, weight: .heavy, design: .rounded))
             .tracking(0.4)
             .foregroundColor(.white)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(
                 Capsule().fill(LinearGradient(
@@ -756,7 +756,7 @@ struct PaywallView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 2)
         }
-        .padding(.bottom, 12)
+        .padding(.bottom, 4)
     }
 
     // MARK: - CTA

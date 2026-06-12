@@ -78,74 +78,58 @@ struct OnboardingView: View {
     @State private var authErrorMessage: String? = nil
 
     enum Step: Int, CaseIterable {
+        // The flow runs in four deliberate phases so the user always knows
+        // why they're being shown something:
+        //   1. GETTING TO KNOW YOU   — light identity questions
+        //   2. YOUR FRUSTRATIONS     — the pain, in their own words
+        //   3. WE UNDERSTAND         — research that validates the pain
+        //   4. THE SOLUTION          — product story, plan, commitment
+        // Story beats only ever appear at phase boundaries — never sandwiched
+        // randomly between question batches.
+
         // ─ Hook ───────────────────────────────────────────────────────────
         case welcome
 
-        // The sequence alternates short question batches (3-4 max) with a
-        // visual/story beat so the quiz never feels like an endless form.
-
-        // ─ Warmup questions (3) ───────────────────────────────────────────
+        // ─ PHASE 1 · Getting to know you ──────────────────────────────────
         case ageQuestion
         case genderQuestion
         case typicalSleepHours
-
-        // ─ Pet beat — meet & name the companion ───────────────────────────
-        case namePet
-
-        // ─ Identity questions, part 1 (3) ─────────────────────────────────
+        case namePet            // pet beat keeps the warmup light
         case wakeFeeling
-        case racingThoughts
         case phoneBeforeBed
-
-        // ─ Visual beat — manual journal vs the SleepOwl report ────────────
-        case trackingCompare
-
-        // ─ Identity questions, part 2 (4) ─────────────────────────────────
         case caffeineCutoff
+
+        // ─ PHASE 2 · Your frustrations ────────────────────────────────────
+        case racingThoughts
         case stressLevel
         case struggleDuration
         case biggestProblem
+        case personalizeBlockers
+        case personalizeTried
 
-        // ─ Visual beat — your phone already tracks it ─────────────────────
-        case targetReachable
+        // ─ PHASE 3 · We understand (the stakes are real) ──────────────────
+        case sleepScienceBody   // −70% immune cells (Walker)
+        case sleepScienceMind   // legally-drunk impairment + Bryan Johnson
+        case lifeTimeline       // …and here's the 4-week turnaround (hope)
 
-        // ─ Schedule + goal commitment ─────────────────────────────────────
-        // Goal is split across two screens so each row can be full-sized +
-        // readable instead of cramming all 6 options into a single screen.
+        // ─ PHASE 4 · The solution ─────────────────────────────────────────
+        case trackingCompare    // scribbled journal → automatic report
+        case sleepMetricsTease  // the morning report, scored
         case schedule
         case sleepGoal
         case sleepGoalMore
-
-        // ─ Visual payoff — the 4-week turnaround for the goal they just set
-        case lifeTimeline
-
-        // ─ Personalize questions, part 1 (2) ──────────────────────────────
+        case targetReachable    // now references the goal they just picked
         case personalizeGoals
-        case personalizeBlockers
-
-        // ─ Visual beat — what we score every night ────────────────────────
-        case sleepMetricsTease
-
-        // ─ Personalize questions, part 2 (2) ──────────────────────────────
-        case personalizeTried
         case personalizeWindDown
 
-        // ─ In-app "Allow notifications" mock that triggers the real prompt ─
+        // ─ Permissions, rating, account ───────────────────────────────────
         case notifAllowMock
-
-        // ─ Rating (optional — "Maybe later"/Skip always advances) ─────────
         case ratingPledge
-
-        // ─ Sign in ────────────────────────────────────────────────────────
         case signIn
-
-        // ─ "You're ready" emotional beat ──────────────────────────────────
         case commitReady
 
-        // ─ 12-second layered loading ──────────────────────────────────────
+        // ─ Plan computing + reveal ────────────────────────────────────────
         case planComputing
-
-        // ─ Personalized plan reveal — previews real home analytics UI ─────
         case planReveal
 
         // ─ Widget showcase (Small + Medium) ───────────────────────────────
@@ -162,6 +146,9 @@ struct OnboardingView: View {
 
         // ─ Signature pledge ceremony ──────────────────────────────────────
         case signaturePledge
+
+        // ─ Money framing right before the price appears ───────────────────
+        case viceSpend
 
         // ─ Paywall (terminal) ─────────────────────────────────────────────
         case prePaywall
@@ -353,10 +340,17 @@ struct OnboardingView: View {
     }
 
     private var topBarContent: some View {
-        HStack(spacing: 12) {
-            backChevron
+        ZStack {
+            // The bar always sits dead-center with identical insets on both
+            // sides, so it reads as symmetric whether or not the back chevron
+            // or Skip link happen to be visible on a given screen.
             linearProgressBar
-            skipButton
+                .padding(.horizontal, 44)
+            HStack {
+                backChevron
+                Spacer()
+                skipButton
+            }
         }
         .frame(height: 28)
     }
@@ -370,6 +364,8 @@ struct OnboardingView: View {
          .trackingCompare,
          .targetReachable,
          .sleepMetricsTease,
+         .sleepScienceBody,
+         .sleepScienceMind,
          .ratingPledge,
          .commitReady,
          .widgetSmall,
@@ -377,7 +373,8 @@ struct OnboardingView: View {
          .autoTrackStoneAge,
          .autoTrackHow,
          .autoTrackAccuracy,
-         .signaturePledge]
+         .signaturePledge,
+         .viceSpend]
     }
 
     @ViewBuilder
@@ -446,9 +443,11 @@ struct OnboardingView: View {
 
     /// Welcome and sign-in are presented as fullscreen-ish moments without the
     /// onboarding chrome (no progress bar, no back button) so the user feels
-    /// like they're at a real entry/exit gate rather than mid-quiz.
+    /// like they're at a real entry/exit gate rather than mid-quiz. Loading /
+    /// computing screens hide the chrome too — a progress bar with no buttons
+    /// around it reads as a broken header.
     private var hidesProgressChrome: Bool {
-        step == .welcome
+        step == .welcome || isLoadingScreen
     }
 
     /// Question screens (a prompt + answer controls) pin to the TOP of the
@@ -461,7 +460,7 @@ struct OnboardingView: View {
          .stressLevel, .struggleDuration, .biggestProblem, .schedule,
          .sleepGoal, .sleepGoalMore,
          .personalizeGoals, .personalizeBlockers, .personalizeTried,
-         .personalizeWindDown]
+         .personalizeWindDown, .viceSpend]
     }
 
     private var contentVerticalAlignment: Alignment {
@@ -541,6 +540,9 @@ struct OnboardingView: View {
         case .autoTrackAccuracy:    AutoTrackPhoneOnlyScreen()
         case .motionAccess:         MotionAccessScreen(petName: petName)
         case .signaturePledge:      SignaturePledgeScreen(petName: petName)
+        case .sleepScienceBody:     SleepScienceBodyScreen()
+        case .sleepScienceMind:     SleepScienceMindScreen()
+        case .viceSpend:            ViceSpendScreen(selection: $profile.vice)
         case .prePaywall:           EmptyView()    // rendered full-screen above; never reaches here
         }
     }
@@ -713,6 +715,11 @@ struct OnboardingView: View {
         case .autoTrackHow:        return "How accurate?"
         case .autoTrackAccuracy:   return "Got it"
         case .signaturePledge:     return "Make it official"
+        case .sleepScienceBody:    return "I had no idea"
+        case .sleepScienceMind:    return "Fix my sleep"
+        case .viceSpend:           return profile.vice == nil
+            ? "Pick one to continue"
+            : "Worth it"
         default:                   return "Continue"
         }
     }
@@ -736,6 +743,7 @@ struct OnboardingView: View {
         case .caffeineCutoff:      return profile.caffeineCutoff != nil
         case .racingThoughts:      return profile.racingThoughtsAtNight != nil
         case .wakeFeeling:         return profile.wakeFeeling != nil
+        case .viceSpend:           return profile.vice != nil
         default:                   return true
         }
     }
@@ -1108,16 +1116,16 @@ private struct QuestionScaffold<Content: View>: View {
 
     var body: some View {
         // Question screens read top-left: the title lands a small, constant
-        // distance under the progress bar, and the answer controls float in
-        // the band between the title and the footer (the two Spacers split
-        // the leftover space). This kills both old complaints at once: no
-        // big dead gap pushing the title down, and no giant empty hole
-        // between short answer sets and the Continue button. The parent's
-        // `.frame(minHeight: geo.size.height)` is what lets these Spacers
-        // actually stretch; content taller than the band still scrolls.
+        // distance under the progress bar, and the answers start right after
+        // it — the top gap is CAPPED so the question and its answers always
+        // read as one connected block instead of drifting apart on tall
+        // screens. Leftover space settles below the answers (above the CTA),
+        // split 2:1 so the block sits slightly high rather than centered.
+        // The parent's `.frame(minHeight: geo.size.height)` is what lets the
+        // Spacers stretch; content taller than the band still scrolls.
         VStack(spacing: 0) {
             QuestionHeader(title: title, subtitle: subtitle)
-            Spacer(minLength: 26)
+            Spacer(minLength: 20).frame(maxHeight: 32)
             content()
             Spacer(minLength: 12)
         }
@@ -1192,40 +1200,41 @@ private struct OptionRow<T: Hashable>: View {
         } label: {
             HStack(spacing: 14) {
                 if let emoji {
-                    EmojiIcon(emoji: emoji, size: 20,
+                    EmojiIcon(emoji: emoji, size: 22,
                               tint: isSelected ? MooniColor.accent : MooniColor.accentSoft)
-                        .frame(width: 38, height: 38)
+                        .frame(width: 44, height: 44)
                         .background((isSelected ? MooniColor.accent : MooniColor.accentSoft).opacity(0.16))
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 19, weight: .semibold))
                         .foregroundColor(isSelected ? MooniColor.accent : MooniColor.accentSoft)
-                        .frame(width: 38, height: 38)
+                        .frame(width: 44, height: 44)
                         .background((isSelected ? MooniColor.accent : MooniColor.accentSoft).opacity(0.16))
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(MooniFont.title(15))
+                        .font(MooniFont.title(16))
                         .foregroundColor(MooniColor.textPrimary)
                         .multilineTextAlignment(.leading)
                     if let subtitle {
                         Text(subtitle)
-                            .font(MooniFont.caption(12))
+                            .font(MooniFont.caption(13))
                             .foregroundColor(MooniColor.textSecondary)
                     }
                 }
                 Spacer()
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundColor(isSelected ? MooniColor.accent : MooniColor.textMuted)
-                    .font(.system(size: 20))
+                    .font(.system(size: 22))
             }
-            .padding(14)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 15)
             .background(Color.white.opacity(isSelected ? 0.13 : 0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.10),
                             lineWidth: isSelected ? 1.5 : 1)
             )
@@ -1883,20 +1892,11 @@ private struct GoalScreen: View {
     }
 
     var body: some View {
-        VStack(spacing: 22) {
-            VStack(spacing: 10) {
-                Text(title)
-                    .font(MooniFont.display(24))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(2)
-                Text(subtitle)
-                    .font(MooniFont.body(14))
-                    .foregroundColor(.white.opacity(0.6))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, 12)
+        // Same rhythm as QuestionScaffold / MultiSelectScreen: left-aligned
+        // header right under the bar, capped gap, answers as one block.
+        VStack(spacing: 0) {
+            QuestionHeader(title: title, subtitle: subtitle)
+            Spacer(minLength: 20).frame(maxHeight: 32)
 
             VStack(spacing: 10) {
                 ForEach(pageGoals) { goal in
@@ -1919,9 +1919,12 @@ private struct GoalScreen: View {
                     .padding(.vertical, 6)
                 }
                 .buttonStyle(.plain)
+                .padding(.top, 14)
             }
+            Spacer(minLength: 12)
         }
-        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .onboardingEdge()
     }
 
     private func goalRow(goal: SleepGoal) -> some View {
@@ -1932,11 +1935,11 @@ private struct GoalScreen: View {
             let isSelected = selection == goal
             HStack(spacing: 14) {
                 Image(systemName: goal.icon)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 19, weight: .semibold))
                     .foregroundColor(isSelected ? .black : .white)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
                     .background(isSelected ? Color.white : Color.white.opacity(0.10))
-                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 Text(goal.title)
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .foregroundColor(.white)
@@ -1944,15 +1947,15 @@ private struct GoalScreen: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 22, weight: .semibold))
                     .foregroundColor(isSelected ? .white : .white.opacity(0.25))
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.vertical, 15)
             .background(Color.white.opacity(isSelected ? 0.10 : 0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(Color.white.opacity(isSelected ? 0.5 : 0.10),
                             lineWidth: 1)
             )
@@ -1974,8 +1977,12 @@ private struct MultiSelectScreen<T: Hashable>: View {
     @Binding var selection: Set<T>
 
     var body: some View {
-        VStack(spacing: 18) {
+        // Mirrors QuestionScaffold's rhythm exactly (same top padding, same
+        // capped title→answers gap) so multi-select steps don't sit lower
+        // than the single-select ones.
+        VStack(spacing: 0) {
             QuestionHeader(title: title, subtitle: subtitle)
+            Spacer(minLength: 20).frame(maxHeight: 32)
 
             VStack(spacing: 10) {
                 ForEach(Array(options.enumerated()), id: \.offset) { _, opt in
@@ -1990,11 +1997,11 @@ private struct MultiSelectScreen<T: Hashable>: View {
                     } label: {
                         HStack(spacing: 14) {
                             Image(systemName: icon)
-                                .font(.system(size: 18, weight: .semibold))
+                                .font(.system(size: 19, weight: .semibold))
                                 .foregroundColor(isSelected ? .black : .white)
-                                .frame(width: 40, height: 40)
+                                .frame(width: 44, height: 44)
                                 .background(isSelected ? Color.white : Color.white.opacity(0.10))
-                                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             Text(label)
                                 .font(.system(size: 17, weight: .semibold, design: .rounded))
                                 .foregroundColor(.white)
@@ -2002,15 +2009,15 @@ private struct MultiSelectScreen<T: Hashable>: View {
                                 .fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 0)
                             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 20, weight: .semibold))
+                                .font(.system(size: 22, weight: .semibold))
                                 .foregroundColor(isSelected ? .white : .white.opacity(0.25))
                         }
                         .padding(.horizontal, 14)
-                        .padding(.vertical, 14)
+                        .padding(.vertical, 15)
                         .background(Color.white.opacity(isSelected ? 0.10 : 0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
                                 .stroke(Color.white.opacity(isSelected ? 0.5 : 0.10),
                                         lineWidth: 1)
                         )
@@ -2018,9 +2025,10 @@ private struct MultiSelectScreen<T: Hashable>: View {
                     .buttonStyle(.plain)
                 }
             }
+            Spacer(minLength: 12)
         }
-        .padding(.top, 44)
-        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .onboardingEdge()
     }
 }
 

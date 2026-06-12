@@ -64,7 +64,6 @@
 				FriendsSleepWidget.swift,
 				FriendsSleepWidgetView.swift,
 				Info.plist,
-				MooniMascotView.swift,
 				MooniSleepWidget.swift,
 				MooniSleepWidgetBundle.swift,
 				SleepScoreRing.swift,
