@@ -11,12 +11,15 @@ struct ProfileView: View {
     @StateObject private var healthKit = HealthKitManager.shared
     @StateObject private var notifications = NotificationManager.shared
     @StateObject private var streak = StreakManager.shared
+    @ObservedObject private var developerMode = DeveloperMode.shared
 
     @State private var showDeleteConfirm = false
     @State private var isDeleting = false
     @State private var deleteError: String?
     @State private var showBadges = false
     @State private var showSleepStoryPreview = false
+    @State private var showSleepGoalEditor = false
+    @State private var showDeveloperMenu = false
 
     @AppStorage(Haptics.hapticsKey) private var hapticsOn = true
     @AppStorage(Haptics.soundKey) private var soundOn = true
@@ -38,6 +41,9 @@ struct ProfileView: View {
                         progressCard
                         unlocksCard
                         settingsCard
+                        if developerMode.isUnlocked {
+                            developerCard
+                        }
                         accountCard
 
                         if !subscriptionManager.isPro {
@@ -57,17 +63,72 @@ struct ProfileView: View {
                 BadgesView()
                     .environmentObject(appState)
             }
+            .sheet(isPresented: $showSleepGoalEditor) {
+                SleepGoalEditorSheet(
+                    initialBedtime: appState.targetBedtime,
+                    initialWakeTime: appState.targetWakeTime,
+                    initialGoal: appState.goalHours
+                ) { bedtime, wakeTime, goal in
+                    appState.targetBedtime = bedtime
+                    appState.targetWakeTime = wakeTime
+                    appState.goalHours = goal
+                    // Re-align the bedtime/wake notification safety net to the
+                    // new schedule so reminders and probes fire at the right
+                    // times tonight, not the old ones.
+                    NotificationManager.shared.reconcileSafetyNetNotifications(
+                        petName: appState.pet.name,
+                        bedtime: bedtime,
+                        wakeTime: wakeTime
+                    )
+                }
+                .presentationDetents([.medium, .large])
+            }
             .fullScreenCover(isPresented: $showSleepStoryPreview) {
                 SleepStoryView(
                     context: previewStoryContext(),
                     onFinished: { showSleepStoryPreview = false }
                 )
             }
+            .sheet(isPresented: $showDeveloperMenu) {
+                DeveloperMenuView()
+                    .environmentObject(appState)
+                    .environmentObject(subscriptionManager)
+            }
             .task {
                 healthKit.refreshAuthState()
                 await notifications.refreshAuthState()
             }
         }
+    }
+
+    /// Hidden developer tools — only visible once the paywall owl gesture has
+    /// unlocked it (see DeveloperMode / PaywallView).
+    private var developerCard: some View {
+        Button { showDeveloperMenu = true } label: {
+            MooniCard {
+                HStack(spacing: 14) {
+                    Image(systemName: "hammer.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(MooniColor.accent)
+                        .frame(width: 36, height: 36)
+                        .background(MooniColor.accent.opacity(0.16))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Developer menu")
+                            .font(MooniFont.title(15))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Text("Simulate nights · jump into any screen")
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.textSecondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(MooniColor.textMuted)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private var lunaSummaryCard: some View {
@@ -228,9 +289,25 @@ struct ProfileView: View {
     private var sleepGoalCard: some View {
         MooniCard {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Sleep goal")
-                    .font(MooniFont.title(20))
-                    .foregroundColor(MooniColor.textPrimary)
+                HStack {
+                    Text("Sleep goal")
+                        .font(MooniFont.title(20))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Spacer()
+                    Button {
+                        Haptics.tap()
+                        showSleepGoalEditor = true
+                    } label: {
+                        Text("Edit")
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.accent)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(MooniColor.accent.opacity(0.14))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 MooniInfoRow(icon: "moon.zzz.fill", title: "Goal", value: String(format: "%.1fh", appState.goalHours))
                 MooniInfoRow(icon: "bed.double.fill", title: "Bedtime", value: appState.targetBedtime.hourMinuteString)
@@ -327,12 +404,6 @@ struct ProfileView: View {
 
                 Divider().background(Color.white.opacity(0.08))
 
-                settingsButton(icon: "sparkles", title: "Subscription", value: subscriptionManager.isPro ? "Premium active" : "Free plan") {
-                    showPaywall = true
-                }
-
-                Divider().background(Color.white.opacity(0.08))
-
                 feedbackToggleRow(icon: "hand.tap.fill",
                                   title: "Haptics",
                                   isOn: $hapticsOn)
@@ -398,14 +469,6 @@ struct ProfileView: View {
 
                 Divider().background(Color.white.opacity(0.08))
 
-                Button { Task { await manageSubscriptionInSettings() } } label: {
-                    accountRow(icon: "creditcard.fill", color: MooniColor.warning,
-                               title: "Manage subscription", trailing: "chevron.right")
-                }
-                .buttonStyle(.plain)
-
-                Divider().background(Color.white.opacity(0.08))
-
                 Button { showDeleteConfirm = true } label: {
                     accountRow(icon: "trash.fill", color: MooniColor.danger,
                                title: "Delete account & data",
@@ -450,13 +513,6 @@ struct ProfileView: View {
                 .foregroundColor(MooniColor.textMuted)
         }
         .padding(.vertical, 4)
-    }
-
-    @MainActor
-    private func manageSubscriptionInSettings() async {
-        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-            await UIApplication.shared.open(url)
-        }
     }
 
     @MainActor
@@ -611,4 +667,122 @@ struct ProfileView: View {
     ProfileView(showPaywall: .constant(false))
         .environmentObject(AppState.preview)
         .environmentObject(SubscriptionManager.shared)
+}
+
+// MARK: - Ideal sleep time editor
+
+/// Lets the user change their target bedtime, wake time, and nightly goal
+/// after onboarding. Seeded from the current values; on Save it hands the new
+/// values back to ProfileView, which writes them to AppState and re-aligns the
+/// notification safety net.
+private struct SleepGoalEditorSheet: View {
+    let initialBedtime: Date
+    let initialWakeTime: Date
+    let initialGoal: Double
+    let onSave: (Date, Date, Double) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var bedtime: Date
+    @State private var wakeTime: Date
+    @State private var goal: Double
+
+    init(initialBedtime: Date, initialWakeTime: Date, initialGoal: Double,
+         onSave: @escaping (Date, Date, Double) -> Void) {
+        self.initialBedtime = initialBedtime
+        self.initialWakeTime = initialWakeTime
+        self.initialGoal = initialGoal
+        self.onSave = onSave
+        _bedtime = State(initialValue: initialBedtime)
+        _wakeTime = State(initialValue: initialWakeTime)
+        _goal = State(initialValue: initialGoal)
+    }
+
+    var body: some View {
+        ZStack {
+            MooniGradient.night.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Text("Ideal sleep time")
+                            .font(MooniFont.title(22))
+                            .foregroundColor(MooniColor.textPrimary)
+                        Spacer()
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(MooniColor.textSecondary)
+                                .frame(width: 30, height: 30)
+                                .background(Color.white.opacity(0.10))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.bottom, 2)
+
+                    timeRow(title: "Bedtime", systemImage: "bed.double.fill",
+                            tint: MooniColor.accent, selection: $bedtime)
+                    timeRow(title: "Wake time", systemImage: "sunrise.fill",
+                            tint: MooniColor.warning, selection: $wakeTime)
+                    goalRow
+
+                    Text("\(goalHelperLead) Your reminders and sleep tracking adjust to this schedule.")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    PrimaryButton(title: "Save", variant: .white) {
+                        Haptics.tap()
+                        onSave(bedtime, wakeTime, goal)
+                        dismiss()
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(20)
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    /// Tiny human-readable lead-in for the helper line (kept out of the view
+    /// builder for clarity).
+    private var goalHelperLead: String {
+        String(format: "Aiming for %.1f hours a night.", goal)
+    }
+
+    private func timeRow(title: String, systemImage: String, tint: Color,
+                         selection: Binding<Date>) -> some View {
+        MooniCard {
+            HStack {
+                Label {
+                    Text(title).font(MooniFont.body(15)).foregroundColor(MooniColor.textPrimary)
+                } icon: {
+                    Image(systemName: systemImage).foregroundColor(tint)
+                }
+                Spacer()
+                DatePicker("", selection: selection, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .tint(MooniColor.accent)
+            }
+        }
+    }
+
+    private var goalRow: some View {
+        MooniCard {
+            Stepper(value: $goal, in: 4...12, step: 0.5) {
+                HStack {
+                    Label {
+                        Text("Goal").font(MooniFont.body(15)).foregroundColor(MooniColor.textPrimary)
+                    } icon: {
+                        Image(systemName: "moon.zzz.fill").foregroundColor(MooniColor.accentSoft)
+                    }
+                    Spacer()
+                    Text(String(format: "%.1fh", goal))
+                        .font(MooniFont.title(16))
+                        .foregroundColor(MooniColor.textPrimary)
+                }
+            }
+            .tint(MooniColor.accent)
+        }
+    }
 }

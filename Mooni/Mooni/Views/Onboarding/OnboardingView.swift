@@ -650,25 +650,16 @@ struct OnboardingView: View {
                 // action, and the OnboardingView listener advances.
                 EmptyView()
             case .motionAccess:
-                // Triggers the real Motion & Fitness system prompt, then
-                // advances regardless of the user's choice — the sleep brain
-                // degrades gracefully without motion data. "Not now" keeps
-                // App Review happy (permission never gates progress).
-                VStack(spacing: 10) {
-                    PrimaryButton(title: "Enable sleep detection", variant: .white) {
-                        Task { @MainActor in
-                            _ = await MotionSleepAnalyzer.shared.requestAccess()
-                            advance()
-                        }
-                    }
-                    Button {
+                // Single CTA that triggers the real Motion & Fitness system
+                // prompt, then advances regardless of the user's choice — the
+                // sleep brain degrades gracefully without motion data, and
+                // declining happens in the system dialog ("Don't Allow"), so
+                // progress is never gated and App Review stays happy. The soft
+                // "Not now" skip was removed so the ask can't be bypassed.
+                PrimaryButton(title: "Enable sleep detection", variant: .white) {
+                    Task { @MainActor in
+                        _ = await MotionSleepAnalyzer.shared.requestAccess()
                         advance()
-                    } label: {
-                        Text("Not now")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .underline()
-                            .foregroundColor(.white.opacity(0.7))
-                            .padding(.vertical, 6)
                     }
                 }
             case .planComputing, .prePaywall:

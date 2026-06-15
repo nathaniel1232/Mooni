@@ -213,6 +213,38 @@ enum SleepScoringManager {
         default:        break
         }
 
+        // Expanded check-in (Plan 1): yesterday's inputs each shift the
+        // estimate by a small, research-supported amount. Bounded so they
+        // can't fabricate precision — the clamps below keep everything in the
+        // clinical ranges regardless.
+        if let drinks = checkIn?.alcoholDrinks, drinks > 0 {
+            // Alcohol suppresses REM and fragments the second half of the night.
+            remPct   -= min(0.05, Double(drinks) * 0.02)
+            awakePct += min(0.03, Double(drinks) * 0.012)
+        }
+        if checkIn?.lateCaffeine == true {
+            // Late caffeine blunts slow-wave (deep N3) sleep.
+            deepPct -= 0.015
+        }
+        if checkIn?.lateHeavyMeal == true {
+            // A late, heavy meal keeps core temperature up — less deep sleep.
+            deepPct -= 0.01
+        }
+        switch checkIn?.exerciseTime {
+        case .morning, .afternoon: deepPct += 0.01   // daytime exercise builds deep sleep
+        case .late:                awakePct += 0.015  // a late workout fragments sleep
+        default:                   break
+        }
+        switch checkIn?.roomFeel {
+        case .hot, .cold: awakePct += 0.015           // thermal discomfort fragments sleep
+        default:          break
+        }
+        switch checkIn?.stressLevel {
+        case .stressed: deepPct -= 0.01; awakePct += 0.015
+        case .tense:    awakePct += 0.008
+        default:        break
+        }
+
         // Very short "sleeps" don't have time to cycle — pull deep/REM toward
         // zero so a 2-minute nap doesn't claim 30 seconds of REM.
         if hours < 3 {

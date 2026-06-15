@@ -1,6 +1,5 @@
 import SwiftUI
 import RevenueCat
-import RevenueCatUI
 
 // MARK: - PaywallView
 //
@@ -28,6 +27,11 @@ struct PaywallView: View {
     /// When true (during onboarding), the close button is barely visible and
     /// dismissing routes the user to the discount paywall instead of closing.
     var hideCloseButton: Bool = false
+    /// When true, this paywall is the app's hard gate (no free tier): the
+    /// close button and every "continue without subscribing" escape are
+    /// removed, so the only ways past are a purchase/restore or the hidden
+    /// developer unlock. Presented at the root once onboarding is complete.
+    var hardLock: Bool = false
     var onSoftDismiss: (() -> Void)? = nil
     var onPurchased: (() -> Void)? = nil
     /// Called when the offerings failed to load and the user taps the
@@ -37,7 +41,6 @@ struct PaywallView: View {
     var onErrorContinue: (() -> Void)? = nil
 
     @State private var plan: Plan = .annual
-    @State private var showCustomerCenter = false
     @State private var showSuccess = false
     /// Set when a purchase succeeded but the entitlement isn't yet visible.
     /// We show a calm "finalizing" state instead of bouncing the user back to
@@ -45,6 +48,12 @@ struct PaywallView: View {
     @State private var finalizing = false
     @State private var animateIn = false
     @State private var moonGlow = false
+
+    /// Hidden developer unlock: silently tapping the owl this many times flips
+    /// the app to Pro without a purchase. No visible feedback by design — only
+    /// someone who knows the gesture can trigger it.
+    @State private var secretTapCount = 0
+    private let secretUnlockTaps = 20
 
     // Restore feedback
     @State private var showRestoreAlert = false
@@ -125,9 +134,6 @@ struct PaywallView: View {
             }
         }
         .task { await manager.loadOfferings() }
-        .sheet(isPresented: $showCustomerCenter) {
-            CustomerCenterView()
-        }
         .alert(restoreAlertTitle, isPresented: $showRestoreAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -150,6 +156,10 @@ struct PaywallView: View {
             Image(systemName: "wifi.slash")
                 .font(.system(size: 38, weight: .semibold))
                 .foregroundColor(MooniColor.textMuted)
+                // Keep the hidden developer unlock reachable even when plans
+                // fail to load, so a hard-locked build can't brick itself.
+                .contentShape(Rectangle())
+                .onTapGesture(perform: registerSecretTap)
             VStack(spacing: 8) {
                 Text("Couldn't load plans")
                     .font(MooniFont.title(20))
@@ -171,29 +181,32 @@ struct PaywallView: View {
             }
             .buttonStyle(.plain)
             Spacer()
-            // Bigger, more prominent escape hatch so a stuck App Review
-            // (or any user with a transient StoreKit failure) can always
-            // get into the app. Bypasses the discount paywall, which
-            // depends on the same offerings load and would also fail.
-            Button {
-                if let err = onErrorContinue {
-                    err()
-                } else if let soft = onSoftDismiss {
-                    soft()
-                } else {
-                    dismiss()
+            // Escape hatch so a stuck App Review (or any user with a transient
+            // StoreKit failure) can always get into the app. Bypasses the
+            // discount paywall, which depends on the same offerings load and
+            // would also fail. Suppressed under the hard lock — there is no
+            // free tier to fall through to.
+            if !hardLock {
+                Button {
+                    if let err = onErrorContinue {
+                        err()
+                    } else if let soft = onSoftDismiss {
+                        soft()
+                    } else {
+                        dismiss()
+                    }
+                } label: {
+                    Text("Continue without subscribing")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color.white.opacity(0.10))
+                        .clipShape(Capsule())
                 }
-            } label: {
-                Text("Continue without subscribing")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(Color.white.opacity(0.10))
-                    .clipShape(Capsule())
+                .buttonStyle(.plain)
+                .padding(.bottom, 24)
             }
-            .buttonStyle(.plain)
-            .padding(.bottom, 24)
         }
         .padding(.horizontal, 32)
     }
@@ -278,7 +291,18 @@ struct PaywallView: View {
 
     // MARK: - Close
 
+    @ViewBuilder
     private var closeRow: some View {
+        if hardLock {
+            // Hard gate: no escape. Keep the same top spacing the X row gave
+            // so the hero doesn't jump up under the notch.
+            Color.clear.frame(height: 38)
+        } else {
+            closeRowButton
+        }
+    }
+
+    private var closeRowButton: some View {
         HStack {
             Spacer()
             Button {
@@ -333,8 +357,30 @@ struct PaywallView: View {
                 )
                 .shadow(color: MooniColor.accent.opacity(0.3), radius: 12, y: 5)
                 .scaleEffect(animateIn ? 1 : 0.9)
+                // Hidden developer unlock — silent, no feedback.
+                .contentShape(Rectangle())
+                .onTapGesture(perform: registerSecretTap)
         }
         .frame(height: 102)
+    }
+
+    /// Hidden developer unlock. Counts silent taps on the hero owl; on the
+    /// Nth tap it grants Pro without a purchase and leaves the paywall exactly
+    /// as a real purchase would. No visible cue at any point — only someone who
+    /// knows the gesture will ever trigger it.
+    private func registerSecretTap() {
+        secretTapCount += 1
+        guard secretTapCount >= secretUnlockTaps else { return }
+        secretTapCount = 0
+        manager.enableDevPro()
+        // Same gesture also unlocks the hidden developer menu in Profile.
+        DeveloperMode.shared.unlock()
+        Haptics.celebrate()
+        if let onPurchased {
+            onPurchased()
+        } else {
+            dismiss()
+        }
     }
 
     // MARK: - Title
@@ -867,12 +913,6 @@ struct PaywallView: View {
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundColor(MooniColor.textMuted)
                 .underline()
-            Button { showCustomerCenter = true } label: {
-                Text("Manage")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundColor(MooniColor.textMuted)
-                    .underline()
-            }
         }
         .frame(maxWidth: .infinity)
     }

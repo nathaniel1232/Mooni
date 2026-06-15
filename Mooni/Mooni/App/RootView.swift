@@ -3,6 +3,7 @@ import UIKit
 
 struct RootView: View {
     @EnvironmentObject var appState: AppState
+    @StateObject private var subscription = SubscriptionManager.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -11,6 +12,13 @@ struct RootView: View {
 
             if !appState.hasCompletedOnboarding {
                 OnboardingView()
+                    .transition(.opacity)
+            } else if !subscription.isPro {
+                // Hard paywall: there is no free tier. Once onboarding is done
+                // the app is fully gated behind Pro — no close button, no
+                // "continue without subscribing". The only ways past are an
+                // actual purchase/restore or the hidden developer unlock.
+                PaywallView(hardLock: true)
                     .transition(.opacity)
             } else {
                 MainTabView()
@@ -29,6 +37,7 @@ struct RootView: View {
                 .zIndex(20)
         }
         .animation(.easeInOut(duration: 0.4), value: appState.hasCompletedOnboarding)
+        .animation(.easeInOut(duration: 0.4), value: subscription.isPro)
         .animation(.easeInOut(duration: 0.4), value: appState.isSleeping)
         // Feed scenePhase to the activity estimator at the root level so we
         // catch background/active transitions even during onboarding.
@@ -242,7 +251,7 @@ struct MainTabView: View {
         }
         .tint(MooniColor.accent)
         .onChange(of: selection) { _, _ in Haptics.tap() }
-        .sheet(isPresented: $appState.showMorningCheckIn) {
+        .fullScreenCover(isPresented: $appState.showMorningCheckIn) {
             MorningCheckInView()
         }
         .mooniPaywall(isPresented: $showPaywall)

@@ -35,6 +35,11 @@ final class SubscriptionManager: ObservableObject {
     /// remains the source of truth — this cache is only a paint-time hint.
     private static let cachedIsProKey = "mooni.cachedIsPro"
 
+    /// UserDefaults key for the hidden developer unlock (the secret 20-tap
+    /// gesture on the paywall owl). When set, the user is treated as Pro on
+    /// this device forever without a purchase. See `enableDevPro()`.
+    private static let devForceProKey = "mooni.devForcePro"
+
     // MARK: - Published
 
     /// Sourced from RevenueCat at launch and seeded from a UserDefaults cache so
@@ -54,6 +59,11 @@ final class SubscriptionManager: ObservableObject {
     @Published var isLoadingOfferings: Bool = true
     @Published var errorMessage: String?
 
+    /// Hidden developer override (see `enableDevPro()`). When true the user is
+    /// treated as Pro regardless of the RevenueCat entitlement, and every
+    /// entitlement reconciliation OR-s this in so a refresh can't downgrade.
+    private(set) var devForcePro: Bool = false
+
     /// Entitlement identifier configured in RevenueCat dashboard. Must match
     /// exactly. We also accept any active entitlement as a fallback so a
     /// dashboard typo doesn't lock a paying user out.
@@ -67,11 +77,34 @@ final class SubscriptionManager: ObservableObject {
     private static let discountOfferingID = "discounted"
 
     private init() {
-        UserDefaults.standard.removeObject(forKey: "mooni.devForcePro")
+        // Restore the hidden developer unlock if it was ever triggered — it
+        // persists across launches and pins isPro true below.
+        devForcePro = UserDefaults.standard.bool(forKey: Self.devForceProKey)
         // Seed from the last-known cache so the UI paints the correct chrome
         // immediately. refreshCustomerInfo() (called from configure()) will
         // reconcile against the real entitlement a moment later.
-        isPro = UserDefaults.standard.bool(forKey: Self.cachedIsProKey)
+        isPro = devForcePro || UserDefaults.standard.bool(forKey: Self.cachedIsProKey)
+    }
+
+    /// Hidden developer unlock, triggered by a secret gesture on the paywall
+    /// (20 taps on the owl). Flips the app to Pro on this device without a
+    /// purchase and pins it so entitlement refreshes can't downgrade it.
+    /// Intentionally silent: no analytics, no UI, no haptics.
+    func enableDevPro() {
+        UserDefaults.standard.set(true, forKey: Self.devForceProKey)
+        devForcePro = true
+        isPro = true
+    }
+
+    /// Turns the developer Pro override back off so the free experience can be
+    /// tested. Clears the cached entitlement too so it doesn't re-pin; a real
+    /// entitlement refresh on next foreground will restore Pro if genuinely
+    /// purchased. Used only from the hidden developer menu.
+    func disableDevPro() {
+        UserDefaults.standard.removeObject(forKey: Self.devForceProKey)
+        UserDefaults.standard.removeObject(forKey: Self.cachedIsProKey)
+        devForcePro = false
+        isPro = false
     }
 
     // MARK: - Configuration
@@ -105,7 +138,7 @@ final class SubscriptionManager: ObservableObject {
     func refreshCustomerInfo() async {
         do {
             let info = try await Purchases.shared.customerInfo()
-            isPro = Self.hasProEntitlement(in: info)
+            isPro = Self.hasProEntitlement(in: info) || devForcePro
         } catch {
             // Silently fail — no internet or sandbox; treat as non-pro
         }
@@ -195,7 +228,7 @@ final class SubscriptionManager: ObservableObject {
 
             // The customerInfo on the purchase result is the freshest source
             // of truth — use it directly rather than racing a second fetch.
-            isPro = Self.hasProEntitlement(in: result.customerInfo)
+            isPro = Self.hasProEntitlement(in: result.customerInfo) || devForcePro
             if isPro { return .active }
 
             // Entitlement not yet visible (sandbox lag, missing entitlement
@@ -245,7 +278,7 @@ final class SubscriptionManager: ObservableObject {
         defer { isLoading = false }
         do {
             let info = try await Purchases.shared.restorePurchases()
-            isPro = Self.hasProEntitlement(in: info)
+            isPro = Self.hasProEntitlement(in: info) || devForcePro
             return isPro ? .restored : .nothingToRestore
         } catch {
             errorMessage = error.localizedDescription
@@ -264,7 +297,9 @@ private final class MooniPurchasesDelegate: NSObject, RevenueCat.PurchasesDelega
         Task { @MainActor in
             // Reuse the single source-of-truth entitlement check rather than
             // re-implementing it against the literal entitlement string.
-            SubscriptionManager.shared.isPro = SubscriptionManager.hasProEntitlement(in: customerInfo)
+            SubscriptionManager.shared.isPro =
+                SubscriptionManager.hasProEntitlement(in: customerInfo)
+                || SubscriptionManager.shared.devForcePro
         }
     }
 }

@@ -37,6 +37,10 @@ final class AppState: ObservableObject {
         static let firstPaywallDeclinedAt = "mooni.firstPaywallDeclinedAt"
         static let discountPaywallShown = "mooni.discountPaywallShown"
         static let discountPaywallTargetNights = "mooni.discountPaywallTargetNights"
+        // Home-screen re-ask for Motion & Fitness when it was declined — last
+        // time we surfaced the nudge, so it resurfaces a few days in but never
+        // nags day after day.
+        static let motionReaskLastShownAt = "mooni.motionReaskLastShownAt"
     }
 
     // MARK: - Published state
@@ -712,6 +716,31 @@ final class AppState: ObservableObject {
     /// Marks the win-back offer as shown so it is presented at most once.
     func markDiscountPaywallShown() {
         UserDefaults.standard.set(true, forKey: Key.discountPaywallShown)
+    }
+
+    /// Whether to surface the home-screen "make tracking more accurate" nudge
+    /// that re-asks for Motion & Fitness. The caller passes the current
+    /// permission state (CoreMotion lives in `MotionSleepAnalyzer`); this owns
+    /// only the timing so the ask waits until the user has lived in the app a
+    /// few days, and backs off for a week after each appearance so it never
+    /// nags. Pro-gated like all auto-tracking.
+    func shouldOfferMotionReask(canReask: Bool, now: Date = Date()) -> Bool {
+        guard canReask, SubscriptionManager.shared.isPro else { return false }
+        // Give the user some real time in the app before re-asking.
+        guard let started = trackingStartedAt,
+              now.timeIntervalSince(started) >= 3 * 86_400 else { return false }
+        // Back off for a week after the last time the nudge was surfaced.
+        if let last = UserDefaults.standard.object(forKey: Key.motionReaskLastShownAt) as? Date,
+           now.timeIntervalSince(last) < 7 * 86_400 {
+            return false
+        }
+        return true
+    }
+
+    /// Records that the motion re-ask was just surfaced (or dismissed), so the
+    /// week-long cooldown in `shouldOfferMotionReask` starts now.
+    func markMotionReaskShown() {
+        UserDefaults.standard.set(Date(), forKey: Key.motionReaskLastShownAt)
     }
 
     private func rolloverRoutineIfNeeded() {

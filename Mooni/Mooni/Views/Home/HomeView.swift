@@ -18,6 +18,9 @@ struct HomeView: View {
     @State private var showManualOptions = false
     @State private var showInviteFriends = false
     @State private var showFallAsleepSheet = false
+    /// Hides the motion re-ask card for the rest of this session once the user
+    /// acts on it or dismisses it (the persistent cooldown lives in AppState).
+    @State private var motionReaskHidden = false
 
     /// Currently-displayed speech bubble text. Set by `handleOwlTap()` after
     /// the user taps the hero owl; auto-clears after a short delay. nil
@@ -34,6 +37,9 @@ struct HomeView: View {
     /// a backgrounded app doesn't replay celebrations on warm starts.
     @AppStorage("mooni.home.lastCelebratedStreak") private var lastCelebratedStreak: Int = 0
     @AppStorage("mooni.home.lastCelebratedLevel") private var lastCelebratedLevel: Int = 0
+    /// Fires the Motion & Fitness prompt the first time the user reaches Home
+    /// (if it wasn't already resolved in onboarding). One-shot.
+    @AppStorage("mooni.motionAutoPrompted") private var motionAutoPrompted = false
     /// Day key (yyyy-MM-dd) currently selected in the week strip. Nil = the
     /// most-recent night's entry. Drives the day-detail card and insight.
     @State private var selectedDayKey: String? = nil
@@ -78,6 +84,10 @@ struct HomeView: View {
                     // reads as broken to anyone who adds a friend.
                     //   leagueSection
 
+                    if shouldShowMotionReaskCard {
+                        motionReaskCard
+                    }
+
                     if shouldShowMissedNightCard {
                         missedNightCard
                     }
@@ -95,6 +105,7 @@ struct HomeView: View {
             if streak.hasUnseenLoss { showLostStreak = true }
             checkAutoWakeUp()
             maybeFireCelebration()
+            maybeAutoPromptMotion()
         }
         .onChange(of: streak.current) { _, _ in maybeFireCelebration() }
         .onChange(of: appState.pet.level) { _, _ in maybeFireCelebration() }
@@ -151,7 +162,7 @@ struct HomeView: View {
                 )
             }
         }
-        .sheet(item: $editingEntry) { entry in
+        .fullScreenCover(item: $editingEntry) { entry in
             MorningCheckInView(entryOverride: entry, startInEditMode: true)
                 .environmentObject(appState)
         }
@@ -224,6 +235,100 @@ struct HomeView: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+
+    // MARK: - Motion permission (accuracy)
+
+    /// The very first time a subscriber lands on Home, surface the Motion &
+    /// Fitness prompt immediately (when it's still unanswered) so the FIRST
+    /// night is tracked accurately. Day-one accuracy is what keeps a trial
+    /// from being cancelled in the first minutes — an app that looks like it's
+    /// guessing gets dropped fast. Fires once; if declined, the re-ask card
+    /// below picks it up a few days later.
+    private func maybeAutoPromptMotion() {
+        guard !motionAutoPrompted,
+              subscriptionManager.isPro,
+              MotionSleepAnalyzer.shared.isUndetermined else { return }
+        motionAutoPrompted = true
+        // Brief delay so the system sheet doesn't collide with any launch alert
+        // (lost-streak, celebration) that may be presenting at the same moment.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            Task { @MainActor in _ = await MotionSleepAnalyzer.shared.requestAccess() }
+        }
+    }
+
+    // MARK: - Motion re-ask (accuracy)
+
+    /// Surfaced a few days in, for Pro users who haven't granted Motion &
+    /// Fitness, to recover the accuracy they're leaving on the table. The
+    /// onboarding ask is the first shot; this is the gentle second one.
+    private var shouldShowMotionReaskCard: Bool {
+        guard !motionReaskHidden else { return false }
+        return appState.shouldOfferMotionReask(
+            canReask: MotionSleepAnalyzer.shared.canReaskAccess
+        )
+    }
+
+    private var motionReaskCard: some View {
+        MooniCard(padding: 16, cornerRadius: 22) {
+            HStack(spacing: 12) {
+                Image(systemName: "figure.walk.motion")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(MooniColor.accent)
+                    .frame(width: 38, height: 38)
+                    .background(MooniColor.accent.opacity(0.16))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Make your sleep tracking more accurate")
+                        .font(MooniFont.title(14))
+                        .foregroundColor(MooniColor.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Turn on Motion & Fitness so \(appState.pet.name) can pin down exactly when you fell asleep and woke — not just an estimate.")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                VStack(spacing: 6) {
+                    Button {
+                        Haptics.tap()
+                        enableMotionFromReask()
+                    } label: {
+                        Text("Turn on")
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.background)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(MooniColor.accent)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    Button {
+                        appState.markMotionReaskShown()
+                        motionReaskHidden = true
+                    } label: {
+                        Text("Not now")
+                            .font(MooniFont.caption(11))
+                            .foregroundColor(MooniColor.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    /// Records the nudge so the week-long cooldown starts, then either shows
+    /// the real system prompt (never asked) or deep-links to Settings (denied
+    /// earlier — iOS won't re-prompt, so Settings is the only path back).
+    private func enableMotionFromReask() {
+        appState.markMotionReaskShown()
+        motionReaskHidden = true
+        let motion = MotionSleepAnalyzer.shared
+        if motion.isUndetermined {
+            Task { @MainActor in _ = await motion.requestAccess() }
+        } else if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
         }
     }
 

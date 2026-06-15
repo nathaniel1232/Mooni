@@ -18,6 +18,8 @@ struct SleepReportView: View {
     @Binding var showPaywall: Bool
 
     @State private var appeared = false
+    @State private var showHistory = false
+    @State private var analyticsEntry: SleepEntry?
 
     var body: some View {
         NavigationStack {
@@ -27,8 +29,10 @@ struct SleepReportView: View {
 
                 ScrollView {
                     VStack(spacing: 16) {
+                        sectionHeader
                         if let entry = appState.lastEntry {
                             heroCard(entry)
+                            analyticsCTA(entry)
                             stageTimelineCard(entry)
                             if subscriptionManager.isPro {
                                 stageQualityCard(entry)
@@ -57,6 +61,73 @@ struct SleepReportView: View {
         .onAppear {
             withAnimation(.easeOut(duration: 0.9)) { appeared = true }
         }
+        .sheet(isPresented: $showHistory) { SleepHistoryView() }
+        .fullScreenCover(item: $analyticsEntry) { entry in
+            NightAnalyticsView(entry: entry, onClose: { analyticsEntry = nil })
+        }
+    }
+
+    // MARK: - Header + analytics entry points
+
+    private var sectionHeader: some View {
+        HStack(alignment: .center) {
+            Text("Sleep")
+                .font(MooniFont.display(30))
+                .foregroundColor(MooniColor.textPrimary)
+            Spacer()
+            Button {
+                Haptics.tap()
+                showHistory = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 12, weight: .bold))
+                    Text("History")
+                        .font(MooniFont.title(14))
+                }
+                .foregroundColor(MooniColor.accent)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.06))
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(MooniColor.accent.opacity(0.3), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func analyticsCTA(_ entry: SleepEntry) -> some View {
+        Button {
+            Haptics.tap()
+            analyticsEntry = entry
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(MooniColor.accentSoft)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("See your full night analysis")
+                        .font(MooniFont.title(15))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text("Hormone windows · cycles · recovery")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MooniColor.accent)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(MooniColor.surface)
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(MooniColor.accent.opacity(0.25), lineWidth: 1))
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Derived values

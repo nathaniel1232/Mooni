@@ -48,6 +48,29 @@ final class MotionSleepAnalyzer {
         }
     }
 
+    /// True once the user has granted Motion & Fitness.
+    var isAuthorized: Bool {
+        CMMotionActivityManager.authorizationStatus() == .authorized
+    }
+
+    /// True when the system prompt can still be shown (never asked yet) — so
+    /// the re-ask can present the real dialog rather than bouncing to Settings.
+    var isUndetermined: Bool {
+        isAvailable && CMMotionActivityManager.authorizationStatus() == .notDetermined
+    }
+
+    /// True when the permission is in a state the user can still act on —
+    /// either not-yet-asked (we can prompt) or denied (we can deep-link to
+    /// Settings). Excludes `.authorized` (done) and `.restricted` (can't
+    /// change), and the simulator / devices where motion is unavailable.
+    var canReaskAccess: Bool {
+        guard isAvailable else { return false }
+        switch CMMotionActivityManager.authorizationStatus() {
+        case .notDetermined, .denied: return true
+        default: return false
+        }
+    }
+
     /// Triggers the system Motion & Fitness prompt (when not yet determined)
     /// by running a minimal history query, then reports whether access is
     /// granted. Safe to call repeatedly — resolved states return immediately.
