@@ -97,10 +97,8 @@ struct OnboardingView: View {
         case namePet            // pet beat keeps the warmup light
         case wakeFeeling
         case phoneBeforeBed
-        case caffeineCutoff
 
         // ─ PHASE 2 · Your frustrations ────────────────────────────────────
-        case racingThoughts
         case stressLevel
         case struggleDuration
         case biggestProblem
@@ -110,6 +108,9 @@ struct OnboardingView: View {
         // ─ PHASE 3 · We understand (the stakes are real) ──────────────────
         case sleepScienceBody   // −70% immune cells (Walker)
         case sleepScienceMind   // legally-drunk impairment + Bryan Johnson
+        case trustedByExperts   // known sleep figures + institution sources
+        case sleepScienceHarvard // 3 real Harvard findings (memory / errors / risk)
+        case harvardFormula      // "your score is built on Harvard sleep science"
         case lifeTimeline       // …and here's the 4-week turnaround (hope)
 
         // ─ PHASE 4 · The solution ─────────────────────────────────────────
@@ -120,6 +121,7 @@ struct OnboardingView: View {
         case sleepGoalMore
         case targetReachable    // now references the goal they just picked
         case personalizeGoals
+        case whatWeImprove      // reflect goals back + good-vs-bad payoffs
         case personalizeWindDown
 
         // ─ Permissions, rating, account ───────────────────────────────────
@@ -174,9 +176,15 @@ struct OnboardingView: View {
     var body: some View {
         ZStack {
             // Single, calm constant background everywhere — no per-screen swaps.
-            MooniColor.background
+            // Darker than the app default so onboarding content (charts, science
+            // stats) reads with more contrast and fewer distractions.
+            LinearGradient(
+                colors: [Color(red: 0.045, green: 0.05, blue: 0.12),
+                         Color(red: 0.02, green: 0.025, blue: 0.065)],
+                startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
-            StarsBackground(count: 28)
+            StarsBackground(count: 16)
+                .opacity(0.8)
             ShootingStarsOverlay()
 
             if step == .prePaywall {
@@ -370,6 +378,10 @@ struct OnboardingView: View {
          .sleepMetricsTease,
          .sleepScienceBody,
          .sleepScienceMind,
+         .trustedByExperts,
+         .sleepScienceHarvard,
+         .harvardFormula,
+         .whatWeImprove,
          .ratingPledge,
          .commitReady,
          .widgetSmall,
@@ -460,7 +472,7 @@ struct OnboardingView: View {
     /// Story / hero / reveal beats stay centred.
     private var topAlignedSteps: Set<Step> {
         [.ageQuestion, .genderQuestion, .typicalSleepHours,
-         .wakeFeeling, .racingThoughts, .phoneBeforeBed, .caffeineCutoff,
+         .wakeFeeling, .phoneBeforeBed,
          .stressLevel, .struggleDuration, .biggestProblem, .schedule,
          .sleepGoal, .sleepGoalMore,
          .personalizeGoals, .personalizeBlockers, .personalizeTried,
@@ -481,12 +493,10 @@ struct OnboardingView: View {
         case .ageQuestion:          AgeScreen(profile: $profile)
         case .genderQuestion:       GenderScreen(profile: $profile)
         case .typicalSleepHours:    TypicalSleepHoursScreen(profile: $profile)
-        case .lifeTimeline:         LifeTimelineScreen()
+        case .lifeTimeline:         LifeTimelineScreen(sleepGoal: sleepGoal)
         case .namePet:              NamePetScreen(species: species, name: $petName)
         case .wakeFeeling:          WakeFeelingScreen(profile: $profile)
-        case .racingThoughts:       RacingThoughtsScreen(profile: $profile, petName: petName)
         case .phoneBeforeBed:       PhoneBeforeBedScreen(profile: $profile)
-        case .caffeineCutoff:       CaffeineCutoffScreen(profile: $profile)
         case .stressLevel:          StressLevelScreen(profile: $profile)
         case .struggleDuration:     StruggleDurationScreen(profile: $profile)
         case .biggestProblem:       BiggestProblemScreen(profile: $profile)
@@ -494,6 +504,7 @@ struct OnboardingView: View {
                                                    separateWeekends: $separateWeekends, weekendWake: $weekendWake)
         case .trackingCompare:      TrackingCompareScreen(animationDone: $trackingCompareDone)
         case .personalizeGoals:     GoalsMultiScreen(selection: $selectedGoals)
+        case .whatWeImprove:        WhatWeImproveScreen(goals: orderedSelectedGoals)
         case .personalizeBlockers:
             MultiSelectScreen(
                 title: "What keeps you from good sleep?",
@@ -546,6 +557,9 @@ struct OnboardingView: View {
         case .signaturePledge:      SignaturePledgeScreen(petName: petName)
         case .sleepScienceBody:     SleepScienceBodyScreen()
         case .sleepScienceMind:     SleepScienceMindScreen()
+        case .trustedByExperts:     TrustedByExpertsScreen()
+        case .sleepScienceHarvard:  SleepScienceHarvardScreen()
+        case .harvardFormula:       HarvardFormulaScreen()
         case .viceSpend:            ViceSpendScreen(selection: $profile.vice)
         case .prePaywall:           EmptyView()    // rendered full-screen above; never reaches here
         }
@@ -686,9 +700,7 @@ struct OnboardingView: View {
             ? "Give them a name"
             : "Continue"
         case .wakeFeeling:         return profile.wakeFeeling == nil ? "Pick one to continue" : "Continue"
-        case .racingThoughts:      return "Continue"
         case .phoneBeforeBed:      return "Continue"
-        case .caffeineCutoff:      return profile.caffeineCutoff == nil ? "Pick one to continue" : "Continue"
         case .stressLevel:         return "Continue"
         case .struggleDuration:    return profile.struggleDuration == nil ? "Pick one to continue" : "Continue"
         case .biggestProblem:      return profile.biggestProblem == nil ? "Pick one to continue" : "Continue"
@@ -712,6 +724,10 @@ struct OnboardingView: View {
         case .signaturePledge:     return "Make it official"
         case .sleepScienceBody:    return "I had no idea"
         case .sleepScienceMind:    return "Fix my sleep"
+        case .trustedByExperts:    return "I'm in good company"
+        case .whatWeImprove:       return "I want this"
+        case .sleepScienceHarvard: return "I trust that"
+        case .harvardFormula:      return "Show me my plan"
         case .viceSpend:           return profile.vice == nil
             ? "Pick one to continue"
             : "Worth it"
@@ -735,8 +751,6 @@ struct OnboardingView: View {
         case .struggleDuration:    return profile.struggleDuration != nil
         case .biggestProblem:      return profile.biggestProblem != nil
         case .phoneBeforeBed:      return profile.usesPhoneBeforeBed != nil
-        case .caffeineCutoff:      return profile.caffeineCutoff != nil
-        case .racingThoughts:      return profile.racingThoughtsAtNight != nil
         case .wakeFeeling:         return profile.wakeFeeling != nil
         case .viceSpend:           return profile.vice != nil
         default:                   return true

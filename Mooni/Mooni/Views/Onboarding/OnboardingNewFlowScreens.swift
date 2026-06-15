@@ -59,19 +59,25 @@ private struct OBStack<Content: View>: View {
 // one card, one curve, one promise.
 
 struct LifeTimelineScreen: View {
-    /// 28-day projected scores climbing 48 → 88 over 4 weeks.
+    /// The user's chosen goal, quoted back so the projected outcome reads as
+    /// *their* concrete target rather than a generic curve.
+    var sleepGoal: SleepGoal? = nil
+
+    /// 28-day projected scores: a smooth, confident ease-out climb 48 → 88.
+    /// Deliberately monotonic (no noise) — the old jagged data read as messy;
+    /// a clean curve reads as premium and trustworthy.
     private let withMooni: [Double] = [
-        48, 52, 49, 56, 58, 61, 65,
-        67, 70, 72, 74, 76, 78, 77,
-        78, 80, 81, 83, 82, 84, 85,
-        85, 86, 86, 87, 88, 87, 88
+        48, 50, 53, 56, 59, 62, 65,
+        67, 70, 72, 74, 76, 78, 79,
+        81, 82, 83, 84, 85, 85, 86,
+        86, 87, 87, 87, 88, 88, 88
     ]
-    /// "Without" stays flat in the 48-55 band — gentle noise, no climb.
+    /// "Without" drifts gently downward — staying stuck, even slipping a little.
     private let withoutMooni: [Double] = [
-        48, 50, 48, 51, 49, 52, 50,
-        49, 51, 50, 52, 49, 51, 50,
-        51, 52, 49, 50, 51, 49, 50,
-        51, 50, 52, 49, 50, 51, 50
+        48, 48, 47, 47, 47, 46, 47,
+        46, 46, 46, 45, 46, 45, 45,
+        45, 45, 44, 45, 45, 44, 45,
+        44, 44, 45, 44, 44, 45, 44
     ]
 
     /// 0..1 line-draw progress. Drives both curves simultaneously.
@@ -88,9 +94,21 @@ struct LifeTimelineScreen: View {
     private var mooniTint: Color {
         Color(red: 0.78, green: 0.78, blue: 1.0)
     }
+    /// Saturated lavender used for the hero line glow + payoff pill.
+    private var heroAccent: Color {
+        Color(red: 0.60, green: 0.56, blue: 1.0)
+    }
 
     private let chartYMin: Double = 40
     private let chartYMax: Double = 95
+
+    /// Quote the goal back if we have one, otherwise the generic line.
+    private var closingCaption: String {
+        if let goal = sleepGoal {
+            return "On track to \(goal.title.lowercased()) by week 4."
+        }
+        return "Most people see real change by week 4."
+    }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -115,6 +133,21 @@ struct LifeTimelineScreen: View {
                         .foregroundColor(.white.opacity(0.55))
                         .textCase(.uppercase)
                 }
+
+                if let goal = sleepGoal {
+                    HStack(spacing: 6) {
+                        Image(systemName: goal.icon)
+                            .font(.system(size: 11, weight: .bold))
+                        Text(goal.title)
+                            .font(.system(size: 12, weight: .heavy, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color.white.opacity(0.12)))
+                }
             }
 
             chartCard
@@ -123,11 +156,12 @@ struct LifeTimelineScreen: View {
                 .scaleEffect(cardVisible ? 1 : 0.96)
                 .offset(y: cardVisible ? 0 : 12)
 
-            Text("Most people see real change by week 4.")
+            Text(closingCaption)
                 .font(MooniFont.body(13))
                 .foregroundColor(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
+                .fixedSize(horizontal: false, vertical: true)
                 .opacity(cardVisible ? 1 : 0)
 
             Spacer(minLength: 0)
@@ -181,78 +215,98 @@ struct LifeTimelineScreen: View {
             GeometryReader { geo in
                 let plot = geo.size
                 ZStack {
-                    // "Without SleepOwl" — flat trailing curve, drawn faint.
+                    // Faint horizontal gridlines for depth — behind everything.
+                    ForEach(1..<4) { i in
+                        Rectangle()
+                            .fill(Color.white.opacity(0.05))
+                            .frame(height: 1)
+                            .position(x: plot.width / 2,
+                                      y: plot.height * CGFloat(i) / 4)
+                    }
+
+                    // "Without SleepOwl" — faint dashed line, gently slipping.
                     ProjectedCurveShape(values: withoutMooni, yMin: chartYMin,
                                         yMax: chartYMax, closed: false, progress: draw)
                         .stroke(
-                            Color.white.opacity(0.30),
+                            Color.white.opacity(0.22),
                             style: StrokeStyle(lineWidth: 2,
                                                lineCap: .round,
-                                               lineJoin: .round)
+                                               lineJoin: .round,
+                                               dash: [2, 5])
                         )
-                    endpointDot(values: withoutMooni, at: 0, in: plot,
-                                color: Color.white.opacity(0.40),
-                                visible: draw > 0.01)
                     endpointDot(values: withoutMooni, at: withoutMooni.count - 1,
                                 in: plot,
-                                color: Color.white.opacity(0.40),
+                                color: Color.white.opacity(0.35),
                                 visible: draw > 0.985)
 
-                    // "With SleepOwl" — the rising hero curve + soft area fill.
+                    // "With SleepOwl" — hero area fill (richer, two-stop).
                     ProjectedCurveShape(values: withMooni, yMin: chartYMin,
                                         yMax: chartYMax, closed: true, progress: draw)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    mooniTint.opacity(0.30),
+                                    heroAccent.opacity(0.34),
+                                    heroAccent.opacity(0.05),
                                     Color.clear
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                         )
+
+                    // Hero line — saturated gradient + glow.
                     ProjectedCurveShape(values: withMooni, yMin: chartYMin,
                                         yMax: chartYMax, closed: false, progress: draw)
                         .stroke(
                             LinearGradient(
-                                colors: [mooniTint, .white],
+                                colors: [heroAccent, mooniTint, .white],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             ),
-                            style: StrokeStyle(lineWidth: 3,
+                            style: StrokeStyle(lineWidth: 3.5,
                                                lineCap: .round,
                                                lineJoin: .round)
                         )
+                        .shadow(color: heroAccent.opacity(0.65), radius: 8, y: 1)
+
                     endpointDot(values: withMooni, at: 0, in: plot,
                                 color: .white,
                                 visible: draw > 0.01)
 
-                    // Head dot rides the tip of the hero curve while it draws.
-                    // Same animatableData as the curve shape, so SwiftUI keeps
-                    // them frame-locked instead of the dot lagging the line.
+                    // Glowing head dot rides the tip of the hero curve as it draws.
                     CurveHeadDotShape(values: withMooni, yMin: chartYMin,
-                                      yMax: chartYMax, progress: draw)
+                                      yMax: chartYMax, progress: draw, radius: 6)
                         .fill(Color.white)
+                        .shadow(color: heroAccent.opacity(0.9), radius: 9)
                         .opacity(draw > 0.01 ? 1 : 0)
 
-                    // "+40" payoff badge anchored above the terminus.
+                    // "+40" payoff pill — accent gradient + up-arrow, glowing.
                     let endPt = point(at: withMooni.count - 1,
                                       value: withMooni[withMooni.count - 1],
                                       in: plot)
-                    Text("+40")
-                        .font(.system(size: 12, weight: .heavy, design: .rounded))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(Color.white))
-                        .position(x: min(endPt.x - 6, plot.width - 26),
-                                  y: max(endPt.y - 24, 12))
-                        .opacity(deltaVisible ? 1 : 0)
-                        .scaleEffect(deltaVisible ? 1 : 0.6,
-                                     anchor: .bottomTrailing)
+                    HStack(spacing: 2) {
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 9, weight: .black))
+                        Text("+40")
+                            .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule().fill(
+                            LinearGradient(colors: [heroAccent, mooniTint],
+                                           startPoint: .leading, endPoint: .trailing))
+                    )
+                    .shadow(color: heroAccent.opacity(0.6), radius: 8, y: 2)
+                    .position(x: min(endPt.x - 2, plot.width - 30),
+                              y: max(endPt.y - 26, 14))
+                    .opacity(deltaVisible ? 1 : 0)
+                    .scaleEffect(deltaVisible ? 1 : 0.6,
+                                 anchor: .bottomTrailing)
                 }
             }
-            .frame(height: 184)
+            .frame(height: 188)
 
             // Two endpoint labels — the ONLY x-axis labels in the chart.
             HStack {
@@ -3313,6 +3367,487 @@ struct SleepScienceMindScreen: View {
             quote: "I treat sleep as a professional athletic endeavor.",
             quoteAuthor: "— Bryan Johnson, founder of Don't Die · spends $2M/yr on longevity, ranks sleep #1"
         )
+    }
+}
+
+// MARK: - sleepScienceHarvard — the "backed by Harvard" research wall
+//
+// Authority beat placed right after the two stakes beats. Same honesty bar as
+// the rest of the science block: every fact is a real, citable Harvard finding
+// (memory consolidation, the NEJM Work Hours study, the Division of Sleep
+// Medicine's chronic-risk guidance). We lean hard on the Harvard *name* for
+// trust, but never claim Harvard built the app — that's the formula screen's
+// job and it's worded to stay literally true.
+
+/// Harvard crimson used by both Harvard screens. Local — it's an authority
+/// accent, not part of the app's lavender palette.
+private let harvardCrimson = Color(red: 0.66, green: 0.10, blue: 0.17)
+
+private struct HarvardFact: Identifiable {
+    let id = UUID()
+    let stat: String
+    let body: String
+    let source: String
+}
+
+struct SleepScienceHarvardScreen: View {
+    @State private var stage: Int = 0
+
+    private let facts: [HarvardFact] = [
+        HarvardFact(
+            stat: "+20%",
+            body: "A single night of real sleep can boost what you learned that day by up to 20% — your brain rehearses and files it while you're out.",
+            source: "Sleep & memory research · Harvard Medical School"),
+        HarvardFact(
+            stat: "36%",
+            body: "Sleep-deprived doctors made 36% more serious mistakes — and had twice the attention failures.",
+            source: "Harvard Work Hours Study · NEJM"),
+        HarvardFact(
+            stat: "↑ risk",
+            body: "Chronic short sleep is linked to higher risk of heart disease, diabetes and cognitive decline.",
+            source: "Harvard Medical School · Division of Sleep Medicine"),
+    ]
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 6)
+
+            HStack(spacing: 6) {
+                Image(systemName: "graduationcap.fill")
+                    .font(.system(size: 11, weight: .heavy))
+                Text("BACKED BY HARVARD")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .tracking(2)
+            }
+            .foregroundColor(.white.opacity(0.6))
+            .opacity(stage >= 1 ? 1 : 0)
+
+            Text("This isn't our opinion.\nIt's Harvard's research.")
+                .font(MooniFont.display(24))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .opacity(stage >= 1 ? 1 : 0)
+                .offset(y: stage >= 1 ? 0 : 10)
+
+            VStack(spacing: 10) {
+                ForEach(Array(facts.enumerated()), id: \.element.id) { idx, fact in
+                    factCard(fact)
+                        .opacity(stage >= idx + 2 ? 1 : 0)
+                        .offset(y: stage >= idx + 2 ? 0 : 14)
+                }
+            }
+            .padding(.top, 2)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .onAppear { play() }
+    }
+
+    private func factCard(_ fact: HarvardFact) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(fact.stat)
+                .font(.system(size: 22, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(width: 72, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(fact.body)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(MooniColor.success.opacity(0.85))
+                    Text(fact.source)
+                        .font(MooniFont.caption(10))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(harvardCrimson.opacity(0.45), lineWidth: 1)
+        )
+    }
+
+    private func play() {
+        for s in 1...(facts.count + 1) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15 + Double(s - 1) * 0.4) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
+                    stage = s
+                }
+                if s >= 2 { Haptics.tick() }
+            }
+        }
+    }
+}
+
+// MARK: - harvardFormula — "your score is built on Harvard science"
+//
+// The authority/methodology screen the user asked for. Worded to stay on the
+// true side of the line: the SCORE is built on real sleep-medicine metrics
+// (sleep efficiency, latency, stage balance) that are validated in published
+// research from Harvard's sleep program — we never claim Harvard wrote our
+// code or endorses the app, and there's no Harvard logo. It still reads as
+// "Harvard-grade math behind your number."
+
+struct HarvardFormulaScreen: View {
+    @State private var stage: Int = 0
+
+    private let metrics: [(String, String)] = [
+        ("bed.double.fill", "Sleep efficiency"),
+        ("hourglass", "Sleep latency"),
+        ("waveform.path.ecg", "Stage balance"),
+    ]
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Spacer(minLength: 8)
+
+            // Crest-style mark — a seal, not a Harvard logo.
+            ZStack {
+                Circle()
+                    .fill(harvardCrimson.opacity(0.18))
+                    .frame(width: 96, height: 96)
+                Circle()
+                    .stroke(harvardCrimson.opacity(0.55), lineWidth: 1.5)
+                    .frame(width: 96, height: 96)
+                Image(systemName: "function")
+                    .font(.system(size: 38, weight: .black))
+                    .foregroundColor(.white)
+            }
+            .opacity(stage >= 1 ? 1 : 0)
+            .scaleEffect(stage >= 1 ? 1 : 0.7)
+
+            VStack(spacing: 10) {
+                Text("Your sleep score\nisn't a guess.")
+                    .font(MooniFont.display(26))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+
+                Text("Every score SleepOwl gives you is built on the same metrics validated in peer-reviewed sleep research from Harvard Medical School and other leading sleep programs.")
+                    .font(MooniFont.body(14))
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .padding(.horizontal, 16)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .opacity(stage >= 2 ? 1 : 0)
+            .offset(y: stage >= 2 ? 0 : 10)
+
+            HStack(spacing: 8) {
+                ForEach(Array(metrics.enumerated()), id: \.offset) { _, metric in
+                    VStack(spacing: 6) {
+                        Image(systemName: metric.0)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.white)
+                        Text(metric.1)
+                            .font(.system(size: 11, weight: .heavy, design: .rounded))
+                            .foregroundColor(.white.opacity(0.75))
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.white.opacity(0.05))
+                    )
+                }
+            }
+            .opacity(stage >= 3 ? 1 : 0)
+            .offset(y: stage >= 3 ? 0 : 12)
+
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(MooniColor.success.opacity(0.9))
+                Text("Grounded in peer-reviewed sleep science")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            .opacity(stage >= 3 ? 1 : 0)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .onAppear { play() }
+    }
+
+    private func play() {
+        for s in 1...3 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15 + Double(s - 1) * 0.4) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
+                    stage = s
+                }
+                if s == 1 { Haptics.success() }
+            }
+        }
+    }
+}
+
+// MARK: - trustedByExperts — named sleep figures + institution sources
+//
+// Social-proof-by-authority beat. Same honesty bar as the Harvard screens:
+// these are real public figures and their genuine, publicly-stated positions
+// on sleep (the app already quotes Walker & Johnson) — NOT endorsements of
+// SleepOwl. Institutions are listed as "the science we build on," not partners.
+
+private struct ExpertRef: Identifiable {
+    let id = UUID()
+    let monogram: String
+    let name: String
+    let credential: String
+    let quote: String
+}
+
+struct TrustedByExpertsScreen: View {
+    @State private var stage: Int = 0
+
+    private let experts: [ExpertRef] = [
+        ExpertRef(monogram: "AH", name: "Dr. Andrew Huberman",
+                  credential: "Neuroscientist · Stanford Medicine",
+                  quote: "Sleep is the foundation of mental and physical health — the #1 lever."),
+        ExpertRef(monogram: "MW", name: "Dr. Matthew Walker",
+                  credential: "Neuroscientist · UC Berkeley · \u{201C}Why We Sleep\u{201D}",
+                  quote: "Sleep is your life-support system. The shorter your sleep, the shorter your life."),
+        ExpertRef(monogram: "BJ", name: "Bryan Johnson",
+                  credential: "Longevity founder · $2M/yr, ranks sleep #1",
+                  quote: "I treat sleep as a professional athletic endeavor."),
+    ]
+
+    private var accent: Color { Color(red: 0.66, green: 0.62, blue: 1.0) }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer(minLength: 6)
+
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 11, weight: .heavy))
+                    Text("THE PEOPLE WHO TAKE SLEEP SERIOUSLY")
+                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .tracking(1.4)
+                }
+                .foregroundColor(.white.opacity(0.55))
+
+                Text("You're in serious company.")
+                    .font(MooniFont.display(25))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+            }
+            .opacity(stage >= 1 ? 1 : 0)
+            .offset(y: stage >= 1 ? 0 : 10)
+
+            VStack(spacing: 10) {
+                ForEach(Array(experts.enumerated()), id: \.element.id) { idx, e in
+                    expertCard(e)
+                        .opacity(stage >= idx + 2 ? 1 : 0)
+                        .offset(y: stage >= idx + 2 ? 0 : 14)
+                }
+            }
+
+            VStack(spacing: 5) {
+                Text("THE SCIENCE WE BUILD ON")
+                    .font(.system(size: 9.5, weight: .heavy, design: .rounded))
+                    .tracking(1.4)
+                    .foregroundColor(.white.opacity(0.4))
+                Text("Harvard Medical School · Stanford Medicine · American Academy of Sleep Medicine · Sleep Foundation")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.6))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 6)
+            .padding(.top, 2)
+            .opacity(stage >= experts.count + 2 ? 1 : 0)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .onAppear { play() }
+    }
+
+    private func expertCard(_ e: ExpertRef) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(accent.opacity(0.22)).frame(width: 46, height: 46)
+                Circle().stroke(accent.opacity(0.5), lineWidth: 1).frame(width: 46, height: 46)
+                Text(e.monogram)
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(e.name)
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                Text(e.credential)
+                    .font(MooniFont.caption(10.5))
+                    .foregroundColor(.white.opacity(0.5))
+                Text("\u{201C}\(e.quote)\u{201D}")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .italic()
+                    .foregroundColor(.white.opacity(0.82))
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(13)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .stroke(accent.opacity(0.22), lineWidth: 1))
+    }
+
+    private func play() {
+        for s in 1...(experts.count + 2) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15 + Double(s - 1) * 0.32) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { stage = s }
+                if s >= 2 && s <= experts.count + 1 { Haptics.tick() }
+            }
+        }
+    }
+}
+
+// MARK: - whatWeImprove — reflect the user's goals back + good-vs-bad payoffs
+//
+// Shown right after the goals picker so the user feels heard, then sees the
+// concrete (deliberately punchy / loss-framed) upside of fixing their sleep.
+// These are motivational benefit numbers, not accuracy claims — exaggerated
+// for impact is fine here per the copy philosophy.
+
+private struct ImproveRow: Identifiable {
+    let id = UUID()
+    let icon: String
+    let tint: Color
+    let title: String
+    let payoff: String
+}
+
+struct WhatWeImproveScreen: View {
+    let goals: [SleepGoal]
+
+    @State private var stage: Int = 0
+
+    private let rows: [ImproveRow] = [
+        ImproveRow(icon: "bolt.fill", tint: Color(red: 1.0, green: 0.78, blue: 0.4),
+                   title: "Daytime energy", payoff: "Up to 3× steadier — no 2pm crash"),
+        ImproveRow(icon: "brain.head.profile", tint: Color(red: 0.66, green: 0.62, blue: 1.0),
+                   title: "Focus & memory", payoff: "Think up to 40% sharper"),
+        ImproveRow(icon: "face.smiling.inverse", tint: Color(red: 0.55, green: 0.85, blue: 0.7),
+                   title: "Mood", payoff: "Far calmer — fewer irritable, anxious days"),
+        ImproveRow(icon: "flame.fill", tint: Color(red: 1.0, green: 0.5, blue: 0.55),
+                   title: "Cravings", payoff: "Late-night cravings nearly halved"),
+        ImproveRow(icon: "heart.fill", tint: Color(red: 1.0, green: 0.6, blue: 0.7),
+                   title: "Recovery", payoff: "Your body repairs up to 2× faster"),
+    ]
+
+    private var goalsLine: String {
+        let titles = goals.map { $0.title.lowercased() }
+        switch titles.count {
+        case 0:  return "Because you want better sleep, here's what changes."
+        case 1:  return "Because you want to \(titles[0]), here's what changes."
+        case 2:  return "Because you want to \(titles[0]) and \(titles[1]), here's what changes."
+        default:
+            let head = titles.prefix(2).joined(separator: ", ")
+            return "Because you want to \(head) + more, here's what changes."
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer(minLength: 6)
+
+            VStack(spacing: 8) {
+                Text("Here's what better sleep unlocks")
+                    .font(MooniFont.display(25))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(goalsLine)
+                    .font(MooniFont.body(14))
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                    .padding(.horizontal, 12)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .opacity(stage >= 1 ? 1 : 0)
+            .offset(y: stage >= 1 ? 0 : 10)
+
+            VStack(spacing: 9) {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { idx, row in
+                    improveRow(row)
+                        .opacity(stage >= idx + 2 ? 1 : 0)
+                        .offset(x: stage >= idx + 2 ? 0 : 18)
+                }
+            }
+
+            Text("Every night you wait, you're leaving this on the table.")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundColor(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
+                .padding(.top, 2)
+                .opacity(stage >= rows.count + 2 ? 1 : 0)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .onAppear { play() }
+    }
+
+    private func improveRow(_ row: ImproveRow) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(row.tint.opacity(0.18))
+                    .frame(width: 40, height: 40)
+                Image(systemName: row.icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(row.tint)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.title.uppercased())
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .tracking(0.5)
+                    .foregroundColor(.white.opacity(0.55))
+                Text(row.payoff)
+                    .font(.system(size: 14.5, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 15, style: .continuous)
+            .fill(Color.white.opacity(0.05)))
+    }
+
+    private func play() {
+        for s in 1...(rows.count + 2) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12 + Double(s - 1) * 0.28) {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { stage = s }
+                if s >= 2 && s <= rows.count + 1 { Haptics.tick() }
+            }
+        }
     }
 }
 

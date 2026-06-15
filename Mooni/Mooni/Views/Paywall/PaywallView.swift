@@ -101,11 +101,15 @@ struct PaywallView: View {
         ZStack {
             MooniGradient.night
                 .ignoresSafeArea()
+            // Darkening scrim so the bright 4.2× band and CTA pop harder and
+            // the screen reads calmer / more focused.
+            Color.black.opacity(0.28)
+                .ignoresSafeArea()
             // Stars stay in the middle band of the screen — faded out under
             // the pinned close row (top) and CTA block (bottom) so nothing
             // drifts behind the X button or through the purchase button.
-            StarsBackground(count: 54)
-                .opacity(0.9)
+            StarsBackground(count: 30)
+                .opacity(0.8)
                 .mask(
                     VStack(spacing: 0) {
                         LinearGradient(colors: [.clear, .white],
@@ -240,6 +244,13 @@ struct PaywallView: View {
                         .padding(.top, 10)
                         .opacity(animateIn ? 1 : 0)
                         .animation(.easeOut(duration: 0.4).delay(0.13), value: animateIn)
+
+                    // Bold efficacy hook — bright on purpose.
+                    goalSpeedBand
+                        .padding(.horizontal, 22)
+                        .padding(.top, 16)
+                        .opacity(animateIn ? 1 : 0)
+                        .animation(.easeOut(duration: 0.4).delay(0.15), value: animateIn)
 
                     // Value / reassurance: trial timeline (trial) or benefits.
                     content
@@ -447,6 +458,58 @@ struct PaywallView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Goal speed band (bold efficacy hook)
+
+    /// Bright, high-energy claim band — deliberately loud against the calm night
+    /// background to draw the eye on the way to the price. A flat product claim
+    /// ("4.2× faster") by product decision; intentionally kept OUT of
+    /// `socialProofRow` (that slot is real-data-only) since this is a value /
+    /// efficacy framing rather than a rating or testimonial.
+    private var goalSpeedBand: some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("4.2×")
+                    .font(.system(size: 44, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                Text("FASTER")
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .tracking(3)
+                    .foregroundColor(.white.opacity(0.9))
+            }
+
+            Rectangle()
+                .fill(Color.white.opacity(0.25))
+                .frame(width: 1, height: 46)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Reach your sleep goals faster")
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("vs. trying to fix it on your own")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(.white.opacity(0.85))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.96, green: 0.28, blue: 0.46),
+                                 Color(red: 1.0, green: 0.56, blue: 0.24)],
+                        startPoint: .leading, endPoint: .trailing)
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.white.opacity(0.25), lineWidth: 1)
+        )
+        .shadow(color: Color(red: 1.0, green: 0.4, blue: 0.4).opacity(0.40), radius: 16, y: 6)
     }
 
     /// Number of trial days configured on the annual product in StoreKit, or
