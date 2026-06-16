@@ -10,6 +10,8 @@ struct DeveloperMenuView: View {
 
     @State private var storyEntry: SleepEntry?
     @State private var analyticsEntry: SleepEntry?
+    @State private var showMarketingVideo = false
+    @State private var showMarketingPoster = false
     @State private var message: String?
 
     var body: some View {
@@ -46,6 +48,19 @@ struct DeveloperMenuView: View {
                                    "The full hormone / cycle read-out",
                                    tint: MooniColor.success) {
                                 analyticsEntry = ensureEntry()
+                            }
+                        }
+
+                        section("Marketing") {
+                            devRow("play.rectangle.fill", "Start Marketing Video",
+                                   "Auto-looping reel for TikTok / Reels / App Store",
+                                   tint: MooniColor.accent) {
+                                showMarketingVideo = true
+                            }
+                            devRow("photo.fill", "Marketing Poster",
+                                   "Screenshot-ready App Store / social promo",
+                                   tint: MooniColor.accentSoft) {
+                                showMarketingPoster = true
                             }
                         }
 
@@ -104,6 +119,12 @@ struct DeveloperMenuView: View {
                 NightAnalyticsView(entry: entry, onClose: { analyticsEntry = nil })
                     .environmentObject(appState)
                     .environmentObject(subscriptionManager)
+            }
+            .fullScreenCover(isPresented: $showMarketingVideo) {
+                MarketingVideoView()
+            }
+            .fullScreenCover(isPresented: $showMarketingPoster) {
+                MarketingPosterView()
             }
         }
     }

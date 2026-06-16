@@ -15,6 +15,13 @@ struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var notifications = NotificationManager.shared
 
+    // The two stops of the constant onboarding background. Kept as named
+    // constants so the footer scrim can fade to the EXACT bottom colour —
+    // previously it faded to the lighter `MooniColor.background`, which left a
+    // lighter block and a hard seam where it met the darker real background.
+    private static let bgTop = Color(red: 0.045, green: 0.05, blue: 0.12)
+    private static let bgBottom = Color(red: 0.02, green: 0.025, blue: 0.065)
+
     // MARK: - Wizard state
     // DEBUG: screenshot tooling can jump straight to a step via the
     // "debug.onboardingStep" UserDefaults key (raw Step case name, e.g.
@@ -179,8 +186,7 @@ struct OnboardingView: View {
             // Darker than the app default so onboarding content (charts, science
             // stats) reads with more contrast and fewer distractions.
             LinearGradient(
-                colors: [Color(red: 0.045, green: 0.05, blue: 0.12),
-                         Color(red: 0.02, green: 0.025, blue: 0.065)],
+                colors: [Self.bgTop, Self.bgBottom],
                 startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
             StarsBackground(count: 16)
@@ -229,18 +235,22 @@ struct OnboardingView: View {
                         .padding(.top, 8)
                         .padding(.bottom, 28)
                         .background(
-                            // Soft fade behind the footer so content
-                            // scrolling under it stays readable instead
-                            // of clipping mid-letter against the button.
+                            // Soft fade behind the footer so content scrolling
+                            // under it stays readable instead of clipping
+                            // mid-letter against the button. Fades to the
+                            // background's OWN bottom colour and bleeds under
+                            // the home indicator, so there's no lighter block
+                            // and no seam at the safe-area edge.
                             LinearGradient(
                                 colors: [
-                                    MooniColor.background.opacity(0),
-                                    MooniColor.background.opacity(0.92),
-                                    MooniColor.background
+                                    Self.bgBottom.opacity(0),
+                                    Self.bgBottom.opacity(0.92),
+                                    Self.bgBottom
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
+                            .ignoresSafeArea(edges: .bottom)
                             .allowsHitTesting(false)
                         )
                 }
