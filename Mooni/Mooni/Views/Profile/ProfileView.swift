@@ -684,7 +684,6 @@ private struct SleepGoalEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var bedtime: Date
     @State private var wakeTime: Date
-    @State private var goal: Double
 
     init(initialBedtime: Date, initialWakeTime: Date, initialGoal: Double,
          onSave: @escaping (Date, Date, Double) -> Void) {
@@ -694,7 +693,16 @@ private struct SleepGoalEditorSheet: View {
         self.onSave = onSave
         _bedtime = State(initialValue: initialBedtime)
         _wakeTime = State(initialValue: initialWakeTime)
-        _goal = State(initialValue: initialGoal)
+    }
+
+    /// The nightly target follows from the schedule — we don't make the user
+    /// dial in "how many hours" anymore; that's our job to compute.
+    private var goalHours: Double {
+        let cal = Calendar.current
+        var end = wakeTime
+        if end <= bedtime { end = cal.date(byAdding: .day, value: 1, to: end) ?? end }
+        let mins = cal.dateComponents([.minute], from: bedtime, to: end).minute ?? 0
+        return Double(mins) / 60.0
     }
 
     var body: some View {
@@ -703,7 +711,7 @@ private struct SleepGoalEditorSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {
-                        Text("Ideal sleep time")
+                        Text("Your sleep schedule")
                             .font(MooniFont.title(22))
                             .foregroundColor(MooniColor.textPrimary)
                         Spacer()
@@ -723,7 +731,7 @@ private struct SleepGoalEditorSheet: View {
                             tint: MooniColor.accent, selection: $bedtime)
                     timeRow(title: "Wake time", systemImage: "sunrise.fill",
                             tint: MooniColor.warning, selection: $wakeTime)
-                    goalRow
+                    windowRow
 
                     Text("\(goalHelperLead) Your reminders and sleep tracking adjust to this schedule.")
                         .font(MooniFont.caption(12))
@@ -732,7 +740,7 @@ private struct SleepGoalEditorSheet: View {
 
                     PrimaryButton(title: "Save", variant: .white) {
                         Haptics.tap()
-                        onSave(bedtime, wakeTime, goal)
+                        onSave(bedtime, wakeTime, goalHours)
                         dismiss()
                     }
                     .padding(.top, 4)
@@ -740,13 +748,22 @@ private struct SleepGoalEditorSheet: View {
                 .padding(20)
             }
         }
-        .preferredColorScheme(.dark)
+        // Follow the app's day/night theme so system controls (the time
+        // pickers) match the cream morning surface instead of staying dark.
+        .preferredColorScheme(ThemeManager.currentMode == .light ? .light : .dark)
+    }
+
+    /// The computed window formatted as "8h 15m" (drops minutes when 0).
+    private var windowText: String {
+        let total = Int((goalHours * 60).rounded())
+        let h = total / 60, m = total % 60
+        return m == 0 ? "\(h)h" : "\(h)h \(m)m"
     }
 
     /// Tiny human-readable lead-in for the helper line (kept out of the view
     /// builder for clarity).
     private var goalHelperLead: String {
-        String(format: "Aiming for %.1f hours a night.", goal)
+        "That's a \(windowText) night."
     }
 
     private func timeRow(title: String, systemImage: String, tint: Color,
@@ -767,22 +784,21 @@ private struct SleepGoalEditorSheet: View {
         }
     }
 
-    private var goalRow: some View {
+    /// Read-only: the nightly sleep window is a CONSEQUENCE of bedtime + wake,
+    /// not a number the user dials. We compute and show it.
+    private var windowRow: some View {
         MooniCard {
-            Stepper(value: $goal, in: 4...12, step: 0.5) {
-                HStack {
-                    Label {
-                        Text("Goal").font(MooniFont.body(15)).foregroundColor(MooniColor.textPrimary)
-                    } icon: {
-                        Image(systemName: "moon.zzz.fill").foregroundColor(MooniColor.accentSoft)
-                    }
-                    Spacer()
-                    Text(String(format: "%.1fh", goal))
-                        .font(MooniFont.title(16))
-                        .foregroundColor(MooniColor.textPrimary)
+            HStack {
+                Label {
+                    Text("Sleep window").font(MooniFont.body(15)).foregroundColor(MooniColor.textPrimary)
+                } icon: {
+                    Image(systemName: "moon.zzz.fill").foregroundColor(MooniColor.accentSoft)
                 }
+                Spacer()
+                Text(windowText)
+                    .font(MooniFont.title(16))
+                    .foregroundColor(MooniColor.textPrimary)
             }
-            .tint(MooniColor.accent)
         }
     }
 }

@@ -2,6 +2,20 @@ import SwiftUI
 import UIKit
 
 enum MooniFont {
+    /// The app's type family. We ship Outfit (a geometric sans), but the whole
+    /// UI routes through this one enum, so the family can be swapped in a single
+    /// place — no call site changes. Override at runtime via the
+    /// "mooni.fontStyle" UserDefaults key for A/B-ing looks:
+    ///   "outfit"  → bundled Outfit (default)
+    ///   "rounded" → SF Rounded   (soft, friendly — system, no bundled file)
+    ///   "serif"   → New York     (elegant editorial — system)
+    ///   "system"  → SF Pro       (neutral system default)
+    enum Family: String { case outfit, rounded, serif, system }
+
+    static var family: Family {
+        Family(rawValue: UserDefaults.standard.string(forKey: "mooni.fontStyle") ?? "") ?? .outfit
+    }
+
     /// Outfit is a geometric sans bundled with the app. Falls back to the
     /// system rounded design if the family hasn't been registered yet
     /// (first launch in some simulators, missing Info.plist registration, etc).
@@ -10,6 +24,18 @@ enum MooniFont {
             || UIFont(name: "Outfit-Regular", size: 12) != nil
     }()
 
+    /// Routes to the active family. Outfit keeps its hand-built emoji cascade;
+    /// the system designs (rounded/serif/system) cascade to colour emoji
+    /// natively, so they can return SwiftUI's `.system` font directly.
+    private static func resolved(_ size: CGFloat, weight: Font.Weight) -> Font {
+        switch family {
+        case .outfit:  return outfit(size, weight: weight)
+        case .rounded: return .system(size: size, weight: weight, design: .rounded)
+        case .serif:   return .system(size: size, weight: weight, design: .serif)
+        case .system:  return .system(size: size, weight: weight, design: .default)
+        }
+    }
+
     /// Cached cascaded fonts per (name, size). Without a cascade list to
     /// AppleColorEmoji, SwiftUI Text using .custom(...) renders emoji as the
     /// missing-glyph "?" box — so every emoji in the app must go through a
@@ -17,7 +43,7 @@ enum MooniFont {
     private static var cache: [String: Font] = [:]
 
     private static func outfit(_ size: CGFloat, weight: Font.Weight) -> Font {
-        let key = "\(weight)-\(size)"
+        let key = "outfit-\(weight)-\(size)"
         if let cached = cache[key] { return cached }
 
         let psName: String
@@ -64,19 +90,19 @@ enum MooniFont {
     }
 
     static func display(_ size: CGFloat = 34) -> Font {
-        outfit(size, weight: .bold)
+        resolved(size, weight: .bold)
     }
 
     static func title(_ size: CGFloat = 22) -> Font {
-        outfit(size, weight: .semibold)
+        resolved(size, weight: .semibold)
     }
 
     static func body(_ size: CGFloat = 16) -> Font {
-        outfit(size, weight: .regular)
+        resolved(size, weight: .regular)
     }
 
     static func caption(_ size: CGFloat = 13) -> Font {
-        outfit(size, weight: .medium)
+        resolved(size, weight: .medium)
     }
 
     static func mono(_ size: CGFloat = 14) -> Font {

@@ -143,6 +143,7 @@ struct OnboardingView: View {
         // ─ PHASE 4 · The solution ─────────────────────────────────────────
         case trackingCompare    // scribbled journal → automatic report
         case sleepMetricsTease  // the morning report, scored
+        case recommendedSleep   // WE prescribe the nightly sleep need — never ask "how long?"
         case schedule
         case sleepGoal
         case sleepGoalMore
@@ -501,7 +502,8 @@ struct OnboardingView: View {
     /// next to the back chevron — instead of floating in the vertical centre.
     /// Story / hero / reveal beats stay centred.
     private var topAlignedSteps: Set<Step> {
-        [.ageQuestion, .genderQuestion, .typicalSleepHours,
+        [.ageQuestion, .genderQuestion, .heightQuestion, .weightQuestion,
+         .workoutFrequency, .dailyRhythm, .typicalSleepHours,
          .wakeFeeling, .phoneBeforeBed,
          .stressLevel, .struggleDuration, .biggestProblem, .schedule,
          .sleepGoal, .sleepGoalMore,
@@ -522,6 +524,11 @@ struct OnboardingView: View {
         case .welcome:              WelcomeScreen()
         case .ageQuestion:          AgeScreen(profile: $profile)
         case .genderQuestion:       GenderScreen(profile: $profile)
+        case .heightQuestion:       HeightScreen(profile: $profile)
+        case .weightQuestion:       WeightScreen(profile: $profile)
+        case .workoutFrequency:     WorkoutScreen(profile: $profile)
+        case .dailyRhythm:          DailyRhythmScreen(profile: $profile)
+        case .recommendedSleep:     RecommendedSleepScreen(profile: profile)
         case .typicalSleepHours:    TypicalSleepHoursScreen(profile: $profile)
         case .lifeTimeline:         LifeTimelineScreen(sleepGoal: sleepGoal)
         case .namePet:              NamePetScreen(species: species, name: $petName)
@@ -531,7 +538,7 @@ struct OnboardingView: View {
         case .struggleDuration:     StruggleDurationScreen(profile: $profile)
         case .biggestProblem:       BiggestProblemScreen(profile: $profile)
         case .problemUnderstood:    ProblemUnderstoodScreen(problem: profile.biggestProblem)
-        case .schedule:             ScheduleScreen(bedtime: $bedtime, wakeTime: $wakeTime,
+        case .schedule:             ScheduleScreen(profile: profile, bedtime: $bedtime, wakeTime: $wakeTime,
                                                    separateWeekends: $separateWeekends, weekendWake: $weekendWake)
         case .trackingCompare:      TrackingCompareScreen(animationDone: $trackingCompareDone)
         case .personalizeGoals:     GoalsMultiScreen(selection: $selectedGoals)
@@ -739,6 +746,9 @@ struct OnboardingView: View {
         case .struggleDuration:    return profile.struggleDuration == nil ? "Pick one to continue" : "Continue"
         case .biggestProblem:      return profile.biggestProblem == nil ? "Pick one to continue" : "Continue"
         case .problemUnderstood:   return "Let's fix it"
+        case .workoutFrequency:    return profile.workoutFrequency == nil ? "Pick one to continue" : "Continue"
+        case .dailyRhythm:         return profile.dailyRhythm == nil ? "Pick one to continue" : "Continue"
+        case .recommendedSleep:    return "Build my schedule"
         case .schedule:            return "Continue"
         case .trackingCompare:     return "I want this"
         case .targetReachable:     return "Continue"
@@ -786,6 +796,8 @@ struct OnboardingView: View {
         case .biggestProblem:      return profile.biggestProblem != nil
         case .phoneBeforeBed:      return profile.usesPhoneBeforeBed != nil
         case .wakeFeeling:         return profile.wakeFeeling != nil
+        case .workoutFrequency:    return profile.workoutFrequency != nil
+        case .dailyRhythm:         return profile.dailyRhythm != nil
         default:                   return true
         }
     }
@@ -1125,7 +1137,11 @@ struct OnboardingView: View {
             species: species,
             name: petName,
             goal: sleepGoal ?? selectedGoals.first ?? .wakeUpLessTired,
-            goalHours: hoursBetween(bedtime, wakeTime),
+            // We PRESCRIBE the nightly target from age + training (see
+            // OnboardingProfile.recommendedSleepHours) — we never ask the user
+            // "how long do you want to sleep". The bedtime they see was already
+            // derived from this on the schedule screen, so the two agree.
+            goalHours: profile.recommendedSleepHours,
             bedtime: bedtime,
             wakeTime: wakeTime,
             weekendWake: separateWeekends ? weekendWake : nil,
@@ -3475,24 +3491,145 @@ private struct RoomEnvironmentScreen: View {
     }
 }
 
+// MARK: - Screen: Recommended sleep (we prescribe it — never ask)
+
+/// The "we did the math" moment. We don't ask the user how long they want to
+/// sleep — we compute their nightly need from age + training (see
+/// `OnboardingProfile.recommendedSleepHours`) and hand it to them with
+/// confidence. Frames the product as in charge and automating, not surveying.
+private struct RecommendedSleepScreen: View {
+    let profile: OnboardingProfile
+    @State private var appeared = false
+
+    /// One-line reason for the age band, so the number doesn't feel arbitrary.
+    private var ageReason: String {
+        switch profile.age ?? 30 {
+        case ..<18:   return "Teens need the most — your brain is still wiring."
+        case 18...25: return "Young adults need more than most realize."
+        case 26...40: return "Your prime years still demand a full night."
+        case 41...64: return "Recovery gets pickier with age — consistency wins."
+        default:      return "Quality matters more than ever now."
+        }
+    }
+
+    private var trainingReason: String? {
+        switch profile.workoutFrequency {
+        case .intense:  return "+30 min added for your heavy training load."
+        case .moderate: return "+15 min added for your training recovery."
+        default:        return nil
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer().frame(height: 8)
+
+            ZStack {
+                Circle()
+                    .fill(MooniColor.accent.opacity(0.16))
+                    .frame(width: 130, height: 130)
+                    .blur(radius: 22)
+                Image(systemName: "bed.double.fill")
+                    .font(.system(size: 50))
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .top, endPoint: .bottom))
+            }
+            .scaleEffect(appeared ? 1 : 0.8)
+            .opacity(appeared ? 1 : 0)
+
+            VStack(spacing: 8) {
+                Text("WE'VE DONE THE MATH")
+                    .font(MooniFont.caption(12))
+                    .tracking(1.6)
+                    .foregroundColor(MooniColor.accent)
+                Text("Your body needs")
+                    .font(MooniFont.body(16))
+                    .foregroundColor(MooniColor.textSecondary)
+                Text(profile.recommendedSleepText)
+                    .font(MooniFont.display(58))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text("of sleep a night")
+                    .font(MooniFont.body(16))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared ? 0 : 12)
+
+            VStack(spacing: 10) {
+                reasonChip(icon: "person.fill", text: ageReason)
+                if let t = trainingReason {
+                    reasonChip(icon: "figure.run", text: t)
+                }
+            }
+            .padding(.horizontal, 8)
+            .opacity(appeared ? 1 : 0)
+
+            Text("No guesswork, no \u{201C}how long do you want to sleep?\u{201D} — that's our job. We'll build your whole plan around this.")
+                .font(MooniFont.caption(13))
+                .foregroundColor(MooniColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+                .opacity(appeared ? 1 : 0)
+        }
+        .padding(.horizontal, 20)
+        .onAppear {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.82).delay(0.05)) {
+                appeared = true
+            }
+        }
+    }
+
+    private func reasonChip(icon: String, text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(MooniColor.accent)
+                .frame(width: 22)
+            Text(text)
+                .font(MooniFont.caption(13))
+                .foregroundColor(MooniColor.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(MooniColor.card)
+        )
+    }
+}
+
 // MARK: - Screen: Schedule
 
 private struct ScheduleScreen: View {
+    let profile: OnboardingProfile
     @Binding var bedtime: Date
     @Binding var wakeTime: Date
     @Binding var separateWeekends: Bool
     @Binding var weekendWake: Date
 
+    /// The bedtime WE prescribe so the user actually hits their recommended
+    /// sleep need — derived from the wake time they give us (the one real-world
+    /// constraint we can't compute) minus the calculated nightly target. The
+    /// user never sets a duration or a bedtime; we hand it to them.
+    private var prescribedBedtime: Date {
+        let mins = Int((profile.recommendedSleepHours * 60).rounded())
+        return Calendar.current.date(byAdding: .minute, value: -mins, to: wakeTime) ?? wakeTime
+    }
+
     var body: some View {
         QuestionScaffold(
-            title: "When do you want to sleep & wake?",
-            subtitle: "We'll keep you on this rhythm gently."
+            title: "When do you need to be up?",
+            subtitle: "Give us your wake-up — we handle the rest."
         ) {
-            VStack(spacing: 12) {
-                timeRow(title: "Bedtime", icon: "moon.fill",
-                        color: MooniColor.accent, selection: $bedtime)
+            VStack(spacing: 14) {
                 timeRow(title: "Wake up", icon: "sun.max.fill",
-                        color: MooniColor.accent, selection: $wakeTime)
+                        color: MooniColor.warning, selection: $wakeTime)
+
+                prescribedBedtimeCard
 
                 Toggle(isOn: $separateWeekends) {
                     Text("Different wake time on weekends")
@@ -3508,6 +3645,45 @@ private struct ScheduleScreen: View {
                 }
             }
         }
+        // Keep the prescribed bedtime in sync so the rest of the app (plan
+        // reveal, home cards, bedtime nudge) shows the time we computed.
+        .onAppear { bedtime = prescribedBedtime }
+        .onChange(of: wakeTime) { _, _ in bedtime = prescribedBedtime }
+    }
+
+    /// The bedtime we computed — shown, not asked. This is the "we're in
+    /// charge / we did the math" moment on the schedule screen.
+    private var prescribedBedtimeCard: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "moon.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MooniColor.accent)
+                Text("LIGHTS OUT BY")
+                    .font(MooniFont.caption(11))
+                    .tracking(1.4)
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+            Text(prescribedBedtime.hourMinuteString)
+                .font(MooniFont.display(38))
+                .foregroundStyle(LinearGradient(
+                    colors: [MooniColor.accentSoft, MooniColor.accent],
+                    startPoint: .top, endPoint: .bottom))
+            Text("To get the \(profile.recommendedSleepText) your body needs.")
+                .font(MooniFont.caption(12))
+                .foregroundColor(MooniColor.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(MooniColor.accent.opacity(0.10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(MooniColor.accent.opacity(0.22), lineWidth: 1)
+                )
+        )
     }
 
     private func timeRow(title: String, icon: String, color: Color,
@@ -4316,7 +4492,7 @@ private struct ScienceCredibilityScreen: View {
 
     private let logos: [(emoji: String, name: String, blurb: String, tint: Color)] = [
         ("📚", "Research", "Built using sleep science research", MooniColor.accent),
-        ("🤖", "AI",       "AI-based sleep stage estimation",    MooniColor.success),
+        ("🤖", "AI",       "AI-based sleep stage detection",     MooniColor.success),
         ("🍎", "Apple",    "Your data stays on your phone",      MooniColor.accentSoft)
     ]
 
@@ -5175,7 +5351,7 @@ private struct ScienceFormulaScreen: View {
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
 
-                Text("No magic. Your score uses conservative sleep markers, then clearly labels estimates when Health data is missing.")
+                Text("No magic. Your score uses conservative sleep markers, and notes when it's modeled from your schedule instead of Health data.")
                     .font(MooniFont.body(14))
                     .foregroundColor(MooniColor.textSecondary)
                     .multilineTextAlignment(.center)

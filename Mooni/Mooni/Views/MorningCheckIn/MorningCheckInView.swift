@@ -755,7 +755,7 @@ struct MorningCheckInView: View {
     private func sourceLabel(_ s: SleepDataSource) -> String {
         switch s {
         case .healthKit:           return "From Health"
-        case .appActivityEstimate: return "Estimated from activity"
+        case .appActivityEstimate: return "Tracked from activity"
         case .userAdjusted:        return "You set this"
         }
     }

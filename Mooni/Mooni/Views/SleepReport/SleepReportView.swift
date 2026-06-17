@@ -186,7 +186,7 @@ struct SleepReportView: View {
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.textMuted)
                     if entry.isEstimated {
-                        Text("ESTIMATED")
+                        Text("MODELED")
                             .font(MooniFont.caption(9))
                             .tracking(1)
                             .foregroundColor(MooniColor.warning)
@@ -366,7 +366,7 @@ struct SleepReportView: View {
                 // Health-app disclaimer (Guideline 1.4.1). Kept small and muted
                 // so it fits the existing footer-caption style without drawing
                 // attention away from the stage breakdown above.
-                Text("Estimates based on motion & Health data — not a medical diagnosis.")
+                Text("Modeled from motion & Health data — not a medical diagnosis.")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.white.opacity(0.45))
                     .multilineTextAlignment(.center)

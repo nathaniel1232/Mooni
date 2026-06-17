@@ -538,7 +538,7 @@ enum SleepScoringManager {
         let deepPct = totalSleep > 0 ? stages.deepSleep / totalSleep : 0
         let remPct  = totalSleep > 0 ? stages.remSleep  / totalSleep : 0
         let estimatedNote = stages.isEstimated
-            ? " Stage breakdown estimated from your schedule and check-in."
+            ? " Stage breakdown modeled from your schedule and check-in."
             : ""
 
         if hours < 1 {

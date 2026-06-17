@@ -1008,7 +1008,7 @@ final class AppState: ObservableObject {
             quality: .good,
             mood: .okay,
             notes: autoBackfilled
-                ? "No check-in — estimated from your target schedule"
+                ? "No check-in — filled from your target schedule"
                 : "Added by you",
             isEstimated: true,
             totalSleep: wake.timeIntervalSince(bed),

@@ -64,7 +64,7 @@ struct SleepEntry: Identifiable, Codable, Hashable {
     var score: Int
     var energyEarned: Int
     /// True when bedtime/wake were inferred from app activity (no HealthKit /
-    /// no manual log). Surfaced in UI as "Estimated".
+    /// no manual log). Surfaced in UI as "Modeled" / "From your schedule".
     var isEstimated: Bool
     var totalSleep: TimeInterval?
     var timeInBed: TimeInterval?

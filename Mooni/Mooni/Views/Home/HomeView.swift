@@ -284,7 +284,7 @@ struct HomeView: View {
                         .font(MooniFont.title(14))
                         .foregroundColor(MooniColor.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("Turn on Motion & Fitness so \(appState.pet.name) can pin down exactly when you fell asleep and woke — not just an estimate.")
+                    Text("Turn on Motion & Fitness so \(appState.pet.name) can pin down exactly when you fell asleep and woke.")
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -401,13 +401,25 @@ struct HomeView: View {
                 )
             }
 
+            // One-line value prop right under the wordmark — names the core
+            // feature so a 3-second screen recording / UGC clip immediately
+            // reads what SleepOwl does, not just its name.
+            Text("Automatic sleep tracking, scored every morning")
+                .font(MooniFont.caption(12))
+                .foregroundColor(MooniColor.dyn(light: MooniColor.accent, dark: MooniColor.accentSoft))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .padding(.top, -6)
+
             HStack(alignment: .center, spacing: 4) {
                 Text(greeting + ",")
                     .font(MooniFont.body(15))
                     .foregroundColor(MooniColor.textSecondary)
                 Text(appState.pet.name)
                     .font(MooniFont.title(16))
-                    .foregroundColor(MooniColor.accentSoft)
+                    // accentSoft is near-white — fine on the night theme but
+                    // washes out on the cream morning surface. Darken in light.
+                    .foregroundColor(MooniColor.dyn(light: MooniColor.accent, dark: MooniColor.accentSoft))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
@@ -1183,7 +1195,7 @@ struct HomeView: View {
                 Image(systemName: "info.circle")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(MooniColor.textMuted)
-                Text("Estimated from your schedule")
+                Text("From your schedule")
                     .font(MooniFont.caption(12))
                     .foregroundColor(MooniColor.textMuted)
                 Text("·  Set real times")
@@ -2963,7 +2975,7 @@ private struct AutoWakeUpSheet: View {
                         .tracking(1.5)
                     Spacer()
                     if s.isEstimated {
-                        Text("Estimated")
+                        Text("Modeled")
                             .font(MooniFont.caption(10))
                             .foregroundColor(MooniColor.textMuted)
                             .padding(.horizontal, 7)

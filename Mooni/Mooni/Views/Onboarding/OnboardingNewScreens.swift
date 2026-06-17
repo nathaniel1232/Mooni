@@ -844,7 +844,7 @@ struct EfficiencyFormulaScreen: View {
                     .background(MooniColor.success.opacity(0.16))
                     .clipShape(Capsule())
 
-                Text("AI-based sleep\nstage estimation.")
+                Text("AI-based sleep\nstage detection.")
                     .font(MooniFont.display(30))
                     .foregroundColor(MooniColor.textPrimary)
                     .multilineTextAlignment(.center)
