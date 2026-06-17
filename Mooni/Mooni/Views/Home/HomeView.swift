@@ -901,7 +901,7 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .background(Color.white.opacity(0.05))
+        .background(MooniColor.card)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
@@ -978,11 +978,11 @@ struct HomeView: View {
                             Spacer(minLength: 0)
                         }
                         .padding(12)
-                        .background(Color.white.opacity(0.05))
+                        .background(MooniColor.card)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                                .stroke(MooniColor.hairline, lineWidth: 1)
                         )
                     }
                     .buttonStyle(.plain)
@@ -1010,7 +1010,7 @@ struct HomeView: View {
                     .foregroundColor(MooniColor.textMuted)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.05))
+                    .background(MooniColor.card)
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -1050,7 +1050,7 @@ struct HomeView: View {
                         .foregroundColor(MooniColor.accentSoft)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.05))
+                        .background(MooniColor.card)
                         .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -1117,7 +1117,7 @@ struct HomeView: View {
         let entry = appState.entries.first(where: { $0.dayKey == key && !$0.isScheduleBackfill })
         let isSelected = (selectedDayKey ?? appState.lastRealEntry?.dayKey) == key
         let isToday = Calendar.current.isDateInToday(day)
-        let scoreTint: Color = entry.map { scoreColor($0.score) } ?? Color.white.opacity(0.18)
+        let scoreTint: Color = entry.map { scoreColor($0.score) } ?? MooniColor.textMuted
 
         return Button {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
@@ -1142,14 +1142,14 @@ struct HomeView: View {
                         .foregroundColor(isSelected ? MooniColor.background.opacity(0.8) : scoreTint)
                 } else {
                     Circle()
-                        .fill(Color.white.opacity(0.18))
+                        .fill(MooniColor.hairline)
                         .frame(width: 4, height: 4)
                 }
             }
             .frame(width: 44, height: 70)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(isSelected ? scoreTint : Color.white.opacity(0.06))
+                    .fill(isSelected ? scoreTint : MooniColor.card)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -1222,7 +1222,7 @@ struct HomeView: View {
                     missedDayExplanation(entry)
                 }
 
-                Divider().background(Color.white.opacity(0.06))
+                Divider().background(MooniColor.hairline)
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     detailMetric(icon: "bolt.heart.fill",
@@ -1270,7 +1270,7 @@ struct HomeView: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.04))
+        .background(MooniColor.card)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
@@ -1355,7 +1355,7 @@ struct HomeView: View {
                 // Mini score indicator
                 ZStack {
                     Circle()
-                        .stroke(Color.white.opacity(0.08), lineWidth: 3)
+                        .stroke(MooniColor.hairline, lineWidth: 3)
                     Circle()
                         .trim(from: 0, to: CGFloat(min(max(entry.score, 0), 100)) / 100)
                         .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .round))
@@ -1392,7 +1392,7 @@ struct HomeView: View {
             .padding(12)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(isSelected ? 0.10 : 0.05))
+                    .fill(isSelected ? MooniColor.cardStrong : MooniColor.card)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -1733,7 +1733,7 @@ private struct HabitRow: View {
                 Spacer()
             }
             .padding(14)
-            .background(Color.white.opacity(isDone ? 0.11 : 0.055))
+            .background(isDone ? MooniColor.cardStrong : MooniColor.card)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -2335,7 +2335,7 @@ private struct AutoWakeUpSheet: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(Color.white.opacity(0.06))
+                .background(MooniColor.card)
                 .clipShape(Capsule())
                 .opacity(accuracyHeroIn ? 1 : 0)
 
@@ -2784,11 +2784,11 @@ private struct AutoWakeUpSheet: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color.white.opacity(0.06))
+                .background(MooniColor.card)
                 .clipShape(Capsule())
 
                 if !badges.isEmpty {
-                    Divider().background(Color.white.opacity(0.08))
+                    Divider().background(MooniColor.hairline)
                     Text("Just unlocked")
                         .font(MooniFont.caption(11))
                         .foregroundColor(MooniColor.textMuted)
@@ -2803,7 +2803,7 @@ private struct AutoWakeUpSheet: View {
                                 .foregroundColor(MooniColor.textSecondary)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(Color.white.opacity(0.06))
+                                .background(MooniColor.card)
                                 .clipShape(Capsule())
                         }
                     }
@@ -2892,7 +2892,7 @@ private struct AutoWakeUpSheet: View {
         }
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(stats.newLongestStreak ? MooniColor.warning.opacity(0.35) : Color.white.opacity(0.06), lineWidth: 1)
+                .stroke(stats.newLongestStreak ? MooniColor.warning.opacity(0.35) : MooniColor.hairline, lineWidth: 1)
         )
     }
 
@@ -2968,7 +2968,7 @@ private struct AutoWakeUpSheet: View {
                             .foregroundColor(MooniColor.textMuted)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
-                            .background(Color.white.opacity(0.06))
+                            .background(MooniColor.card)
                             .clipShape(Capsule())
                     }
                 }
@@ -3037,13 +3037,13 @@ private struct AutoWakeUpSheet: View {
                         .overlay(Capsule().stroke(scoreTint.opacity(0.4), lineWidth: 1))
                 }
 
-                Divider().background(Color.white.opacity(0.06))
+                Divider().background(MooniColor.hairline)
 
                 HStack(spacing: 0) {
                     wakeStatItem(icon: "moon.fill", label: "Went to bed", value: entry.bedtime.hourMinuteString, color: MooniColor.accent)
-                    Divider().background(Color.white.opacity(0.08)).frame(width: 1, height: 40)
+                    Divider().background(MooniColor.hairline).frame(width: 1, height: 40)
                     wakeStatItem(icon: "sun.max.fill", label: "Woke up", value: entry.wakeTime.hourMinuteString, color: MooniColor.warning)
-                    Divider().background(Color.white.opacity(0.08)).frame(width: 1, height: 40)
+                    Divider().background(MooniColor.hairline).frame(width: 1, height: 40)
                     wakeStatItem(icon: "bolt.heart.fill", label: "Readiness", value: "\(entry.readinessScore ?? entry.score)", color: scoreTint)
                 }
             }
@@ -3131,7 +3131,7 @@ private struct AutoWakeUpSheet: View {
                         .frame(width: isToday ? 10 : 6, height: isToday ? 10 : 6)
                         .overlay(
                             Circle()
-                                .stroke(Color.white.opacity(isToday ? 0.6 : 0), lineWidth: 1.5)
+                                .stroke(isToday ? MooniColor.accent : Color.clear, lineWidth: 1.5)
                         )
                         .position(x: x, y: y)
                 }

@@ -26,7 +26,7 @@ struct MooniCard<Content: View>: View {
             .background(MooniGradient.card)
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    .stroke(MooniColor.hairline, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
@@ -77,7 +77,7 @@ struct LunaSpeechBubble: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(Color.white.opacity(0.10))
+            .background(MooniColor.cardStrong)
             .overlay(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(MooniColor.accentSoft.opacity(0.22), lineWidth: 1)
@@ -119,7 +119,7 @@ struct MooniStatPill: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.065))
+        .background(MooniColor.card)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
@@ -172,7 +172,7 @@ struct MooniProgressBar: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.white.opacity(backgroundOpacity))
+                    .fill(MooniColor.hairline)
                 Capsule()
                     .fill(colors.first ?? MooniColor.accent)
                     .frame(width: geo.size.width * CGFloat(clampedValue))

@@ -11,6 +11,12 @@ struct OnboardingProfile: Codable, Equatable {
     var weightKg: Double? = nil       // stored canonically in kg
     var unitSystem: UnitSystem = .imperial
 
+    // MARK: - Body & lifestyle
+    /// How often the user trains — heavier training raises recovery sleep need.
+    var workoutFrequency: WorkoutFrequency? = nil
+    /// Shape of their day / work schedule — drives how strict the wake anchor is.
+    var dailyRhythm: DailyRhythm? = nil
+
     // MARK: - Sleep history
     /// Typical lights-out hour (0-23.75 in quarter steps). The actual asleep
     /// time is later, but this is what the user reports about their habit.
@@ -110,6 +116,38 @@ struct OnboardingProfile: Codable, Equatable {
         let deficit = max(0.0, 8.0 - typicalSleepHours)
         // ~1 night of 8h = 1 day; show what they're losing every year
         return Int((deficit * 365.0 / 8.0).rounded())
+    }
+
+    /// The sleep duration WE prescribe — we never ask the user "how long do you
+    /// want to sleep", we compute it. Base need follows the National Sleep
+    /// Foundation age bands, nudged up for heavier training loads (more
+    /// physical recovery) and snapped to a tidy 5-minute value.
+    var recommendedSleepHours: Double {
+        let base: Double
+        switch age ?? 30 {
+        case ..<18:   base = 9.00
+        case 18...25: base = 8.25
+        case 26...40: base = 8.00
+        case 41...64: base = 7.75
+        default:      base = 7.50
+        }
+        var h = base
+        switch workoutFrequency {
+        case .intense:  h += 0.50
+        case .moderate: h += 0.25
+        default:        break
+        }
+        // Snap to 5-minute steps, clamp to a sane band.
+        let snapped = (h * 12).rounded() / 12
+        return min(9.5, max(7.0, snapped))
+    }
+
+    /// Recommended sleep need formatted as "8h 15m" (drops the minutes when 0).
+    var recommendedSleepText: String {
+        let total = Int((recommendedSleepHours * 60).rounded())
+        let h = total / 60
+        let m = total % 60
+        return m == 0 ? "\(h)h" : "\(h)h \(m)m"
     }
 
     /// Top 3 issues to surface on the "we found these" screen.
@@ -223,6 +261,50 @@ extension OnboardingProfile {
 
     enum UnitSystem: String, Codable {
         case metric, imperial
+    }
+
+    enum WorkoutFrequency: String, Codable, CaseIterable, Identifiable {
+        case rarely, light, moderate, intense
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .rarely:   return "Rarely"
+            case .light:    return "1–2× a week"
+            case .moderate: return "3–4× a week"
+            case .intense:  return "5+ times a week"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .rarely:   return "figure.stand"
+            case .light:    return "figure.walk"
+            case .moderate: return "figure.run"
+            case .intense:  return "figure.strengthtraining.traditional"
+            }
+        }
+    }
+
+    enum DailyRhythm: String, Codable, CaseIterable, Identifiable {
+        case earlyStart, standardDay, lateOrNight, flexible, student
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .earlyStart:  return "Up early for work or school"
+            case .standardDay: return "Standard 9-to-5 day"
+            case .lateOrNight: return "Late hours or night shifts"
+            case .flexible:    return "Flexible / work from home"
+            case .student:     return "Student life"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .earlyStart:  return "sunrise.fill"
+            case .standardDay: return "briefcase.fill"
+            case .lateOrNight: return "moon.stars.fill"
+            case .flexible:    return "house.fill"
+            case .student:     return "graduationcap.fill"
+            }
+        }
     }
 
     enum StruggleDuration: String, Codable, CaseIterable, Identifiable {

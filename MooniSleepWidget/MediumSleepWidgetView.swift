@@ -1,97 +1,15 @@
 import SwiftUI
 
-/// Medium widget — the mascot-ring design.
-/// LEFT: glowing gradient ring with the owl mascot at centre and the
-/// bed→wake time pill beneath it (the schedule gets its own dedicated,
-/// full-width spot so it never truncates).
-/// RIGHT: one balanced brand row (wordmark left, quality pill right),
-/// the big gradient score with its TONIGHT label, then duration/energy
-/// chips. Every row owns its own width budget — nothing collides.
+/// Medium widget — typographic "score card" with a sleep timeline.
+/// A complete redesign away from the old owl-in-ring: the top row pairs the
+/// big gradient score with two stat chips; the bottom is a full-width moon→sun
+/// timeline of the night (bedtime, duration, wake). No mascot, no ring.
 struct MediumSleepWidgetView: View {
     let data: SleepWidgetData
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            leftPane
-                .frame(width: 116)
-            rightPane
-                .frame(maxWidth: .infinity, maxHeight: .infinity,
-                       alignment: .topLeading)
-        }
-    }
-
-    // MARK: - Left pane
-
-    private var leftPane: some View {
-        VStack(spacing: 8) {
-            ringHero
-                .frame(width: 100, height: 100)
-
-            // Bed → wake pill — full pane width, scales gracefully.
-            HStack(spacing: 4) {
-                Image(systemName: "moon.zzz.fill")
-                    .font(.system(size: 8, weight: .heavy))
-                    .foregroundStyle(data.scoreTint)
-                Text("\(data.sleepStart) → \(data.wakeTime)")
-                    .font(.system(size: 9, weight: .heavy, design: .rounded))
-                    .foregroundStyle(SleepWidgetPalette.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity)
-            .background(
-                Capsule().fill(SleepWidgetPalette.chipBackground)
-            )
-            .overlay(
-                Capsule().stroke(data.scoreTint.opacity(0.18), lineWidth: 0.6)
-            )
-        }
-    }
-
-    private var ringHero: some View {
-        ZStack {
-            // Soft glow behind the ring
-            Circle()
-                .fill(data.scoreTint.opacity(0.20))
-                .frame(width: 104, height: 104)
-                .blur(radius: 12)
-
-            // Track
-            Circle()
-                .stroke(SleepWidgetPalette.ringTrack, lineWidth: 7)
-                .frame(width: 90, height: 90)
-
-            // Progress — angular gradient stroke
-            Circle()
-                .trim(from: 0, to: data.ringProgress)
-                .stroke(
-                    AngularGradient(
-                        colors: [
-                            data.scoreTint.opacity(0.55),
-                            data.scoreTint,
-                            data.scoreTint.opacity(0.9)
-                        ],
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: 7, lineCap: .round)
-                )
-                .frame(width: 90, height: 90)
-                .rotationEffect(.degrees(-90))
-                .shadow(color: data.scoreTint.opacity(0.5), radius: 7)
-
-            MooniMascotView()
-                .frame(width: 52, height: 52)
-        }
-    }
-
-    // MARK: - Right pane
-
-    private var rightPane: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Brand + quality on ONE balanced row — the wordmark owns the
-            // left edge, the quality pill the right. No floating brand.
+            // ── Brand + quality on one balanced row
             HStack(spacing: 4) {
                 Image(systemName: "moon.stars.fill")
                     .font(.system(size: 9, weight: .black))
@@ -104,37 +22,93 @@ struct MediumSleepWidgetView: View {
                 qualityChip
             }
             .foregroundStyle(SleepWidgetPalette.textSecondary)
-            .padding(.top, 2)
 
-            Spacer(minLength: 2)
+            Spacer(minLength: 4)
 
-            // Score block — gradient number + stacked label
-            HStack(alignment: .center, spacing: 9) {
-                Text("\(data.score)")
-                    .font(.system(size: 46, weight: .heavy, design: .rounded))
-                    .foregroundStyle(scoreGradient)
-                    .shadow(color: data.scoreTint.opacity(0.45), radius: 10)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text("TONIGHT")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .tracking(1.6)
-                    .foregroundStyle(SleepWidgetPalette.textTertiary)
+            // ── Score + stat chips
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: -2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(data.score)")
+                            .font(.system(size: 50, weight: .black, design: .rounded))
+                            .foregroundStyle(scoreGradient)
+                            .shadow(color: data.scoreTint.opacity(0.4), radius: 9)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                        Text("/100")
+                            .font(.system(size: 13, weight: .heavy, design: .rounded))
+                            .foregroundStyle(SleepWidgetPalette.textTertiary)
+                    }
+                    Text("LAST NIGHT")
+                        .font(.system(size: 8.5, weight: .heavy, design: .rounded))
+                        .tracking(1.4)
+                        .foregroundStyle(SleepWidgetPalette.textTertiary)
+                }
+
+                Spacer(minLength: 4)
+
+                VStack(spacing: 6) {
+                    miniChip(icon: "bed.double.fill",
+                             value: data.sleepDuration,
+                             tint: data.scoreTint)
+                    miniChip(icon: "bolt.fill",
+                             value: "\(data.energyScore)%",
+                             tint: energyTint(for: data.energyScore))
+                }
+                .frame(width: 104)
             }
 
-            Spacer(minLength: 2)
+            Spacer(minLength: 6)
 
-            // Day stats — duration + energy, width-balanced.
-            HStack(spacing: 6) {
-                miniChip(icon: "bed.double.fill",
-                         value: data.sleepDuration,
-                         tint: data.scoreTint)
-                miniChip(icon: "bolt.fill",
-                         value: "\(data.energyScore)%",
-                         tint: energyTint(for: data.energyScore))
-            }
+            // ── Sleep timeline: moon (bedtime) → sun (wake), duration centered.
+            timelineBar
         }
     }
+
+    // MARK: - Timeline
+
+    private var timelineBar: some View {
+        VStack(spacing: 5) {
+            HStack(spacing: 0) {
+                endpoint(icon: "moon.fill", time: data.sleepStart)
+                Spacer(minLength: 4)
+                Text("\(data.sleepDuration) asleep")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundStyle(SleepWidgetPalette.textSecondary)
+                    .lineLimit(1)
+                    .fixedSize()
+                Spacer(minLength: 4)
+                endpoint(icon: "sun.max.fill", time: data.wakeTime)
+            }
+            Capsule()
+                .fill(SleepWidgetPalette.ringTrack)
+                .frame(height: 9)
+                .overlay(
+                    Capsule()
+                        .fill(LinearGradient(
+                            colors: [data.scoreTint.opacity(0.55),
+                                     data.scoreTint,
+                                     Color(red: 1.0, green: 0.83, blue: 0.5)],
+                            startPoint: .leading, endPoint: .trailing))
+                        .shadow(color: data.scoreTint.opacity(0.4), radius: 4)
+                )
+        }
+    }
+
+    private func endpoint(icon: String, time: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .heavy))
+                .foregroundStyle(data.scoreTint)
+            Text(time)
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .foregroundStyle(SleepWidgetPalette.textPrimary)
+                .lineLimit(1)
+                .fixedSize()
+        }
+    }
+
+    // MARK: - Chips
 
     private var qualityChip: some View {
         Text(data.quality.uppercased())
@@ -145,12 +119,8 @@ struct MediumSleepWidgetView: View {
             .fixedSize()
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(
-                Capsule().fill(data.scoreTint.opacity(0.22))
-            )
-            .overlay(
-                Capsule().stroke(data.scoreTint.opacity(0.45), lineWidth: 0.6)
-            )
+            .background(Capsule().fill(data.scoreTint.opacity(0.22)))
+            .overlay(Capsule().stroke(data.scoreTint.opacity(0.45), lineWidth: 0.6))
     }
 
     private func miniChip(icon: String, value: String, tint: Color) -> some View {
@@ -163,10 +133,11 @@ struct MediumSleepWidgetView: View {
                 .foregroundStyle(SleepWidgetPalette.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 9)
         .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(SleepWidgetPalette.chipBackground)

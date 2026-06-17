@@ -15,12 +15,13 @@ struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var notifications = NotificationManager.shared
 
-    // The two stops of the constant onboarding background. Kept as named
-    // constants so the footer scrim can fade to the EXACT bottom colour —
-    // previously it faded to the lighter `MooniColor.background`, which left a
-    // lighter block and a hard seam where it met the darker real background.
-    private static let bgTop = Color(red: 0.045, green: 0.05, blue: 0.12)
-    private static let bgBottom = Color(red: 0.02, green: 0.025, blue: 0.065)
+    // The two stops of the constant onboarding background. These now point at
+    // the shared app-wide base (`MooniColor.bgTop/bgBottom`) so onboarding and
+    // the main app render the EXACT same background — no colour jump at the
+    // hand-off. The footer scrim also fades to the exact bottom colour, so
+    // there's no lighter block and no seam at the safe-area edge.
+    private static let bgTop = MooniColor.bgTop
+    private static let bgBottom = MooniColor.bgBottom
 
     // MARK: - Wizard state
     // DEBUG: screenshot tooling can jump straight to a step via the
@@ -58,7 +59,17 @@ struct OnboardingView: View {
     @State private var room: PetRoom = .moonBedroom
 
     // Onboarding profile (the new personalization data)
-    @State private var profile: OnboardingProfile = OnboardingProfile()
+    // DEBUG: screenshot tooling can preselect the biggest problem via the
+    // "debug.biggestProblem" key (raw SleepProblem case, e.g. "stayingAsleep")
+    // so the "we understand" beat renders personalized. No effect in production.
+    @State private var profile: OnboardingProfile = {
+        var p = OnboardingProfile()
+        if let raw = UserDefaults.standard.string(forKey: "debug.biggestProblem"),
+           let match = OnboardingProfile.SleepProblem(rawValue: raw) {
+            p.biggestProblem = match
+        }
+        return p
+    }()
 
     // Loading screen state — drives planComputing's main ring + sub-bars.
     @State private var analyzingProgress: Double = 0
@@ -68,6 +79,10 @@ struct OnboardingView: View {
     // .planComputing and replay the whole animation; this flag makes the
     // loader a one-time beat (`shouldSkip` hops over it once it's done).
     @State private var planComputingDone: Bool = false
+    // True once the plan-reveal diagnosis→transformation animation has fully
+    // played. Gates the "See my widgets" Continue button so the user can't
+    // skip past the reveal mid-animation.
+    @State private var planRevealDone: Bool = false
 
     // TrackingCompareScreen sets this true once its play() animation finishes;
     // it gates the footer Continue so the user can't skip past the reveal.
@@ -100,8 +115,12 @@ struct OnboardingView: View {
         // ─ PHASE 1 · Getting to know you ──────────────────────────────────
         case ageQuestion
         case genderQuestion
-        case typicalSleepHours
+        case heightQuestion
+        case weightQuestion
         case namePet            // pet beat keeps the warmup light
+        case workoutFrequency
+        case dailyRhythm
+        case typicalSleepHours
         case wakeFeeling
         case phoneBeforeBed
 
@@ -109,6 +128,7 @@ struct OnboardingView: View {
         case stressLevel
         case struggleDuration
         case biggestProblem
+        case problemUnderstood  // personalized "we get it — and we have the fix" beat
         case personalizeBlockers
         case personalizeTried
 
@@ -116,8 +136,8 @@ struct OnboardingView: View {
         case sleepScienceBody   // −70% immune cells (Walker)
         case sleepScienceMind   // legally-drunk impairment + Bryan Johnson
         case trustedByExperts   // known sleep figures + institution sources
-        case sleepScienceHarvard // 3 real Harvard findings (memory / errors / risk)
-        case harvardFormula      // "your score is built on Harvard sleep science"
+        case sleepScienceHarvard // accuracy proof: phone tracking ≈ clinical PSG
+        case harvardFormula      // "your score isn't a guess" — computed from measured inputs
         case lifeTimeline       // …and here's the 4-week turnaround (hope)
 
         // ─ PHASE 4 · The solution ─────────────────────────────────────────
@@ -194,15 +214,15 @@ struct OnboardingView: View {
             ShootingStarsOverlay()
 
             if step == .prePaywall {
-                // Terminal step: open the real paywall sheet directly, skipping
-                // the 3-stage emotional pre-paywall. Keeps onboarding short for
-                // App Store review (Guideline 4.0).
+                // Terminal step: finish onboarding right here and let RootView
+                // present the app's single HARD-LOCK paywall (no free tier).
+                // We used to pop a soft onboarding paywall (with a close "X")
+                // on top of the eventual hard paywall — two paywalls back to
+                // back, and the first one showed a dismiss X on what's meant to
+                // be a hard gate. Completing onboarding now means the user sees
+                // exactly one paywall, hard-locked, with no X to escape.
                 Color.clear
-                    .onAppear {
-                        if paywallSheet == nil {
-                            paywallSheet = .main
-                        }
-                    }
+                    .onAppear { finishOnboarding() }
             } else {
                 VStack(spacing: 0) {
                     topBar
@@ -510,6 +530,7 @@ struct OnboardingView: View {
         case .stressLevel:          StressLevelScreen(profile: $profile)
         case .struggleDuration:     StruggleDurationScreen(profile: $profile)
         case .biggestProblem:       BiggestProblemScreen(profile: $profile)
+        case .problemUnderstood:    ProblemUnderstoodScreen(problem: profile.biggestProblem)
         case .schedule:             ScheduleScreen(bedtime: $bedtime, wakeTime: $wakeTime,
                                                    separateWeekends: $separateWeekends, weekendWake: $weekendWake)
         case .trackingCompare:      TrackingCompareScreen(animationDone: $trackingCompareDone)
@@ -557,7 +578,8 @@ struct OnboardingView: View {
                 profile: profile,
                 bedtime: bedtime,
                 wakeTime: wakeTime,
-                petName: petName)
+                petName: petName,
+                revealComplete: $planRevealDone)
         case .widgetSmall:          WidgetShowcaseScreen(kind: .small)
         case .widgetMedium:         WidgetShowcaseScreen(kind: .medium)
         case .autoTrackStoneAge:    AutoTrackStoneAgeScreen()
@@ -651,7 +673,9 @@ struct OnboardingView: View {
                 VStack(spacing: 14) {
                     PrimaryButton(title: "Leave a rating", icon: "star.fill", variant: .white) {
                         OnboardingRatingPrompt.request()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                        // "I rated it" only surfaces a few seconds AFTER the
+                        // user opens the App Store prompt — never before.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 ratePromptShown = true
                             }
@@ -714,6 +738,7 @@ struct OnboardingView: View {
         case .stressLevel:         return "Continue"
         case .struggleDuration:    return profile.struggleDuration == nil ? "Pick one to continue" : "Continue"
         case .biggestProblem:      return profile.biggestProblem == nil ? "Pick one to continue" : "Continue"
+        case .problemUnderstood:   return "Let's fix it"
         case .schedule:            return "Continue"
         case .trackingCompare:     return "I want this"
         case .targetReachable:     return "Continue"
@@ -738,9 +763,7 @@ struct OnboardingView: View {
         case .whatWeImprove:       return "I want this"
         case .sleepScienceHarvard: return "I trust that"
         case .harvardFormula:      return "Show me my plan"
-        case .viceSpend:           return profile.vice == nil
-            ? "Pick one to continue"
-            : "Worth it"
+        case .viceSpend:           return "Worth it"
         default:                   return "Continue"
         }
     }
@@ -758,11 +781,11 @@ struct OnboardingView: View {
         case .sleepGoal:           return sleepGoal != nil
         case .sleepGoalMore:       return sleepGoal != nil
         case .trackingCompare:     return trackingCompareDone
+        case .planReveal:          return planRevealDone
         case .struggleDuration:    return profile.struggleDuration != nil
         case .biggestProblem:      return profile.biggestProblem != nil
         case .phoneBeforeBed:      return profile.usesPhoneBeforeBed != nil
         case .wakeFeeling:         return profile.wakeFeeling != nil
-        case .viceSpend:           return profile.vice != nil
         default:                   return true
         }
     }
@@ -820,6 +843,11 @@ struct OnboardingView: View {
             // One-time loader: once the 12s "Building your plan" animation has
             // run, never replay it (e.g. backing out of the plan reveal).
             return planComputingDone
+        case .problemUnderstood:
+            // The empathy beat is only meaningful if they actually named a
+            // problem to reflect back. (Can't normally happen — biggestProblem
+            // gates Continue — but stay defensive.)
+            return profile.biggestProblem == nil
         default:
             return false
         }
@@ -1133,6 +1161,10 @@ private struct QuestionScaffold<Content: View>: View {
     var expert: ExpertNote? = nil
     @ViewBuilder var content: () -> Content
 
+    /// Flips true once the title finishes typing, releasing the answer rows
+    /// to slide in (read by any `StaggeredReveal` inside `content`).
+    @State private var revealAnswers = false
+
     var body: some View {
         // Question screens read top-left: the title lands a small, constant
         // distance under the progress bar, and the answers start right after
@@ -1143,9 +1175,16 @@ private struct QuestionScaffold<Content: View>: View {
         // The parent's `.frame(minHeight: geo.size.height)` is what lets the
         // Spacers stretch; content taller than the band still scrolls.
         VStack(spacing: 0) {
-            QuestionHeader(title: title, subtitle: subtitle)
+            QuestionHeader(title: title, subtitle: subtitle,
+                           onTitleComplete: { revealAnswers = true })
             Spacer(minLength: 20).frame(maxHeight: 32)
             content()
+                .environment(\.onboardingRevealStarted, revealAnswers)
+                // Controls without a `StaggeredReveal` (sliders, the dial, the
+                // age ruler, the name field) fade in as one block once the
+                // question has finished writing in.
+                .opacity(revealAnswers ? 1 : 0)
+                .animation(.easeOut(duration: 0.3), value: revealAnswers)
             Spacer(minLength: 12)
         }
         .frame(maxWidth: .infinity)
@@ -1623,38 +1662,170 @@ private struct AgeScreen: View {
 
     private let minAge = 13
     private let maxAge = 90
+    private let tickSpacing: CGFloat = 16
+
     @State private var ageValue: Int = 25
+    /// Live finger offset of the tick strip (resets to 0 on release).
+    @State private var dragOffset: CGFloat = 0
+    /// Age captured at the moment a drag begins, so each move maps cleanly to
+    /// whole-year steps relative to where the finger started.
+    @State private var dragStartAge: Int? = nil
+
+    /// Age band the slider currently sits in — gives a little contextual
+    /// payoff under the number instead of dead space, and reinforces the
+    /// "we tune to people like you" promise from the subtitle.
+    private var bandLabel: String {
+        switch ageValue {
+        case ..<18:  return "Teens need 8–10 h of sleep"
+        case 18...25: return "Young adults need 7–9 h"
+        case 26...40: return "Adults need 7–9 h"
+        case 41...64: return "Sleep gets lighter with age"
+        default:      return "Deep sleep naturally declines after 65"
+        }
+    }
 
     var body: some View {
         QuestionScaffold(
-            title: "How old are you?",
-            subtitle: "We use age to match you against people who improved their sleep."
+            title: "First, let's get your age.",
+            subtitle: "We tune your plan to people who improved their sleep at your age."
         ) {
-            VStack(spacing: 20) {
-                Text("\(ageValue)")
-                    .font(.system(size: 80, weight: .bold, design: .rounded))
-                    .foregroundStyle(LinearGradient(
-                        colors: [MooniColor.accentSoft, MooniColor.accent],
-                        startPoint: .top, endPoint: .bottom))
-                    .padding(.top, 12)
+            VStack(spacing: 26) {
+                // Big number — the hero. Years label sits right under it.
+                VStack(spacing: 0) {
+                    Text("\(ageValue)")
+                        .font(.system(size: 96, weight: .black, design: .rounded))
+                        .foregroundStyle(LinearGradient(
+                            colors: [MooniColor.accentSoft, MooniColor.accent],
+                            startPoint: .top, endPoint: .bottom))
+                        .monospacedDigit()
+                    Text("YEARS OLD")
+                        .font(.system(size: 13, weight: .heavy, design: .rounded))
+                        .tracking(3)
+                        .foregroundColor(MooniColor.textMuted)
+                }
 
-                Picker("Age", selection: $ageValue) {
-                    ForEach(minAge...maxAge, id: \.self) { age in
-                        Text("\(age)").tag(age)
-                    }
+                ruler
+
+                // Contextual band pill.
+                HStack(spacing: 7) {
+                    Image(systemName: "moon.zzz.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(MooniColor.accent)
+                    Text(bandLabel)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundColor(MooniColor.textSecondary)
                 }
-                .pickerStyle(.wheel)
-                .frame(height: 160)
-                .colorScheme(.dark)
-                .onChange(of: ageValue) { _, newValue in
-                    profile.age = newValue
-                    Haptics.tick()
-                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(MooniColor.accent.opacity(0.12))
+                .clipShape(Capsule())
+                .animation(.easeInOut(duration: 0.2), value: bandLabel)
             }
         }
         .onAppear {
             if let saved = profile.age { ageValue = saved } else { profile.age = ageValue }
         }
+    }
+
+    // MARK: - Ruler
+
+    private var ruler: some View {
+        GeometryReader { geo in
+            let center = geo.size.width / 2
+            ZStack {
+                // The tick strip, offset so the selected age sits under the
+                // centre pointer. `dragOffset` lets it track the finger 1:1.
+                HStack(spacing: 0) {
+                    ForEach(minAge...maxAge, id: \.self) { age in
+                        tick(for: age)
+                            .frame(width: tickSpacing, height: 62, alignment: .top)
+                    }
+                }
+                .offset(x: center - tickSpacing / 2
+                        - CGFloat(ageValue - minAge) * tickSpacing
+                        + dragOffset)
+                // Fade the strip out toward both edges so it reads as an
+                // endless dial rather than a clipped list.
+                .mask(
+                    LinearGradient(
+                        colors: [.clear, .black, .black, .clear],
+                        startPoint: .leading, endPoint: .trailing)
+                )
+
+                // Fixed centre pointer.
+                VStack(spacing: 0) {
+                    Triangle()
+                        .fill(MooniColor.accent)
+                        .frame(width: 14, height: 9)
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(MooniColor.accent)
+                        .frame(width: 3, height: 44)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        let base = dragStartAge ?? ageValue
+                        if dragStartAge == nil { dragStartAge = base }
+                        // Clamp the travel so the strip can't scroll past the
+                        // first/last age into empty space.
+                        let maxRight = CGFloat(base - minAge) * tickSpacing
+                        let maxLeft  = CGFloat(base - maxAge) * tickSpacing
+                        let t = min(maxRight, max(maxLeft, v.translation.width))
+                        let steps = Int((t / tickSpacing).rounded())
+                        let newAge = base - steps
+                        if newAge != ageValue {
+                            ageValue = newAge
+                            profile.age = newAge
+                            Haptics.tick()
+                        }
+                        // Remainder keeps the strip glued to the finger while
+                        // the number snaps tick-by-tick.
+                        dragOffset = t - CGFloat(base - newAge) * tickSpacing
+                    }
+                    .onEnded { _ in
+                        dragStartAge = nil
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            dragOffset = 0
+                        }
+                    }
+            )
+        }
+        .frame(height: 62)
+    }
+
+    private func tick(for age: Int) -> some View {
+        let isMajor = age % 5 == 0
+        let isSel = age == ageValue
+        let barColor: Color = isSel
+            ? MooniColor.accent
+            : (isMajor ? Color.white.opacity(0.5) : Color.white.opacity(0.18))
+        return VStack(spacing: 7) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(barColor)
+                .frame(width: isSel ? 3.5 : 2, height: isMajor ? 34 : 20)
+            if isMajor {
+                Text("\(age)")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(isSel ? MooniColor.accent : MooniColor.textMuted)
+                    .fixedSize()
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: isSel)
+    }
+}
+
+/// Downward-pointing triangle used by the age ruler's centre pointer.
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.closeSubpath()
+        return p
     }
 }
 
@@ -1666,9 +1837,9 @@ private struct GenderScreen: View {
     var body: some View {
         QuestionScaffold(
             title: "How do you identify?",
-            subtitle: "Optional — sleep needs differ slightly by hormones."
+            subtitle: "Optional — sleep needs shift a little with hormones."
         ) {
-            VStack(spacing: 10) {
+            StaggeredReveal(spacing: 10) {
                 ForEach(OnboardingProfile.Gender.allCases) { g in
                     OptionRow(
                         title: g.label,
@@ -1874,6 +2045,46 @@ private struct WeightScreen: View {
     }
 }
 
+// MARK: - Screen: Workout frequency
+
+private struct WorkoutScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "How often do you train?",
+            subtitle: "Hard training raises how much recovery sleep your body needs."
+        ) {
+            StaggeredReveal(spacing: 10) {
+                ForEach(OnboardingProfile.WorkoutFrequency.allCases) { w in
+                    OptionRow(title: w.label, icon: w.icon, value: w,
+                              selection: $profile.workoutFrequency)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Screen: Daily rhythm
+
+private struct DailyRhythmScreen: View {
+    @Binding var profile: OnboardingProfile
+
+    var body: some View {
+        QuestionScaffold(
+            title: "What does your day look like?",
+            subtitle: "This tells us how firm your wake-up time has to be."
+        ) {
+            StaggeredReveal(spacing: 10) {
+                ForEach(OnboardingProfile.DailyRhythm.allCases) { r in
+                    OptionRow(title: r.label, icon: r.icon, value: r,
+                              selection: $profile.dailyRhythm)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Screen: Sleep goal
 //
 // 6 SleepGoal cases split across 2 screens (3 per page) so each row can be
@@ -1891,6 +2102,8 @@ private struct GoalScreen: View {
     /// selected (the normal footer Continue skips that page once a goal is
     /// chosen). Browsing more options never requires a premature selection.
     var onMoreOptions: () -> Void = {}
+
+    @State private var revealAnswers = false
 
     /// Three goals per page in stable enum order.
     private var pageGoals: [SleepGoal] {
@@ -1914,14 +2127,16 @@ private struct GoalScreen: View {
         // Same rhythm as QuestionScaffold / MultiSelectScreen: left-aligned
         // header right under the bar, capped gap, answers as one block.
         VStack(spacing: 0) {
-            QuestionHeader(title: title, subtitle: subtitle)
+            QuestionHeader(title: title, subtitle: subtitle,
+                           onTitleComplete: { revealAnswers = true })
             Spacer(minLength: 20).frame(maxHeight: 32)
 
-            VStack(spacing: 10) {
+            StaggeredReveal(spacing: 10) {
                 ForEach(pageGoals) { goal in
                     goalRow(goal: goal)
                 }
             }
+            .environment(\.onboardingRevealStarted, revealAnswers)
 
             if page == 0 {
                 Button {
@@ -1939,6 +2154,8 @@ private struct GoalScreen: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 14)
+                .opacity(revealAnswers ? 1 : 0)
+                .animation(.easeOut(duration: 0.3), value: revealAnswers)
             }
             Spacer(minLength: 12)
         }
@@ -1995,15 +2212,18 @@ private struct MultiSelectScreen<T: Hashable>: View {
     let options: [(T, String, String)]
     @Binding var selection: Set<T>
 
+    @State private var revealAnswers = false
+
     var body: some View {
         // Mirrors QuestionScaffold's rhythm exactly (same top padding, same
         // capped title→answers gap) so multi-select steps don't sit lower
         // than the single-select ones.
         VStack(spacing: 0) {
-            QuestionHeader(title: title, subtitle: subtitle)
+            QuestionHeader(title: title, subtitle: subtitle,
+                           onTitleComplete: { revealAnswers = true })
             Spacer(minLength: 20).frame(maxHeight: 32)
 
-            VStack(spacing: 10) {
+            StaggeredReveal(spacing: 10) {
                 ForEach(Array(options.enumerated()), id: \.offset) { _, opt in
                     let (value, label, icon) = opt
                     let isSelected = selection.contains(value)
@@ -2044,6 +2264,7 @@ private struct MultiSelectScreen<T: Hashable>: View {
                     .buttonStyle(.plain)
                 }
             }
+            .environment(\.onboardingRevealStarted, revealAnswers)
             Spacer(minLength: 12)
         }
         .padding(.top, 14)
@@ -2189,7 +2410,7 @@ private struct MotivationScreen: View {
                 icon: "brain.head.profile"
             )
         ) {
-            VStack(spacing: 10) {
+            StaggeredReveal(spacing: 10) {
                 ForEach(OnboardingProfile.Motivation.allCases) { m in
                     OptionRow(title: m.label, icon: m.icon, value: m, selection: $profile.motivation)
                 }
@@ -2214,7 +2435,7 @@ private struct StruggleDurationScreen: View {
                 icon: "hourglass"
             )
         ) {
-            VStack(spacing: 10) {
+            StaggeredReveal(spacing: 10) {
                 ForEach(OnboardingProfile.StruggleDuration.allCases) { d in
                     OptionRow(title: d.label, icon: durationIcon(d), value: d, selection: $profile.struggleDuration)
                 }
@@ -2249,10 +2470,179 @@ private struct BiggestProblemScreen: View {
                 icon: "scope"
             )
         ) {
-            VStack(spacing: 10) {
+            StaggeredReveal(spacing: 10) {
                 ForEach(OnboardingProfile.SleepProblem.allCases) { p in
                     OptionRow(title: p.label, icon: p.icon, value: p, selection: $profile.biggestProblem)
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Screen: Problem understood (the empathy "law")
+//
+// The recurring empathy beat: right after the user names their biggest problem,
+// we reflect it straight back, prove we understand it, and promise a specific
+// fix + social proof — line by line, slowly, so it lands like the app is
+// *listening* rather than just collecting answers. Reused pacing for any future
+// "we hear you" moment between question batches.
+
+private struct ProblemUnderstoodScreen: View {
+    let problem: OnboardingProfile.SleepProblem?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var stage: Int = 0
+    @State private var glow = false
+
+    private struct Copy {
+        let empathy: String   // reflect the pain back, in their world
+        let solution: String  // the specific thing we built for it
+        let proof: String     // social proof — you're not the first
+    }
+
+    private var icon: String { problem?.icon ?? "sparkles" }
+    private var tag: String { problem?.label.uppercased() ?? "WE HEAR YOU" }
+
+    private var copy: Copy {
+        switch problem {
+        case .fallingAsleep:
+            return Copy(
+                empathy: "Lying there, mind racing — and sleep just won't come.",
+                solution: "We built you a wind-down that powers your brain down, step by step, until sleep feels easy again.",
+                proof: "It's helped thousands fall asleep faster in their first week.")
+        case .stayingAsleep:
+            return Copy(
+                empathy: "You drift off fine — then snap awake at 3am and can't get back.",
+                solution: "Your plan targets the fragmented deep sleep behind those wake-ups, so the night holds together.",
+                proof: "Thousands who woke up every night now sleep clean through.")
+        case .wakingTired:
+            return Copy(
+                empathy: "A full night in bed, and you still wake up heavy and drained.",
+                solution: "We time your wake-up to your lightest sleep, so you come up clear instead of groggy.",
+                proof: "Most people feel the difference within their first few mornings.")
+        case .inconsistentSchedule:
+            return Copy(
+                empathy: "Every night's a different time — your body never knows when sleep is coming.",
+                solution: "We rebuild a steady rhythm gently, without forcing a brand-new schedule overnight.",
+                proof: "Consistency is the single biggest lever — and we make it the easy part.")
+        case .stressAndAnxiety:
+            return Copy(
+                empathy: "The second your head hits the pillow, the thoughts start spinning.",
+                solution: "Your wind-down adds a brain-dump and a calming routine to quiet the noise before bed.",
+                proof: "It's the #1 fix for a racing mind — and it works.")
+        case .none:
+            return Copy(
+                empathy: "We hear you.",
+                solution: "Your whole plan is built around exactly what you just told us.",
+                proof: "We've helped thousands sleep better — you're in good hands.")
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 22) {
+            Spacer(minLength: 8)
+
+            // Reflect their answer back as the visual anchor.
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(colors: [MooniColor.accent.opacity(0.30), .clear],
+                                         center: .center, startRadius: 2, endRadius: 92))
+                    .frame(width: 188, height: 188)
+                    .scaleEffect(glow ? 1.06 : 0.94)
+                Circle()
+                    .stroke(MooniColor.accent.opacity(0.30), lineWidth: 1)
+                    .frame(width: 110, height: 110)
+                Image(systemName: icon)
+                    .font(.system(size: 44, weight: .semibold))
+                    .foregroundColor(MooniColor.accent)
+                    .shadow(color: MooniColor.accent.opacity(0.6), radius: 14)
+            }
+            .frame(height: 150)
+            .opacity(stage >= 1 ? 1 : 0)
+            .scaleEffect(stage >= 1 ? 1 : 0.9)
+
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 11, weight: .bold))
+                Text("WE UNDERSTAND")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .tracking(2)
+            }
+            .foregroundColor(MooniColor.accent)
+            .opacity(stage >= 1 ? 1 : 0)
+
+            VStack(spacing: 16) {
+                // Line 1 — the pain, reflected back.
+                Text(copy.empathy)
+                    .font(MooniFont.display(24))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .opacity(stage >= 2 ? 1 : 0)
+                    .offset(y: stage >= 2 ? 0 : 10)
+
+                // Line 2 — the specific fix.
+                Text(copy.solution)
+                    .font(MooniFont.body(15.5))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 6)
+                    .opacity(stage >= 3 ? 1 : 0)
+                    .offset(y: stage >= 3 ? 0 : 10)
+            }
+            .padding(.horizontal, 6)
+
+            // Line 3 — social proof, as a soft badge.
+            HStack(spacing: 8) {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(Color(red: 0.95, green: 0.55, blue: 0.7))
+                Text(copy.proof)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.85))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(Color.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
+            .padding(.horizontal, 8)
+            .opacity(stage >= 4 ? 1 : 0)
+            .offset(y: stage >= 4 ? 0 : 10)
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity)
+        .onboardingEdge()
+        .onAppear { play() }
+    }
+
+    private func play() {
+        withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) { glow = true }
+
+        if reduceMotion {
+            stage = 4
+            return
+        }
+        // Slow, deliberate cadence so each line has room to land.
+        let beats: [(stage: Int, delay: Double, haptic: () -> Void)] = [
+            (1, 0.30, { Haptics.soft() }),
+            (2, 0.80, { Haptics.tap() }),
+            (3, 2.10, { Haptics.tap() }),
+            (4, 3.40, { Haptics.success() })
+        ]
+        for beat in beats {
+            DispatchQueue.main.asyncAfter(deadline: .now() + beat.delay) {
+                withAnimation(.easeOut(duration: 0.6)) { stage = beat.stage }
+                beat.haptic()
             }
         }
     }
@@ -2263,185 +2653,234 @@ private struct BiggestProblemScreen: View {
 private struct TypicalSleepHoursScreen: View {
     @Binding var profile: OnboardingProfile
 
-    /// Local Date binding for SwiftUI's DatePicker. Reads/writes the
-    /// fractional-hour fields on the profile and keeps `typicalSleepHours`
-    /// in sync (it's the value the rest of the flow reads from).
-    private var bedDate: Binding<Date> {
-        Binding(
-            get: { Self.dateFromHour(profile.typicalBedHour ?? 23.5) },
-            set: { newDate in
-                profile.typicalBedHour = Self.hourFromDate(newDate)
-                profile.typicalSleepHours = Self.duration(
-                    bed: profile.typicalBedHour ?? 23.5,
-                    wake: profile.typicalWakeHour ?? 7.0
-                )
-            }
-        )
-    }
+    private enum Handle { case bed, wake }
 
-    private var wakeDate: Binding<Date> {
-        Binding(
-            get: { Self.dateFromHour(profile.typicalWakeHour ?? 7.0) },
-            set: { newDate in
-                profile.typicalWakeHour = Self.hourFromDate(newDate)
-                profile.typicalSleepHours = Self.duration(
-                    bed: profile.typicalBedHour ?? 23.5,
-                    wake: profile.typicalWakeHour ?? 7.0
-                )
-            }
-        )
+    private let dialSize: CGFloat = 280
+    private let ringWidth: CGFloat = 34
+
+    @State private var activeHandle: Handle? = nil
+    /// Last snapped frac that fired a haptic — throttles the tick to every
+    /// 5-minute step instead of every drag event.
+    @State private var lastHapticFrac: Double = -1
+    @State private var appeared = false
+
+    private var bedHour: Double { profile.typicalBedHour ?? 23.5 }
+    private var wakeHour: Double { profile.typicalWakeHour ?? 7.0 }
+
+    /// Hours asleep — the dial wraps past midnight naturally, so no AM/PM
+    /// mix-up correction is needed (unlike the old twin-wheel version).
+    private var durationHours: Double {
+        var d = wakeHour - bedHour
+        if d <= 0 { d += 24 }
+        return d
     }
 
     var body: some View {
         QuestionScaffold(
-            title: "When do you usually sleep & wake?",
-            subtitle: "Scroll to your typical times."
+            title: "Let's get to know your sleep schedule.",
+            subtitle: "Drag the moon and sun to your typical night."
         ) {
-            VStack(spacing: 12) {
-                timeWheelCard(
-                    icon: "moon.fill",
-                    label: "BEDTIME",
-                    accent: MooniColor.accent,
-                    binding: bedDate
-                )
-                timeWheelCard(
-                    icon: "sun.max.fill",
-                    label: "WAKE UP",
-                    accent: MooniColor.accent,
-                    binding: wakeDate
-                )
-
-                // Total-sleep readout — same card language as the two wheels
-                // above (icon tile + label on the left, value on the right) so
-                // it reads as part of the set instead of a stray mismatched pill.
-                HStack(spacing: 10) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(MooniColor.accent.opacity(0.18))
-                            .frame(width: 32, height: 32)
-                        Image(systemName: "bed.double.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(MooniColor.accent)
-                    }
-                    Text("TIME ASLEEP")
-                        .font(.system(size: 11, weight: .heavy, design: .rounded))
-                        .foregroundColor(MooniColor.textMuted)
-                        .tracking(1.8)
-                    Spacer()
-                    Text(durationDisplay)
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundStyle(LinearGradient(
-                            colors: [MooniColor.accentSoft, MooniColor.accent],
-                            startPoint: .leading, endPoint: .trailing))
-                        .monospacedDigit()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.white.opacity(0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(MooniColor.accent.opacity(0.28), lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .padding(.top, 2)
-            }
+            dial
+                .frame(width: dialSize, height: dialSize)
+                .frame(maxWidth: .infinity)
+                .scaleEffect(appeared ? 1 : 0.9)
+                .opacity(appeared ? 1 : 0)
         }
         .onAppear {
-            // Keep the stored duration in sync with the displayed times so the
-            // readout is correct on first load — it used to show a stale 6h 30m
-            // default until the user nudged a wheel.
-            profile.typicalSleepHours = Self.duration(
-                bed: profile.typicalBedHour ?? 23.5,
-                wake: profile.typicalWakeHour ?? 7.0
-            )
+            profile.typicalSleepHours = durationHours
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.8)) { appeared = true }
         }
+    }
+
+    // MARK: - Dial
+
+    private var dial: some View {
+        let radius = (dialSize - ringWidth) / 2
+        let center = CGPoint(x: dialSize / 2, y: dialSize / 2)
+        let labelRadius = radius - ringWidth / 2 - 16
+
+        return ZStack {
+            // Base track.
+            Circle()
+                .stroke(Color.white.opacity(0.07), style: StrokeStyle(lineWidth: ringWidth, lineCap: .round))
+                .frame(width: dialSize - ringWidth, height: dialSize - ringWidth)
+
+            // Hour ticks (24), brighter on the 6-hour marks.
+            ForEach(0..<24, id: \.self) { h in
+                let isMajor = h % 6 == 0
+                Capsule()
+                    .fill(Color.white.opacity(isMajor ? 0.35 : 0.16))
+                    .frame(width: 2, height: isMajor ? 9 : 5)
+                    .offset(y: -(radius))
+                    .rotationEffect(.degrees(Double(h) / 24 * 360))
+            }
+
+            // The asleep arc.
+            RingArc(startFrac: bedHour / 24, endFrac: wakeHour / 24)
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(colors: [
+                            MooniColor.accent,
+                            MooniColor.accentSoft,
+                            Color(red: 1.0, green: 0.83, blue: 0.5)
+                        ]),
+                        center: .center,
+                        angle: .degrees(-90 + bedHour / 24 * 360)
+                    ),
+                    style: StrokeStyle(lineWidth: ringWidth - 8, lineCap: .round)
+                )
+                .frame(width: dialSize - ringWidth, height: dialSize - ringWidth)
+
+            // Cardinal labels just inside the ring.
+            ForEach([(0, "12 AM"), (6, "6 AM"), (12, "12 PM"), (18, "6 PM")], id: \.0) { item in
+                Text(item.1)
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundColor(MooniColor.textMuted)
+                    .position(pointFor(frac: Double(item.0) / 24, center: center, radius: labelRadius))
+            }
+
+            // Centre readout.
+            VStack(spacing: 3) {
+                Text("ASLEEP")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .tracking(2.5)
+                    .foregroundColor(MooniColor.textMuted)
+                Text(durationDisplay)
+                    // Sized to clear the 34pt ring with breathing room — at 38pt
+                    // the "7h 30m" readout nearly touched the inner edge.
+                    .font(.system(size: 30, weight: .black, design: .rounded))
+                    .foregroundStyle(LinearGradient(
+                        colors: [MooniColor.accentSoft, MooniColor.accent],
+                        startPoint: .top, endPoint: .bottom))
+                    .monospacedDigit()
+                HStack(spacing: 6) {
+                    Label(timeString(bedHour), systemImage: "moon.fill")
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(MooniColor.textMuted)
+                    Label(timeString(wakeHour), systemImage: "sun.max.fill")
+                }
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundColor(MooniColor.textSecondary)
+                .labelStyle(.titleAndIcon)
+                .imageScale(.small)
+            }
+            .allowsHitTesting(false)
+
+            // Handles.
+            handle(icon: "moon.fill", frac: bedHour / 24, center: center, radius: radius,
+                   active: activeHandle == .bed)
+            handle(icon: "sun.max.fill", frac: wakeHour / 24, center: center, radius: radius,
+                   active: activeHandle == .wake)
+        }
+        .contentShape(Circle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { v in
+                    let touch = fracFor(point: v.location, center: center)
+                    if activeHandle == nil {
+                        activeHandle = angularDistance(touch, bedHour / 24)
+                            <= angularDistance(touch, wakeHour / 24) ? .bed : .wake
+                    }
+                    let snappedHour = snapToFiveMinutes(frac: touch)
+                    switch activeHandle {
+                    case .bed:  profile.typicalBedHour = snappedHour
+                    case .wake: profile.typicalWakeHour = snappedHour
+                    case .none: break
+                    }
+                    profile.typicalSleepHours = durationHours
+                    if abs(touch - lastHapticFrac) > 0.002 {
+                        Haptics.tick()
+                        lastHapticFrac = touch
+                    }
+                }
+                .onEnded { _ in activeHandle = nil }
+        )
+    }
+
+    private func handle(icon: String, frac: Double, center: CGPoint, radius: CGFloat, active: Bool) -> some View {
+        ZStack {
+            Circle()
+                .fill(MooniColor.surfaceElevated)
+                .frame(width: 40, height: 40)
+                .overlay(Circle().stroke(MooniColor.accent, lineWidth: active ? 3 : 2))
+                .shadow(color: MooniColor.accent.opacity(active ? 0.6 : 0.3), radius: active ? 10 : 5)
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .bold))
+                .foregroundColor(icon == "sun.max.fill"
+                                 ? Color(red: 1.0, green: 0.83, blue: 0.5)
+                                 : MooniColor.accentSoft)
+        }
+        .scaleEffect(active ? 1.15 : 1)
+        .position(pointFor(frac: frac, center: center, radius: radius))
+        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: active)
+    }
+
+    // MARK: - Geometry & formatting
+
+    /// Screen point for a fraction-of-day (0 = midnight at top, clockwise).
+    private func pointFor(frac: Double, center: CGPoint, radius: CGFloat) -> CGPoint {
+        let angle = (-90 + frac * 360) * Double.pi / 180
+        return CGPoint(x: center.x + radius * CGFloat(cos(angle)),
+                       y: center.y + radius * CGFloat(sin(angle)))
+    }
+
+    /// Fraction-of-day for a touch point relative to the dial centre.
+    private func fracFor(point: CGPoint, center: CGPoint) -> Double {
+        let deg = atan2(Double(point.y - center.y), Double(point.x - center.x)) * 180 / Double.pi
+        var f = (deg + 90) / 360
+        f = f.truncatingRemainder(dividingBy: 1)
+        if f < 0 { f += 1 }
+        return f
+    }
+
+    /// Shortest distance between two fractions on a [0,1) ring.
+    private func angularDistance(_ a: Double, _ b: Double) -> Double {
+        let d = abs(a - b).truncatingRemainder(dividingBy: 1)
+        return min(d, 1 - d)
+    }
+
+    private func snapToFiveMinutes(frac: Double) -> Double {
+        let minutes = frac * 24 * 60
+        let snapped = (minutes / 5).rounded() * 5
+        return (snapped / 60).truncatingRemainder(dividingBy: 24)
+    }
+
+    private func timeString(_ hour: Double) -> String {
+        let total = Int((hour * 60).rounded())
+        let h = (total / 60) % 24
+        let m = total % 60
+        let ampm = h < 12 ? "AM" : "PM"
+        var h12 = h % 12; if h12 == 0 { h12 = 12 }
+        return String(format: "%d:%02d %@", h12, m, ampm)
     }
 
     private var durationDisplay: String {
-        let h = profile.typicalSleepHours
-        let whole = Int(h)
-        let mins = Int(round((h - Double(whole)) * 60))
-        let snapped = Int(round(Double(mins) / 5.0)) * 5
-        if snapped == 60 { return "\(whole + 1)h 00m" }
-        return String(format: "%dh %02dm", whole, snapped)
+        let h = durationHours
+        var whole = Int(h)
+        var mins = Int(round((h - Double(whole)) * 60))
+        if mins == 60 { whole += 1; mins = 0 }
+        return String(format: "%dh %02dm", whole, mins)
     }
+}
 
-    private func formattedTime(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "h:mm a"
-        return f.string(from: date)
-    }
+/// Arc on the sleep dial running clockwise from `startFrac` (bedtime) to
+/// `endFrac` (wake), where each frac is hour-of-day ÷ 24 and 0 sits at the top.
+private struct RingArc: Shape {
+    var startFrac: Double
+    var endFrac: Double
 
-    private func timeWheelCard(icon: String, label: String, accent: Color, binding: Binding<Date>) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(accent.opacity(0.18))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: icon)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(accent)
-                }
-                Text(label)
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
-                    .foregroundColor(MooniColor.textMuted)
-                    .tracking(1.8)
-                Spacer()
-                Text(formattedTime(binding.wrappedValue))
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(accent)
-                    .monospacedDigit()
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 4)
-
-            DatePicker("", selection: binding, displayedComponents: .hourAndMinute)
-                .datePickerStyle(.wheel)
-                .labelsHidden()
-                .colorScheme(.dark)
-                .tint(accent)
-                .frame(height: 120)
-                .clipped()
-                .onChange(of: binding.wrappedValue) { _, _ in Haptics.tap() }
-                .padding(.horizontal, 4)
-                .padding(.bottom, 8)
-        }
-        .background(Color.white.opacity(0.06))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(accent.opacity(0.35), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-
-    // MARK: - Helpers
-
-    /// Maps a fractional hour (e.g. 23.5) to a Date today, used as the
-    /// DatePicker source of truth. The date itself is irrelevant — only
-    /// the hour/minute components are read back.
-    static func dateFromHour(_ hour: Double) -> Date {
-        let h = Int(hour) % 24
-        let m = Int(round((hour - Double(Int(hour))) * 60))
-        let cal = Calendar.current
-        return cal.date(bySettingHour: h, minute: max(0, min(59, m)), second: 0, of: Date()) ?? Date()
-    }
-
-    static func hourFromDate(_ date: Date) -> Double {
-        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
-        return Double(comps.hour ?? 0) + Double(comps.minute ?? 0) / 60.0
-    }
-
-    static func duration(bed: Double, wake: Double) -> Double {
-        var diff = wake - bed
-        if diff <= 0 { diff += 24 }
-        // A "typical night" longer than ~14h is never what someone means here —
-        // it's an AM/PM mix-up (e.g. wake picked as 7 PM instead of 7 AM, which
-        // used to read as "19h of sleep"). Recover the intended morning wake so
-        // the readout always stays believable.
-        if diff > 14 { diff -= 12 }
-        return diff
+    func path(in rect: CGRect) -> Path {
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        var endF = endFrac
+        if endF <= startFrac { endF += 1 }   // wrap past midnight
+        var p = Path()
+        p.addArc(center: center, radius: radius,
+                 startAngle: .degrees(-90 + startFrac * 360),
+                 endAngle: .degrees(-90 + endF * 360),
+                 clockwise: false)            // false == visually clockwise in SwiftUI
+        return p
     }
 }
 
@@ -2449,59 +2888,206 @@ private struct TypicalSleepHoursScreen: View {
 
 private struct PhoneBeforeBedScreen: View {
     @Binding var profile: OnboardingProfile
-    @State private var glow = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulse = false
+    /// Sequenced reveal: title types → "why it matters" line slides in → the
+    /// Yes/No cards slide in a beat later. Both driven off the scaffold's
+    /// reveal signal so they stay in step with the headline finishing.
+    @State private var showWhy = false
+    @State private var showCards = false
+
+    /// Selection drives the whole scene: blue-light glow + a melatonin meter
+    /// that fills high when they say "No" and drops when they say "Yes".
+    private var answered: Bool { profile.usesPhoneBeforeBed != nil }
+    private var saidYes: Bool { profile.usesPhoneBeforeBed == true }
+
+    private let blueLight = Color(red: 0.45, green: 0.7, blue: 1.0)
+
+    /// 0…1 melatonin level shown in the readout.
+    private var melatonin: Double {
+        guard let uses = profile.usesPhoneBeforeBed else { return 0.55 }
+        return uses ? 0.22 : 0.92
+    }
 
     var body: some View {
-        QuestionScaffold(
-            title: "Do you use your phone in bed?",
-            subtitle: "Screens delay melatonin by up to 90 minutes."
-        ) {
-            VStack(spacing: 18) {
-                Image(systemName: "iphone.gen3.radiowaves.left.and.right")
-                    .font(.system(size: 70))
-                    .foregroundStyle(LinearGradient(
-                        colors: [MooniColor.accentSoft, MooniColor.accent],
-                        startPoint: .top, endPoint: .bottom))
-                    .scaleEffect(glow ? 1.03 : 0.97)
-                    .onAppear {
-                        withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { glow = true }
-                    }
+        QuestionScaffold(title: "Do you sleep with your phone?") {
+            VStack(spacing: 22) {
+                stateGlyph
 
-                HStack(spacing: 10) {
-                    bigChoice(label: "Yes", isYes: true)
-                    bigChoice(label: "No", isYes: false)
+                whyLine
+                    .opacity(showWhy ? 1 : 0)
+                    .offset(y: showWhy ? 0 : 8)
+
+                HStack(spacing: 12) {
+                    choiceCard(label: "Yes", sub: "Most nights",
+                               icon: "iphone.gen3", isYes: true)
+                    choiceCard(label: "No", sub: "Rarely",
+                               icon: "moon.stars.fill", isYes: false)
                 }
-                .padding(.horizontal, 8)
+                .opacity(showCards ? 1 : 0)
+                .offset(y: showCards ? 0 : 12)
+
+                // The melatonin payoff only appears once they've answered — keeps
+                // the initial screen calm instead of dumping a meter up front.
+                if answered {
+                    melatoninReadout
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                // Kicks off the why→answers sequence when the title finishes.
+                OnRevealStart { runSequence() }
+            }
+            .animation(.easeInOut(duration: 0.45), value: profile.usesPhoneBeforeBed)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
+                pulse = true
             }
         }
     }
 
-    private func bigChoice(label: String, isYes: Bool) -> some View {
-        Button {
-            withAnimation(.spring()) { profile.usesPhoneBeforeBed = isYes }
+    // MARK: - Reactive glyph
+    //
+    // Replaces the old flat blue rectangle: a single soft-glowing circle whose
+    // icon + colour answer the question back — a lit phone (blue → amber once
+    // they admit "Yes"), or a calm moon (green) when they say "No".
+
+    private var glyphTint: Color {
+        guard answered else { return blueLight }
+        return saidYes ? MooniColor.warning : MooniColor.success
+    }
+
+    private var stateGlyph: some View {
+        let calm = answered && !saidYes
+        return ZStack {
+            Circle()
+                .fill(RadialGradient(colors: [glyphTint.opacity(0.30), .clear],
+                                     center: .center, startRadius: 2, endRadius: 88))
+                .frame(width: 180, height: 180)
+                .scaleEffect(pulse ? 1.05 : 0.95)
+            Circle()
+                .fill(Color.white.opacity(0.04))
+                .frame(width: 108, height: 108)
+            Circle()
+                .stroke(glyphTint.opacity(0.30), lineWidth: 1)
+                .frame(width: 108, height: 108)
+            Image(systemName: calm ? "moon.stars.fill" : "iphone.gen3")
+                .font(.system(size: 42, weight: .semibold))
+                .foregroundColor(glyphTint)
+                .shadow(color: glyphTint.opacity(0.6), radius: 14)
+        }
+        .frame(height: 150)
+        .animation(.easeInOut(duration: 0.45), value: profile.usesPhoneBeforeBed)
+    }
+
+    /// "Why it matters" beat that slides in between the question and the answers.
+    private var whyLine: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "lightbulb.max.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(blueLight)
+            Text("A lit screen tells your brain it's still daytime — melatonin can stall for up to 90 minutes.")
+                .font(MooniFont.body(13.5))
+                .foregroundColor(MooniColor.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 6)
+    }
+
+    private func runSequence() {
+        if reduceMotion {
+            showWhy = true
+            showCards = true
+            return
+        }
+        withAnimation(.easeOut(duration: 0.4)) { showWhy = true }
+        Haptics.tap()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { showCards = true }
+            Haptics.tick()
+        }
+    }
+
+    // MARK: - Choice cards
+
+    private func choiceCard(label: String, sub: String, icon: String, isYes: Bool) -> some View {
+        let selected = profile.usesPhoneBeforeBed == isYes
+        // Selecting reinforces the consequence: "Yes" lights up amber (cost),
+        // "No" lights up green (win) — same logic as the glyph + readout.
+        let tint: Color = isYes ? MooniColor.warning : MooniColor.success
+        return Button {
+            Haptics.tap()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                profile.usesPhoneBeforeBed = isYes
+            }
         } label: {
-            VStack(spacing: 6) {
-                Image(systemName: isYes ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(profile.usesPhoneBeforeBed == isYes
-                                     ? MooniColor.accent
-                                     : MooniColor.textMuted)
-                Text(label)
-                    .font(MooniFont.title(18))
-                    .foregroundColor(MooniColor.textPrimary)
+            VStack(spacing: 9) {
+                Image(systemName: icon)
+                    .font(.system(size: 27, weight: .semibold))
+                    .foregroundColor(selected ? tint : MooniColor.accentSoft.opacity(0.8))
+                VStack(spacing: 1) {
+                    Text(label)
+                        .font(.system(size: 18, weight: .heavy, design: .rounded))
+                        .foregroundColor(MooniColor.textPrimary)
+                    Text(sub)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(MooniColor.textMuted)
+                }
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 22)
-            .background(Color.white.opacity(profile.usesPhoneBeforeBed == isYes ? 0.13 : 0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.vertical, 18)
+            .background(Color.white.opacity(selected ? 0.10 : 0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(profile.usesPhoneBeforeBed == isYes
-                            ? MooniColor.accent
-                            : Color.white.opacity(0.12), lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(selected ? tint : Color.white.opacity(0.10),
+                            lineWidth: selected ? 2 : 1)
             )
+            .scaleEffect(selected ? 1.03 : 1)
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Melatonin readout (post-answer payoff)
+
+    private var melatoninReadout: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Text("MELATONIN TONIGHT")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .tracking(1.5)
+                    .foregroundColor(MooniColor.textMuted)
+                Spacer()
+                Text(saidYes ? "Suppressed" : "On schedule")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(glyphTint)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule()
+                        .fill(LinearGradient(colors: [glyphTint.opacity(0.7), glyphTint],
+                                             startPoint: .leading, endPoint: .trailing))
+                        .frame(width: geo.size.width * melatonin)
+                }
+            }
+            .frame(height: 8)
+
+            Text(saidYes
+                 ? "Blue light can push melatonin back up to 90 minutes — so falling asleep takes longer."
+                 : "Without late screen light, melatonin rises on time and sleep comes faster.")
+                .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                .foregroundColor(MooniColor.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(15)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(glyphTint.opacity(0.25), lineWidth: 1)
+        )
     }
 }
 
@@ -2573,7 +3159,7 @@ private struct CaffeineCutoffScreen: View {
                 icon: "cup.and.saucer.fill"
             )
         ) {
-            VStack(spacing: 10) {
+            StaggeredReveal(spacing: 10) {
                 ForEach(OnboardingProfile.CaffeineCutoff.allCases) { c in
                     OptionRow(title: c.label, icon: caffeineIcon(c), value: c, selection: $profile.caffeineCutoff)
                 }
@@ -2706,7 +3292,7 @@ private struct WakeFeelingScreen: View {
             title: "How do you usually wake up?",
             subtitle: "Your wake-up window is half the equation."
         ) {
-            VStack(spacing: 10) {
+            StaggeredReveal(spacing: 10) {
                 ForEach(OnboardingProfile.WakeFeeling.allCases) { f in
                     OptionRow(
                         title: f.label, icon: wakeIcon(f), value: f, selection: $profile.wakeFeeling
@@ -2742,7 +3328,7 @@ private struct EnergyDipScreen: View {
                 icon: "battery.25"
             )
         ) {
-            VStack(spacing: 10) {
+            StaggeredReveal(spacing: 10) {
                 ForEach(OnboardingProfile.EnergyDip.allCases) { d in
                     OptionRow(title: d.label, icon: dipIcon(d), value: d, selection: $profile.energyDip)
                 }

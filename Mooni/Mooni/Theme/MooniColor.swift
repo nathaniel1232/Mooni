@@ -1,9 +1,34 @@
 import SwiftUI
 
 enum MooniColor {
+    // MARK: - Adaptive helper
+    /// Picks a value for the current app appearance (time-of-day driven).
+    /// Used by every token that should flip between the light morning theme
+    /// and the dark night theme. `ThemeManager.shared.mode` is the source.
+    static func dyn(light: Color, dark: Color) -> Color {
+        ThemeManager.currentMode == .light ? light : dark
+    }
+
+    /// The dark deep-navy used as INK on accent/warning fills and the tab bar.
+    /// Stays dark in BOTH modes on purpose — it's the "contrast color" laid on
+    /// top of the bright accent pills, never a surface, so it must not flip.
     static let background = Color(red: 0.06, green: 0.07, blue: 0.16)
-    static let surface = Color(red: 0.11, green: 0.12, blue: 0.24)
-    static let surfaceElevated = Color(red: 0.16, green: 0.17, blue: 0.32)
+
+    static var surface: Color {
+        dyn(light: Color(red: 1.0, green: 1.0, blue: 1.0),
+            dark: Color(red: 0.11, green: 0.12, blue: 0.24))
+    }
+    static var surfaceElevated: Color {
+        dyn(light: Color(red: 0.95, green: 0.94, blue: 1.0),
+            dark: Color(red: 0.16, green: 0.17, blue: 0.32))
+    }
+
+    // MARK: - App-wide base background
+    // The onboarding flow and the main app share ONE dark background so there's
+    // no colour jump at the hand-off. These stay dark (onboarding is always
+    // night); the MAIN app's background flips via `MooniGradient.night`.
+    static let bgTop = Color(red: 0.045, green: 0.05, blue: 0.12)
+    static let bgBottom = Color(red: 0.02, green: 0.025, blue: 0.065)
 
     static let accent = Color(red: 0.65, green: 0.62, blue: 1.0)
     static let accentSoft = Color(red: 0.85, green: 0.83, blue: 1.0)
@@ -12,9 +37,33 @@ enum MooniColor {
     static let warning = Color(red: 1.0, green: 0.78, blue: 0.55)
     static let danger = Color(red: 1.0, green: 0.6, blue: 0.7)
 
-    static let textPrimary = Color.white
-    static let textSecondary = Color.white.opacity(0.7)
-    static let textMuted = Color.white.opacity(0.45)
+    // MARK: - Adaptive text
+    static var textPrimary: Color {
+        dyn(light: Color(red: 0.13, green: 0.12, blue: 0.26), dark: .white)
+    }
+    static var textSecondary: Color {
+        dyn(light: Color(red: 0.34, green: 0.30, blue: 0.50), dark: .white.opacity(0.7))
+    }
+    static var textMuted: Color {
+        dyn(light: Color(red: 0.50, green: 0.46, blue: 0.64), dark: .white.opacity(0.45))
+    }
+
+    // MARK: - Adaptive surfaces (replace inline `Color.white.opacity(...)`)
+    /// Standard translucent card fill.
+    static var card: Color {
+        dyn(light: Color(red: 0.40, green: 0.36, blue: 0.62).opacity(0.07),
+            dark: .white.opacity(0.05))
+    }
+    /// Selected / emphasised card fill.
+    static var cardStrong: Color {
+        dyn(light: Color(red: 0.40, green: 0.36, blue: 0.62).opacity(0.12),
+            dark: .white.opacity(0.12))
+    }
+    /// Hairline strokes, dividers, progress tracks.
+    static var hairline: Color {
+        dyn(light: Color(red: 0.20, green: 0.18, blue: 0.40).opacity(0.12),
+            dark: .white.opacity(0.10))
+    }
 
     static let petGlow = Color(red: 0.78, green: 0.85, blue: 1.0)
 
@@ -48,15 +97,30 @@ extension LinearGradient {
 }
 
 enum MooniGradient {
-    static let night = LinearGradient(
-        colors: [
-            Color(red: 0.05, green: 0.06, blue: 0.18),
-            Color(red: 0.10, green: 0.08, blue: 0.28),
-            Color(red: 0.18, green: 0.12, blue: 0.32)
-        ],
-        startPoint: .top,
-        endPoint: .bottom
-    )
+    /// The main app's screen background. Despite the name it now ADAPTS to the
+    /// time of day: a light, airy lavender-cream by morning/day, the deep dark
+    /// gradient by evening/night. (Onboarding/paywall use their own constant
+    /// dark gradient, so they're unaffected.)
+    static var night: LinearGradient {
+        switch ThemeManager.currentMode {
+        case .light:
+            return LinearGradient(
+                colors: [
+                    Color(red: 0.97, green: 0.96, blue: 1.0),
+                    Color(red: 0.93, green: 0.92, blue: 0.99),
+                    Color(red: 0.90, green: 0.89, blue: 0.99)
+                ],
+                startPoint: .top, endPoint: .bottom)
+        case .dark:
+            return LinearGradient(
+                colors: [
+                    MooniColor.bgTop,
+                    Color(red: 0.033, green: 0.038, blue: 0.092),
+                    MooniColor.bgBottom
+                ],
+                startPoint: .top, endPoint: .bottom)
+        }
+    }
 
     static let dawn = LinearGradient(
         colors: [
@@ -80,14 +144,20 @@ enum MooniGradient {
         endPoint: .bottom
     )
 
-    static let card = LinearGradient(
-        colors: [
-            Color.white.opacity(0.10),
-            Color.white.opacity(0.04)
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
+    /// Adaptive card fill. Dark mode: the familiar white glass. Light mode: a
+    /// soft lavender-tinted glass so cards lift off the cream background.
+    static var card: LinearGradient {
+        switch ThemeManager.currentMode {
+        case .light:
+            return LinearGradient(
+                colors: [Color.white.opacity(0.9), Color.white.opacity(0.6)],
+                startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .dark:
+            return LinearGradient(
+                colors: [Color.white.opacity(0.10), Color.white.opacity(0.04)],
+                startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+    }
 
     /// Background gradient that adapts to time of day.
     static var adaptive: LinearGradient {

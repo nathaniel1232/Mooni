@@ -4,11 +4,23 @@ import UIKit
 struct RootView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var subscription = SubscriptionManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
     @Environment(\.scenePhase) private var scenePhase
+
+    /// The light/day theme only applies once the user is in the actual app.
+    private var showingMainApp: Bool {
+        appState.hasCompletedOnboarding && subscription.isPro
+    }
 
     var body: some View {
         ZStack {
-            MooniGradient.night.ignoresSafeArea()
+            // Root backdrop stays dark — onboarding/paywall draw their own dark
+            // background over it, and each main-app screen draws the adaptive
+            // `MooniGradient.night` (light by day) on top, so this only shows
+            // at edges/during transitions.
+            LinearGradient(colors: [MooniColor.bgTop, MooniColor.bgBottom],
+                           startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
 
             if !appState.hasCompletedOnboarding {
                 OnboardingView()
@@ -21,7 +33,10 @@ struct RootView: View {
                 PaywallView(hardLock: true)
                     .transition(.opacity)
             } else {
+                // `.id(theme.mode)` rebuilds the main app when day↔night flips
+                // so the adaptive tokens are re-read. Flips happen ~twice a day.
                 MainTabView()
+                    .id(theme.mode)
                     .transition(.opacity)
             }
 
@@ -36,13 +51,19 @@ struct RootView: View {
             WindDownTintOverlay()
                 .zIndex(20)
         }
+        // Status bar + system controls follow the theme: dark content in the
+        // light morning theme, light content at night / in onboarding.
+        .preferredColorScheme(theme.mode == .light ? .light : .dark)
         .animation(.easeInOut(duration: 0.4), value: appState.hasCompletedOnboarding)
         .animation(.easeInOut(duration: 0.4), value: subscription.isPro)
         .animation(.easeInOut(duration: 0.4), value: appState.isSleeping)
+        .onAppear { theme.apply(forMainApp: showingMainApp) }
+        .onChange(of: showingMainApp) { _, v in theme.apply(forMainApp: v) }
         // Feed scenePhase to the activity estimator at the root level so we
         // catch background/active transitions even during onboarding.
         .onChange(of: scenePhase) { _, phase in
             ActivitySleepEstimator.shared.handleScenePhaseChange(phase)
+            if phase == .active { theme.apply(forMainApp: showingMainApp) }
         }
     }
 }
@@ -307,23 +328,34 @@ struct MainTabView: View {
     }
 
     private static func configureTabBarAppearance() {
+        let light = ThemeManager.currentMode == .light
         let appearance = UITabBarAppearance()
         appearance.configureWithTransparentBackground()
-        appearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
-        appearance.backgroundColor = UIColor(MooniColor.background).withAlphaComponent(0.86)
-        appearance.shadowColor = UIColor.white.withAlphaComponent(0.08)
+        appearance.backgroundEffect = UIBlurEffect(
+            style: light ? .systemUltraThinMaterialLight : .systemUltraThinMaterialDark)
+        appearance.backgroundColor = light
+            ? UIColor.white.withAlphaComponent(0.7)
+            : UIColor(MooniColor.background).withAlphaComponent(0.86)
+        appearance.shadowColor = light
+            ? UIColor.black.withAlphaComponent(0.08)
+            : UIColor.white.withAlphaComponent(0.08)
+
+        // Unselected label/icon ink — dark in the light theme, soft white at night.
+        let normalInk: UIColor = light
+            ? UIColor(red: 0.40, green: 0.36, blue: 0.55, alpha: 1)
+            : UIColor.white.withAlphaComponent(0.56)
 
         let itemAppearance = UITabBarItemAppearance()
         itemAppearance.normal.titleTextAttributes = [
             .font: UIFont.systemFont(ofSize: 10, weight: .medium),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.56)
+            .foregroundColor: normalInk
         ]
         itemAppearance.selected.titleTextAttributes = [
             .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
-            .foregroundColor: UIColor(MooniColor.accentSoft)
+            .foregroundColor: UIColor(MooniColor.accent)
         ]
-        itemAppearance.normal.iconColor = UIColor.white.withAlphaComponent(0.56)
-        itemAppearance.selected.iconColor = UIColor(MooniColor.accentSoft)
+        itemAppearance.normal.iconColor = normalInk
+        itemAppearance.selected.iconColor = UIColor(MooniColor.accent)
 
         appearance.stackedLayoutAppearance = itemAppearance
         appearance.inlineLayoutAppearance = itemAppearance

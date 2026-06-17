@@ -23,7 +23,6 @@ struct MooniApp: App {
             RootView()
                 .environmentObject(appState)
                 .environmentObject(subscriptionManager)
-                .preferredColorScheme(.dark)
         }
     }
 

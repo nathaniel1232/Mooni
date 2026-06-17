@@ -102,6 +102,57 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
         center.add(request)
     }
 
+    // MARK: - Wind-down cutoff reminders (last meal / hydration)
+
+    nonisolated static let mealReminderID = "mooni.reminder.lastMeal"
+    nonisolated static let hydrationReminderID = "mooni.reminder.hydration"
+    /// Toggles (default ON). UI lives in the wind-down / routine settings.
+    static let mealEnabledKey = "mooni.reminder.mealEnabled"
+    static let hydrationEnabledKey = "mooni.reminder.hydrationEnabled"
+    /// How many minutes before bed each cutoff fires.
+    static let mealLeadMinutes = 180     // last meal ~3h before bed
+    static let hydrationLeadMinutes = 120 // ease off liquids ~2h before bed
+
+    /// Daily-repeating "last meal" and "ease off water" nudges, timed off the
+    /// user's bedtime. Part of the active-help pivot: we coach the night, not
+    /// just score it. Safe to call repeatedly — replaces the prior pair, and
+    /// honours the per-reminder toggles (both default ON).
+    func scheduleWindDownReminders(petName: String, bedtime: Date) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(
+            withIdentifiers: [Self.mealReminderID, Self.hydrationReminderID])
+
+        let d = UserDefaults.standard
+        let mealOn = d.object(forKey: Self.mealEnabledKey) as? Bool ?? true
+        let hydrationOn = d.object(forKey: Self.hydrationEnabledKey) as? Bool ?? true
+
+        if mealOn {
+            let content = UNMutableNotificationContent()
+            content.title = "Last call for food 🍽️"
+            content.body = "Try to finish eating now — heavy late meals fragment your sleep. Bed in about 3 hours."
+            content.sound = .default
+            schedule(content, id: Self.mealReminderID,
+                     at: bedtime.addingTimeInterval(TimeInterval(-Self.mealLeadMinutes * 60)))
+        }
+
+        if hydrationOn {
+            let content = UNMutableNotificationContent()
+            content.title = "Ease off the water 💧"
+            content.body = "Start tapering liquids so you're not up at 3am. Bed in about 2 hours."
+            content.sound = .default
+            schedule(content, id: Self.hydrationReminderID,
+                     at: bedtime.addingTimeInterval(TimeInterval(-Self.hydrationLeadMinutes * 60)))
+        }
+    }
+
+    /// Adds a daily-repeating notification at the given clock time.
+    private func schedule(_ content: UNMutableNotificationContent, id: String, at date: Date) {
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(request)
+    }
+
     // MARK: - Safety net (proactive, schedule-independent)
 
     /// SAFETY NET (mechanisms 1, 6, 7). Idempotently (re)schedules the full
@@ -121,6 +172,9 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
         // The bedtime wind-down nudge is benign and stays unconditional for
         // everyone — it never asks the user to confirm a night, it just nudges.
         scheduleNightlyBedtimeNudge(petName: petName, bedtime: bedtime)
+        // Last-meal + hydration cutoffs (active-help pivot) — also benign,
+        // toggle-gated, and timed off the same bedtime.
+        scheduleWindDownReminders(petName: petName, bedtime: bedtime)
 
         // The daily-repeating wake probes + catch-up only make sense for users
         // who can have a night auto-confirmed. Gate them behind Pro to match
