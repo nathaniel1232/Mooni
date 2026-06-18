@@ -1,31 +1,30 @@
 import SwiftUI
 
-/// Medium "Sleep Circle" widget — premium 3-up layout. Each card is its own
-/// tinted glass surface (subtle gradient + accent stroke) with a glowing
-/// gradient ring around the avatar. The highest-scoring person wears a tiny
-/// crown 👑 — a clear "winner of the night" signal you spot at a glance.
+/// Medium "Sleep Circle" widget — a clean ranked leaderboard. Each person is a
+/// row (rank · avatar · name + duration · score bar · score), sorted high → low,
+/// with the night's winner subtly highlighted. A fresh, premium take that reads
+/// at a glance, replacing the old three-card grid.
 struct FriendsSleepWidgetView: View {
     let data: FriendsWidgetData
 
-    /// Combined "me + friends" list with scores for winner detection.
-    private var rankedPeople: [FriendSleepSnapshot] {
+    /// "me + up to 2 friends", ranked by score (highest first).
+    private var ranked: [FriendSleepSnapshot] {
         ([data.me] + data.friends.prefix(2)).sorted { $0.score > $1.score }
     }
 
-    /// id of whoever scored highest tonight — used to drop a 👑 on their card.
-    private var winnerID: String { rankedPeople.first?.id ?? "" }
+    private var winnerID: String { ranked.first?.id ?? "" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             header
 
-            HStack(alignment: .top, spacing: 8) {
-                personCard(data.me, isMe: true, isWinner: data.me.id == winnerID)
-                ForEach(data.friends.prefix(2)) { friend in
-                    personCard(friend, isMe: false, isWinner: friend.id == winnerID)
+            VStack(spacing: 4) {
+                ForEach(Array(ranked.enumerated()), id: \.element.id) { idx, person in
+                    row(rank: idx + 1, person: person,
+                        isMe: person.id == "me", isWinner: person.id == winnerID)
                 }
                 if data.friends.count < 2 {
-                    inviteCard
+                    inviteRow
                 }
             }
             .frame(maxHeight: .infinity)
@@ -38,180 +37,123 @@ struct FriendsSleepWidgetView: View {
         HStack(spacing: 6) {
             Image(systemName: "person.2.fill")
                 .font(.system(size: 11, weight: .heavy))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [SleepWidgetPalette.textPrimary, data.me.scoreTint],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .foregroundStyle(data.me.scoreTint)
             Text("Sleep Circle")
                 .font(.system(size: 12, weight: .black, design: .rounded))
                 .tracking(0.2)
                 .foregroundStyle(SleepWidgetPalette.textPrimary)
             Spacer(minLength: 0)
             HStack(spacing: 3) {
-                Image(systemName: "moon.stars.fill")
-                    .font(.system(size: 9, weight: .heavy))
-                Text("SleepOwl")
-                    .font(.system(size: 10, weight: .black, design: .rounded))
-                    .tracking(0.4)
+                Image(systemName: "moon.stars.fill").font(.system(size: 9, weight: .heavy))
+                Text("SleepOwl").font(.system(size: 10, weight: .black, design: .rounded))
             }
             .foregroundStyle(SleepWidgetPalette.textSecondary)
         }
     }
 
-    // MARK: Person card
+    // MARK: Row
 
-    private func personCard(_ person: FriendSleepSnapshot, isMe: Bool, isWinner: Bool) -> some View {
-        VStack(spacing: 5) {
-            // Avatar + score ring + crown when applicable
-            ZStack {
-                // Track
-                Circle()
-                    .stroke(SleepWidgetPalette.ringTrack, lineWidth: 4)
-                    .frame(width: 44, height: 44)
+    private func row(rank: Int, person: FriendSleepSnapshot, isMe: Bool, isWinner: Bool) -> some View {
+        HStack(spacing: 9) {
+            rankBadge(rank)
 
-                // Progress — flat solid arc
-                Circle()
-                    .trim(from: 0, to: person.ringProgress)
-                    .stroke(
-                        person.scoreTint,
-                        style: StrokeStyle(lineWidth: 4, lineCap: .round)
-                    )
-                    .frame(width: 44, height: 44)
-                    .rotationEffect(.degrees(-90))
+            avatar(for: person)
+                .frame(width: 26, height: 26)
 
-                avatar(for: person)
-
-                if isWinner {
-                    Text("👑")
-                        .font(.system(size: 12))
-                        .offset(x: 18, y: -18)
-                        .shadow(color: Color(red: 1.0, green: 0.85, blue: 0.3).opacity(0.7), radius: 4)
-                }
+            VStack(alignment: .leading, spacing: 0) {
+                Text(isMe ? "You" : person.name)
+                    .font(.system(size: 12.5, weight: .heavy, design: .rounded))
+                    .foregroundStyle(SleepWidgetPalette.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(person.quality == "Pending" ? "no data yet" : person.sleepDuration)
+                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SleepWidgetPalette.textTertiary)
+                    .lineLimit(1)
             }
-            .frame(width: 50, height: 50)
 
-            // Real friends start with score=0 until the per-friend sleep sync
-            // ships — render an em-dash in that case so it doesn't read as
-            // "0 / bad night". The pending state is signaled by quality.
+            Spacer(minLength: 4)
+
+            miniBar(person.quality == "Pending" ? 0 : person.ringProgress, tint: person.scoreTint)
+
             Text(person.quality == "Pending" ? "—" : "\(person.score)")
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .font(.system(size: 16, weight: .black, design: .rounded))
                 .foregroundStyle(person.scoreTint)
-                .shadow(color: person.scoreTint.opacity(0.45), radius: 4)
-
-            Text(isMe ? "You" : person.name)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundStyle(SleepWidgetPalette.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-
-            Text(person.sleepDuration)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(SleepWidgetPalette.textSecondary)
-                .lineLimit(1)
+                .frame(width: 24, alignment: .trailing)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 7)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            person.scoreTint.opacity(isWinner ? 0.20 : 0.10),
-                            person.scoreTint.opacity(0.02)
-                        ],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                )
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(person.scoreTint.opacity(isWinner ? 0.16 : 0.05))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(
-                    person.scoreTint.opacity(isWinner ? 0.45 : 0.20),
-                    lineWidth: isWinner ? 1.0 : 0.6
-                )
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(person.scoreTint.opacity(isWinner ? 0.4 : 0.0), lineWidth: 0.8)
         )
     }
 
-    /// Compact a string like "11:42 PM" → "11:42p" so the bed→wake fits.
-    private func shorten(_ time: String) -> String {
-        time
-            .replacingOccurrences(of: " AM", with: "a")
-            .replacingOccurrences(of: " PM", with: "p")
+    private func rankBadge(_ rank: Int) -> some View {
+        Text(rank == 1 ? "👑" : "\(rank)")
+            .font(.system(size: rank == 1 ? 13 : 12, weight: .black, design: .rounded))
+            .foregroundStyle(SleepWidgetPalette.textSecondary)
+            .frame(width: 18)
+    }
+
+    private func miniBar(_ progress: Double, tint: Color) -> some View {
+        ZStack(alignment: .leading) {
+            Capsule().fill(SleepWidgetPalette.ringTrack)
+            Capsule()
+                .fill(LinearGradient(colors: [tint.opacity(0.6), tint],
+                                     startPoint: .leading, endPoint: .trailing))
+                .frame(width: max(6, 52 * progress))
+        }
+        .frame(width: 52, height: 6)
     }
 
     @ViewBuilder
     private func avatar(for person: FriendSleepSnapshot) -> some View {
         if person.id == "me" {
             MooniMascotView()
-                .frame(width: 26, height: 26)
+                .frame(width: 24, height: 24)
         } else {
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                person.scoreTint.opacity(0.35),
-                                person.scoreTint.opacity(0.10)
-                            ],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                    )
-                    .frame(width: 28, height: 28)
+                    .fill(LinearGradient(colors: [person.scoreTint.opacity(0.35),
+                                                  person.scoreTint.opacity(0.10)],
+                                         startPoint: .top, endPoint: .bottom))
                     .overlay(Circle().stroke(Color.white.opacity(0.35), lineWidth: 0.8))
-                Text(person.avatarEmoji)
-                    .font(.system(size: 17))
+                Text(person.avatarEmoji).font(.system(size: 15))
             }
         }
     }
 
-    // MARK: Empty slot
+    // MARK: Invite
 
-    private var inviteCard: some View {
-        VStack(spacing: 5) {
+    private var inviteRow: some View {
+        HStack(spacing: 9) {
+            Text(" ").frame(width: 18)
             ZStack {
                 Circle()
-                    .fill(SleepWidgetPalette.textTertiary.opacity(0.08))
-                    .frame(width: 50, height: 50)
-                    .blur(radius: 6)
-                Circle()
-                    .strokeBorder(
-                        SleepWidgetPalette.textTertiary.opacity(0.50),
-                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 3])
-                    )
-                    .frame(width: 44, height: 44)
+                    .strokeBorder(SleepWidgetPalette.textTertiary.opacity(0.5),
+                                  style: StrokeStyle(lineWidth: 1.2, dash: [3, 3]))
                 Image(systemName: "plus")
-                    .font(.system(size: 18, weight: .heavy))
-                    .foregroundStyle(SleepWidgetPalette.textPrimary.opacity(0.7))
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(SleepWidgetPalette.textSecondary)
             }
-            .frame(width: 50, height: 50)
+            .frame(width: 26, height: 26)
 
-            Text("—")
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
-                .foregroundStyle(SleepWidgetPalette.textTertiary)
-            Text("Invite")
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundStyle(SleepWidgetPalette.textPrimary)
-            Text("friend")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(SleepWidgetPalette.textTertiary)
+            Text("Invite a friend")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundStyle(SleepWidgetPalette.textSecondary)
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 7)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.04))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(
-                    SleepWidgetPalette.textTertiary.opacity(0.30),
-                    style: StrokeStyle(lineWidth: 0.6, dash: [4, 3])
-                )
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(SleepWidgetPalette.textTertiary.opacity(0.25),
+                              style: StrokeStyle(lineWidth: 0.8, dash: [4, 3]))
         )
     }
 }

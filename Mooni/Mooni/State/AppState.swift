@@ -82,6 +82,13 @@ final class AppState: ObservableObject {
     @Published var lastEarnedEnergy: Int? = nil
     @Published var lastLevelUp: Int? = nil
 
+    /// Set to the level just reached whenever the pet levels up, from ANY entry
+    /// point (manual log, morning check-in, routine). `RootView` observes this
+    /// and fires the full-screen `LevelUpPresenter` takeover, then clears it.
+    /// Separate from `lastLevelUp` (which the sleep story / banners also read)
+    /// so the celebration trigger can be consumed independently.
+    @Published var levelUpCelebration: Int? = nil
+
     /// True while the maintenance pass is actively fusing last night's
     /// signals (HealthKit import + sleep brain). The home screen shows a
     /// "reading your night" state instead of stale or empty data, so a user
@@ -616,7 +623,8 @@ final class AppState: ObservableObject {
         self.pet = p
         self.lastEarnedEnergy = energy > 0 ? energy : nil
         self.lastLevelUp = leveledTo
-        if leveledTo != nil {
+        if let leveledTo {
+            self.levelUpCelebration = leveledTo
             StreakManager.shared.reconcileFreezes(forLevel: p.level)
         }
     }
@@ -636,6 +644,7 @@ final class AppState: ObservableObject {
         self.pet = p
         self.lastEarnedEnergy = amount
         self.lastLevelUp = leveledTo
+        if let leveledTo { self.levelUpCelebration = leveledTo }
     }
 
     func clearRewardBanner() {
@@ -651,7 +660,15 @@ final class AppState: ObservableObject {
             r.completedToday.remove(habit.id)
         } else {
             r.completedToday.insert(habit.id)
-            addRoutineEnergy(2)
+            // Each wind-down challenge is real XP — but only the FIRST time it's
+            // completed today, so toggling it off/on can't farm levels.
+            if !r.rewardedToday.contains(habit.id) {
+                r.rewardedToday.insert(habit.id)
+                r.lastCompletedDay = Date().dayKey
+                self.routine = r
+                addRoutineEnergy(15)
+                return
+            }
         }
         r.lastCompletedDay = Date().dayKey
         self.routine = r
@@ -748,6 +765,7 @@ final class AppState: ObservableObject {
         if routine.lastCompletedDay != today {
             var r = routine
             r.completedToday.removeAll()
+            r.rewardedToday.removeAll()
             r.lastCompletedDay = today
             self.routine = r
         }
@@ -1034,11 +1052,84 @@ final class AppState: ObservableObject {
         return entry
     }
 
+    /// Builds an editable DRAFT entry for a missed night WITHOUT committing it
+    /// to `entries`. Used by the "Add last night" flow so nothing is logged
+    /// until the user actually confirms their times — the entry is only created
+    /// (from their corrected times) in `completeMorningCheckIn`. Returns nil if
+    /// a real entry already exists for that day.
+    func makeMissedNightDraft(for referenceDate: Date = Date()) -> SleepEntry? {
+        let cal = Calendar.current
+        let dayKey = referenceDate.dayKey
+        if entries.contains(where: { $0.dayKey == dayKey }) { return nil }
+
+        let bedComps  = cal.dateComponents([.hour, .minute], from: targetBedtime)
+        let wakeComps = cal.dateComponents([.hour, .minute], from: targetWakeTime)
+        guard let bH = bedComps.hour, let bM = bedComps.minute,
+              let wH = wakeComps.hour, let wM = wakeComps.minute else { return nil }
+
+        var bed = cal.date(bySettingHour: bH, minute: bM, second: 0, of: referenceDate) ?? referenceDate
+        if bed > referenceDate { bed = cal.date(byAdding: .day, value: -1, to: bed) ?? bed }
+        var wake = cal.date(bySettingHour: wH, minute: wM, second: 0, of: referenceDate) ?? referenceDate
+        if wake <= bed { wake = cal.date(byAdding: .day, value: 1, to: wake) ?? wake }
+
+        // Starting times are the user's target window — a sensible default they
+        // adjust. Crucially NOT appended to `entries`, so backing out leaves no
+        // phantom "8h" night behind.
+        return SleepEntry(
+            bedtime: bed,
+            wakeTime: wake,
+            quality: .good,
+            mood: .okay,
+            notes: "Added by you",
+            isEstimated: true,
+            totalSleep: wake.timeIntervalSince(bed),
+            timeInBed: wake.timeIntervalSince(bed),
+            stages: nil,
+            source: .userAdjusted,
+            isScheduleBackfill: false
+        )
+    }
+
     @discardableResult
     func completeMorningCheckIn(_ checkIn: MorningCheckIn) -> SleepEntry? {
         MorningCheckInStore.save(checkIn)
         let dayKey = checkIn.date.dayKey
         guard let idx = entries.firstIndex(where: { $0.dayKey == dayKey }) else {
+            // No entry exists yet — this is a from-scratch "Add last night"
+            // where we deliberately didn't pre-commit anything. Create the
+            // entry NOW, from the times the user just confirmed, so it's their
+            // real numbers (not a phantom placeholder).
+            if let bed = checkIn.correctedBedtime, let wake = checkIn.correctedWakeTime, wake > bed {
+                var entry = SleepEntry(
+                    bedtime: bed,
+                    wakeTime: wake,
+                    quality: .good,
+                    mood: .okay,
+                    notes: "Added by you",
+                    isEstimated: false,
+                    totalSleep: wake.timeIntervalSince(bed),
+                    timeInBed: wake.timeIntervalSince(bed),
+                    stages: nil,
+                    source: .userAdjusted,
+                    isScheduleBackfill: false
+                )
+                entry.didCompleteMorningCheckIn = true
+                SleepScoringManager.update(
+                    entry: &entry,
+                    goalHours: goalHours,
+                    targetBedtime: targetBedtime,
+                    consistencyDays: bedtimeConsistencyDays,
+                    checkIn: checkIn,
+                    age: profile.age
+                )
+                entries.append(entry)
+                applyReward(energy: entry.energyEarned, score: entry.score)
+                StreakManager.shared.registerSleepLogged(on: entry.wakeTime, durationHours: entry.hours)
+                UserDefaults.standard.set(dayKey, forKey: Key.lastMorningPrompt)
+                showMorningCheckIn = false
+                WidgetSnapshotPublisher.publish(entry)
+                return entry
+            }
             UserDefaults.standard.set(dayKey, forKey: Key.lastMorningPrompt)
             showMorningCheckIn = false
             return nil
@@ -1518,6 +1609,11 @@ final class AppState: ObservableObject {
         // explicitly so nothing survives even if the domain wipe is partial.
         MorningCheckInStore.clear()
         StreakManager.shared.resetAll()
+        // Drop the in-memory Pro/dev-unlock state too. Without this, the live
+        // SubscriptionManager singleton keeps `isPro = true` after the wipe, so
+        // a fresh onboarding run would skip the hard paywall and land straight
+        // in the app. A genuine RevenueCat entitlement is re-synced inside.
+        SubscriptionManager.shared.resetLocalProState()
         defaults.synchronize()
 
         // Reset in-memory state so the UI immediately reflects the wipe.

@@ -24,6 +24,9 @@ struct Routine: Codable {
     var habits: [RoutineHabit] = []
     var completedToday: Set<String> = []
     var lastCompletedDay: String? = nil
+    /// Habits already granted XP today — stops users farming XP by toggling the
+    /// same habit off and on. Reset on day rollover.
+    var rewardedToday: Set<String> = []
 
     var completion: Double {
         guard !habits.isEmpty else { return 0 }
@@ -32,5 +35,21 @@ struct Routine: Codable {
 
     var isFullyCompleted: Bool {
         !habits.isEmpty && completedToday.count == habits.count
+    }
+}
+
+extension Routine {
+    private enum CodingKeys: String, CodingKey {
+        case habits, completedToday, lastCompletedDay, rewardedToday
+    }
+
+    // Lenient decode so adding `rewardedToday` doesn't wipe a returning user's
+    // saved routine (synthesized Codable would throw on the missing key).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        habits = try c.decodeIfPresent([RoutineHabit].self, forKey: .habits) ?? []
+        completedToday = try c.decodeIfPresent(Set<String>.self, forKey: .completedToday) ?? []
+        lastCompletedDay = try c.decodeIfPresent(String.self, forKey: .lastCompletedDay)
+        rewardedToday = try c.decodeIfPresent(Set<String>.self, forKey: .rewardedToday) ?? []
     }
 }

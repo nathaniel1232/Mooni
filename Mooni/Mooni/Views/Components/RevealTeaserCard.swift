@@ -131,7 +131,7 @@ struct RevealTeaserCard: View {
             HStack(spacing: 6) {
                 ForEach(0..<required, id: \.self) { i in
                     Capsule()
-                        .fill(i < nightsTracked ? MooniColor.accentSoft : Color.white.opacity(0.10))
+                        .fill(i < nightsTracked ? MooniColor.accent : MooniColor.hairline)
                         .frame(height: 6)
                 }
             }
@@ -145,11 +145,11 @@ struct RevealTeaserCard: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.white.opacity(0.05))
+                .fill(MooniColor.card)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(MooniColor.hairline, lineWidth: 1)
         )
     }
 

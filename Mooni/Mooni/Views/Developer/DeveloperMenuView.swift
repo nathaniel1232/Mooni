@@ -25,16 +25,49 @@ struct DeveloperMenuView: View {
                         }
 
                         section("Simulate") {
-                            devRow("moon.stars.fill", "Simulate a tracked night",
+                            devRow("moon.stars.fill", "Log a good night",
+                                   "Force a high-score night — great, long sleep",
+                                   tint: MooniColor.success) {
+                                let e = simulateNight(target: .good)
+                                flash("Good night: \(e.formattedDuration), score \(e.score)")
+                            }
+                            devRow("cloud.moon.fill", "Log a bad night",
+                                   "Force a low-score night — short, rough sleep",
+                                   tint: MooniColor.danger) {
+                                let e = simulateNight(target: .bad)
+                                flash("Bad night: \(e.formattedDuration), score \(e.score)")
+                            }
+                            devRow("dice.fill", "Log a random night",
                                    "Fabricate last night — scored, with a check-in",
                                    tint: MooniColor.accent) {
-                                let e = simulateNight()
+                                let e = simulateNight(target: .random)
                                 flash("Added a night: \(e.formattedDuration), score \(e.score)")
                             }
                             devRow("sun.and.horizon.fill", "Open morning check-in",
                                    "Reset today and launch the check-in flow",
                                    tint: MooniColor.warning) {
                                 triggerMorningCheckIn()
+                            }
+                        }
+
+                        section("Theme") {
+                            devRow("sun.max.fill", "Force light theme",
+                                   "Pin the morning / day appearance",
+                                   tint: MooniColor.warning) {
+                                forceTheme(.light)
+                                flash("Light theme forced")
+                            }
+                            devRow("moon.fill", "Force dark theme",
+                                   "Pin the evening / night appearance",
+                                   tint: MooniColor.accent) {
+                                forceTheme(.dark)
+                                flash("Dark theme forced")
+                            }
+                            devRow("clock.arrow.circlepath", "Theme: back to auto",
+                                   "Follow the time of day again",
+                                   tint: MooniColor.textMuted) {
+                                resetThemeToAuto()
+                                flash("Theme follows time of day")
                             }
                         }
 
@@ -91,7 +124,7 @@ struct DeveloperMenuView: View {
                             }
                         }
 
-                        Text("Unlocked via 20 taps on the paywall owl.")
+                        Text("Unlocked via 20 taps on the paywall owl or the Home wordmark.")
                             .font(MooniFont.caption(11))
                             .foregroundColor(MooniColor.textMuted)
                             .padding(.top, 4)
@@ -104,7 +137,7 @@ struct DeveloperMenuView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }.foregroundColor(MooniColor.accent)
+                    Button("Done") { dismiss() }.foregroundColor(MooniColor.accentText)
                 }
             }
             .fullScreenCover(item: $storyEntry) { entry in
@@ -198,51 +231,85 @@ struct DeveloperMenuView: View {
 
     // MARK: - Actions
 
+    /// What kind of night to fabricate. `.good`/`.bad` force a clearly high /
+    /// low score (mostly via duration + quality); `.random` keeps the old
+    /// realistic jitter.
+    enum NightTarget { case good, bad, random }
+
     /// Builds a realistic last-night entry (scored, with a generated check-in)
     /// so history / analytics / home all have something to show immediately.
     @discardableResult
-    private func simulateNight() -> SleepEntry {
+    private func simulateNight(target: NightTarget = .random) -> SleepEntry {
         // Most recent target wake before now, with a little jitter.
         var wake = todayAt(appState.targetWakeTime)
         if wake > Date() { wake = wake.addingTimeInterval(-86_400) }
         wake = wake.addingTimeInterval(Double(Int.random(in: -30...30)) * 60)
 
-        let hours = max(4.0, min(10.0, appState.goalHours + Double.random(in: -1.2...0.6)))
+        let hours: Double
+        let quality: SleepEntry.Quality
+        let mood: SleepEntry.Mood
+        switch target {
+        case .good:
+            hours = Double.random(in: 7.8...8.8)
+            quality = .great
+            mood = .energized
+        case .bad:
+            hours = Double.random(in: 4.0...5.2)
+            quality = .poor
+            mood = .tired
+        case .random:
+            hours = max(4.0, min(10.0, appState.goalHours + Double.random(in: -1.2...0.6)))
+            quality = [.great, .good, .good, .okay].randomElement()!
+            mood = [.energized, .okay, .tired].randomElement()!
+        }
         let bed = wake.addingTimeInterval(-hours * 3600)
-
-        let quality: SleepEntry.Quality = [.great, .good, .good, .okay].randomElement()!
-        let mood: SleepEntry.Mood = [.energized, .okay, .tired].randomElement()!
 
         let entry = appState.logSleep(
             bedtime: bed, wakeTime: wake, quality: quality, mood: mood,
-            notes: "Developer-simulated night", routineCompleted: Bool.random()
+            notes: "Developer-simulated night",
+            routineCompleted: target == .good ? true : Bool.random()
         )
 
-        // A matching check-in so the analytics tie-ins + answers grid populate.
-        let caffeineCount = Int.random(in: 0...3)
-        let lastCaffeine = caffeineCount >= 1 ? todayAt(hour: Int.random(in: 13...18), minute: 0) : nil
+        // A matching check-in so the analytics tie-ins + answers grid populate,
+        // biased toward the requested target where it's cheap to do so.
+        let caffeineCount = target == .bad ? Int.random(in: 2...4) : Int.random(in: 0...2)
+        let lastCaffeine = caffeineCount >= 1
+            ? todayAt(hour: target == .bad ? Int.random(in: 16...20) : Int.random(in: 12...15), minute: 0)
+            : nil
         let lateCaffeine = lastCaffeine.map { Calendar.current.component(.hour, from: $0) >= 15 } ?? false
 
         let checkIn = MorningCheckIn(
             date: entry.wakeTime,
-            feeling: [.great, .okay, .tired].randomElement()!,
-            wakeUps: [.none, .once, .fewTimes].randomElement()!,
+            feeling: target == .good ? .great : (target == .bad ? .tired : [.great, .okay, .tired].randomElement()!),
+            wakeUps: target == .good ? .none : (target == .bad ? .fewTimes : [.none, .once, .fewTimes].randomElement()!),
             dreams: [.yes, .no, .notSure].randomElement()!,
-            getOutOfBedDifficulty: [.easy, .normal, .hard].randomElement()!,
+            getOutOfBedDifficulty: target == .good ? .easy : (target == .bad ? .hard : [.easy, .normal, .hard].randomElement()!),
             lateCaffeine: lateCaffeine,
-            minutesToFallAsleep: Int.random(in: 4...35),
+            minutesToFallAsleep: target == .good ? Int.random(in: 4...12) : (target == .bad ? Int.random(in: 35...70) : Int.random(in: 4...35)),
             minutesPhoneDownToSleep: Int.random(in: 1...20),
             caffeineCount: caffeineCount,
             lastCaffeineTime: lastCaffeine,
             lastMealTime: todayAt(hour: Int.random(in: 18...21), minute: 0).addingTimeInterval(-86_400),
-            lateHeavyMeal: Bool.random(),
-            alcoholDrinks: [0, 0, 1, 2].randomElement()!,
+            lateHeavyMeal: target == .bad ? true : Bool.random(),
+            alcoholDrinks: target == .bad ? [1, 2, 3].randomElement()! : (target == .good ? 0 : [0, 0, 1, 2].randomElement()!),
             exerciseTime: ExerciseTiming.allCases.randomElement()!,
             napMinutes: [0, 0, 0, 20].randomElement()!,
             stressLevel: StressLevel.allCases.randomElement()!,
             roomFeel: RoomTemp.allCases.randomElement()!
         )
         return appState.completeMorningCheckIn(checkIn) ?? entry
+    }
+
+    // MARK: - Theme override (dev only)
+
+    private func forceTheme(_ mode: MooniThemeMode) {
+        UserDefaults.standard.set(mode == .light ? "light" : "dark", forKey: "debug.themeMode")
+        ThemeManager.shared.mode = mode
+    }
+
+    private func resetThemeToAuto() {
+        UserDefaults.standard.removeObject(forKey: "debug.themeMode")
+        ThemeManager.shared.refresh()
     }
 
     /// Wipes today's night and reopens the morning check-in on a fresh entry.

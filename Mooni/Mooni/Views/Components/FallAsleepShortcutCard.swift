@@ -67,12 +67,12 @@ struct FallAsleepShortcutCard: View {
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(MooniColor.background)
                     .frame(width: 38, height: 38)
-                    .background(Circle().fill(.white))
+                    .background(Circle().fill(MooniColor.accent))
             }
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(MooniColor.card)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)

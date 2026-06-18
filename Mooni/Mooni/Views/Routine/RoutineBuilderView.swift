@@ -33,7 +33,7 @@ struct RoutineBuilderView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                 }
             }
             .onAppear {
@@ -69,7 +69,7 @@ struct RoutineBuilderView: View {
                 Image(systemName: habit.icon)
                     .foregroundColor(isSelected ? MooniColor.background : MooniColor.accent)
                     .frame(width: 30, height: 30)
-                    .background(isSelected ? MooniColor.accent : Color.white.opacity(0.08))
+                    .background(isSelected ? MooniColor.accent : MooniColor.hairline)
                     .clipShape(Circle())
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -85,7 +85,7 @@ struct RoutineBuilderView: View {
                     .foregroundColor(isSelected ? MooniColor.success : MooniColor.textMuted)
             }
             .padding(14)
-            .background(isSelected ? Color.white.opacity(0.10) : Color.white.opacity(0.05))
+            .background(isSelected ? MooniColor.hairline : MooniColor.hairline)
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(isSelected ? MooniColor.accent.opacity(0.6) : Color.clear, lineWidth: 1.5)

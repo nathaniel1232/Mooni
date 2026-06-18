@@ -107,6 +107,22 @@ final class SubscriptionManager: ObservableObject {
         isPro = false
     }
 
+    /// Drops all *local* Pro state — the dev override AND the cached
+    /// entitlement — back to the free/locked experience, in memory as well as
+    /// on disk. Wiping UserDefaults alone (as "Delete account & data" does)
+    /// clears the cache on disk but leaves THIS long-lived singleton still
+    /// holding `isPro = true`, so re-running onboarding from scratch would slip
+    /// straight past the hard paywall into the app. After resetting we re-sync
+    /// against RevenueCat so a genuine subscriber who wipes their data is
+    /// promptly restored to Pro — only the local/dev unlock is dropped.
+    func resetLocalProState() {
+        UserDefaults.standard.removeObject(forKey: Self.devForceProKey)
+        UserDefaults.standard.removeObject(forKey: Self.cachedIsProKey)
+        devForcePro = false
+        isPro = false
+        Task { await refreshCustomerInfo() }
+    }
+
     // MARK: - Configuration
 
     func configure() {

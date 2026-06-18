@@ -18,15 +18,14 @@ struct HomeView: View {
     @State private var showManualOptions = false
     @State private var showInviteFriends = false
     @State private var showFallAsleepSheet = false
+
+    /// Hidden developer unlock: 20 taps on the top-left wordmark opens the dev
+    /// menu (mirrors the paywall owl gesture). No visible cue until it fires.
+    @State private var brandTapCount = 0
+    @State private var showDeveloperMenu = false
     /// Hides the motion re-ask card for the rest of this session once the user
     /// acts on it or dismisses it (the persistent cooldown lives in AppState).
     @State private var motionReaskHidden = false
-
-    /// Currently-displayed speech bubble text. Set by `handleOwlTap()` after
-    /// the user taps the hero owl; auto-clears after a short delay. nil
-    /// means no bubble is showing.
-    @State private var heroSpeech: String?
-    @State private var heroSpeechToken: UUID = UUID()
 
     /// In-flight celebration toast (level-up / streak milestone / etc).
     /// Set by `maybeFireCelebration()` and cleared by the toast's dismiss.
@@ -36,7 +35,6 @@ struct HomeView: View {
     /// milestone from re-firing on every refresh. Persists in UserDefaults so
     /// a backgrounded app doesn't replay celebrations on warm starts.
     @AppStorage("mooni.home.lastCelebratedStreak") private var lastCelebratedStreak: Int = 0
-    @AppStorage("mooni.home.lastCelebratedLevel") private var lastCelebratedLevel: Int = 0
     /// Fires the Motion & Fitness prompt the first time the user reaches Home
     /// (if it wasn't already resolved in onboarding). One-shot.
     @AppStorage("mooni.motionAutoPrompted") private var motionAutoPrompted = false
@@ -108,7 +106,6 @@ struct HomeView: View {
             maybeAutoPromptMotion()
         }
         .onChange(of: streak.current) { _, _ in maybeFireCelebration() }
-        .onChange(of: appState.pet.level) { _, _ in maybeFireCelebration() }
         .celebrationToast(payload: $celebration)
         .alert("You lost your \(streak.lostStreakLength)-day streak", isPresented: $showLostStreak) {
             Button("Start fresh") { streak.acknowledgeLostStreak() }
@@ -175,6 +172,22 @@ struct HomeView: View {
                 .environmentObject(appState)
                 .environmentObject(subscriptionManager)
         }
+        .sheet(isPresented: $showDeveloperMenu) {
+            DeveloperMenuView()
+                .environmentObject(appState)
+                .environmentObject(subscriptionManager)
+        }
+    }
+
+    /// Count taps on the wordmark; the 20th opens the developer menu and also
+    /// persistently unlocks its entry in Profile (same as the paywall gesture).
+    private func registerBrandTap() {
+        brandTapCount += 1
+        guard brandTapCount >= 20 else { return }
+        brandTapCount = 0
+        DeveloperMode.shared.unlock()
+        Haptics.celebrate()
+        showDeveloperMenu = true
     }
 
     // MARK: - Missed night
@@ -193,45 +206,75 @@ struct HomeView: View {
         guard cal.component(.hour, from: now) >= 8 else { return false }
         let todayKey = now.dayKey
         if appState.entries.contains(where: { $0.dayKey == todayKey }) { return false }
-        return true
+        // Never cry "missed night" for a night that was never on our watch. A
+        // brand-new user who just finished onboarding this morning hasn't had
+        // a trackable night yet — last night happened before they had the app.
+        // Only surface the card once tracking began on or before last night's
+        // bedtime (mirrors backfillMissedNights' trackability rule).
+        guard let trackingStart = appState.trackingStartedAt else { return false }
+        let bedComps = cal.dateComponents([.hour, .minute], from: appState.targetBedtime)
+        guard let bH = bedComps.hour, let bM = bedComps.minute else { return false }
+        var lastBedtime = cal.date(bySettingHour: bH, minute: bM, second: 0, of: now) ?? now
+        if lastBedtime > now {
+            lastBedtime = cal.date(byAdding: .day, value: -1, to: lastBedtime) ?? lastBedtime
+        }
+        return trackingStart <= lastBedtime
     }
 
+    /// Whether we have a tracked-but-unconfirmed night (vs. nothing logged at
+    /// all). Drives the card's copy + action.
+    private var missedNightIsUnconfirmed: Bool { appState.hasUnconfirmedNight }
+
     private var missedNightCard: some View {
-        MooniCard(padding: 16, cornerRadius: 22) {
-            HStack(spacing: 12) {
-                Image(systemName: "moon.zzz.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(MooniColor.warning)
-                    .frame(width: 38, height: 38)
-                    .background(MooniColor.warning.opacity(0.16))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(appState.hasUnconfirmedNight ? "Confirm last night's sleep" : "SleepOwl missed last night")
-                        .font(MooniFont.title(14))
-                        .foregroundColor(MooniColor.textPrimary)
-                    Text("Add the times you slept so your streak and score stay accurate.")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        let unconfirmed = missedNightIsUnconfirmed
+        let tint = unconfirmed ? MooniColor.accent : MooniColor.warning
+        return MooniCard(padding: 18, cornerRadius: 24) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    Image(systemName: unconfirmed ? "checkmark.circle.fill" : "moon.zzz.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(tint)
+                        .frame(width: 44, height: 44)
+                        .background(tint.opacity(0.16))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(unconfirmed ? "Last night is ready to confirm" : "Add last night's sleep")
+                            .font(MooniFont.title(15))
+                            .foregroundColor(MooniColor.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(unconfirmed
+                             ? "Take a few seconds to check the times — then your score locks in."
+                             : "No night logged yet. Pop in when you slept to keep your streak and score accurate.")
+                            .font(MooniFont.caption(12))
+                            .foregroundColor(MooniColor.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 8)
+
                 Button {
                     Haptics.tap()
-                    if appState.hasUnconfirmedNight {
+                    if unconfirmed {
                         // An entry exists but isn't confirmed — go straight
                         // to the morning check-in for it.
                         appState.showMorningCheckIn = true
-                    } else if let seeded = appState.seedMissedNightEntry() {
-                        editingEntry = seeded
+                    } else if let draft = appState.makeMissedNightDraft() {
+                        // Open the editor on a DRAFT — nothing is logged until
+                        // the user confirms their real times (no phantom "8h").
+                        editingEntry = draft
                     }
                 } label: {
-                    Text(appState.hasUnconfirmedNight ? "Log" : "Add")
-                        .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.background)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(MooniColor.warning)
-                        .clipShape(Capsule())
+                    HStack(spacing: 7) {
+                        Image(systemName: unconfirmed ? "checkmark" : "plus")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(unconfirmed ? "Confirm last night" : "Add last night")
+                            .font(MooniFont.title(14))
+                    }
+                    .foregroundColor(MooniColor.background)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(tint)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
@@ -275,7 +318,7 @@ struct HomeView: View {
             HStack(spacing: 12) {
                 Image(systemName: "figure.walk.motion")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(MooniColor.accent)
+                    .foregroundColor(MooniColor.accentText)
                     .frame(width: 38, height: 38)
                     .background(MooniColor.accent.opacity(0.16))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -390,6 +433,8 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 10) {
                 SleepOwlBrandMark(size: .prominent)
+                    .contentShape(Rectangle())
+                    .onTapGesture { registerBrandTap() }
                 Spacer(minLength: 8)
                 // Duolingo-style streak: tappable, opens streak detail / freeze
                 // info via the existing lost-streak alert plumbing.
@@ -406,7 +451,7 @@ struct HomeView: View {
             // reads what SleepOwl does, not just its name.
             Text("Automatic sleep tracking, scored every morning")
                 .font(MooniFont.caption(12))
-                .foregroundColor(MooniColor.dyn(light: MooniColor.accent, dark: MooniColor.accentSoft))
+                .foregroundColor(MooniColor.accentText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
                 .padding(.top, -6)
@@ -417,9 +462,9 @@ struct HomeView: View {
                     .foregroundColor(MooniColor.textSecondary)
                 Text(appState.pet.name)
                     .font(MooniFont.title(16))
-                    // accentSoft is near-white — fine on the night theme but
-                    // washes out on the cream morning surface. Darken in light.
-                    .foregroundColor(MooniColor.dyn(light: MooniColor.accent, dark: MooniColor.accentSoft))
+                    // accentText keeps the night-theme lavender but drops to a
+                    // deeper, readable violet on the cream morning surface.
+                    .foregroundColor(MooniColor.accentText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
@@ -431,7 +476,6 @@ struct HomeView: View {
             XPBar(
                 value: appState.pet.levelProgress,
                 level: appState.pet.level,
-                title: appState.pet.levelTitle,
                 recentDelta: appState.lastEarnedEnergy
             )
             .padding(.top, 2)
@@ -541,25 +585,10 @@ struct HomeView: View {
     /// milestone hasn't been celebrated yet. Guards against re-firing using
     /// the AppStorage trackers so a backgrounded app doesn't replay the toast.
     private func maybeFireCelebration() {
-        // Don't stack celebrations — if one's on screen, wait.
+        // Don't stack celebrations — if one's on screen, wait. Level-ups are
+        // now handled globally by `LevelUpPresenter` (fired from RootView the
+        // moment the pet levels up), so only streak milestones run here.
         guard celebration == nil else { return }
-
-        // Level-up takes priority over streak (rarer, more rewarding).
-        let level = appState.pet.level
-        if level > lastCelebratedLevel && level > 1 {
-            celebration = .init(
-                kind: .levelUp(newLevel: level, title: appState.pet.levelTitle),
-                // No "See unlocks" CTA — the unlocks/Pet screen is hidden in
-                // this slim build, so the button would dangle. The toast's
-                // primary button only ever dismisses, so keep the copy honest.
-                title: "Level \(level)!",
-                subtitle: "You reached \(appState.pet.levelTitle), and a fresh streak freeze is ready.",
-                ctaTitle: "Nice!",
-                pet: appState.pet
-            )
-            lastCelebratedLevel = level
-            return
-        }
 
         let s = streak.current
         if Self.streakMilestones.contains(s) && s > lastCelebratedStreak {
@@ -602,35 +631,6 @@ struct HomeView: View {
         }
     }
 
-    /// Tap reaction: register the interaction, pick a contextual line, show a
-    /// bubble for ~2.4s. If the user hasn't tapped the owl in >24h we lead
-    /// with a "missed you" message before falling back to the regular pool.
-    private func handleOwlTap() {
-        let log = PetInteractionLog.shared
-        let line: String
-        if log.owlMissedYou() {
-            line = PetReactionPool.missedYou(for: appState.pet)
-        } else {
-            line = PetReactionPool.random(
-                for: appState.pet,
-                interactionsToday: log.interactionsToday
-            )
-        }
-        log.registerTap()
-
-        let token = UUID()
-        heroSpeechToken = token
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-            heroSpeech = line
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
-            // Only clear if no newer tap has taken over.
-            if heroSpeechToken == token {
-                withAnimation(.easeOut(duration: 0.3)) { heroSpeech = nil }
-            }
-        }
-    }
-
     private func morningHero(_ entry: SleepEntry, isRecovery: Bool) -> some View {
         let r = entry.readinessScore ?? entry.score
         return MooniCard(padding: 24, cornerRadius: 32) {
@@ -645,8 +645,7 @@ struct HomeView: View {
                         DreamSpiritView(
                             pet: petForMood(heroMood(r)),
                             size: 104,
-                            interactive: true,
-                            onTap: { handleOwlTap() }
+                            interactive: true
                         )
                             .shadow(color: MooniColor.petGlow.opacity(0.3),
                                     radius: 18, y: 8)
@@ -659,18 +658,6 @@ struct HomeView: View {
                             .clipShape(Capsule())
                     }
                     .frame(width: 128)
-                }
-                // Speech bubble overlays the full score+owl row (the whole card
-                // width) rather than just the 104pt owl, so a long line wraps
-                // and stays inside the card. Pinned .topTrailing so its right
-                // edge hugs the owl side and it grows leftward into the card
-                // interior — never clipping off the right card edge.
-                .overlay(alignment: .topTrailing) {
-                    if let line = heroSpeech {
-                        PetSpeechBubble(text: line, maxWidth: 200)
-                            .offset(y: -8)
-                            .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .bottomTrailing)))
-                    }
                 }
 
                 // Timing (bottom)
@@ -729,17 +716,9 @@ struct HomeView: View {
                     DreamSpiritView(
                         pet: petForMood(.cozy),
                         size: 170,
-                        interactive: true,
-                        onTap: { handleOwlTap() }
+                        interactive: true
                     )
                         .shadow(color: MooniColor.petGlow.opacity(0.4), radius: 26, y: 12)
-                        .overlay(alignment: .top) {
-                            if let line = heroSpeech {
-                                PetSpeechBubble(text: line, maxWidth: 240)
-                                    .offset(y: -28)
-                                    .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .bottom)))
-                            }
-                        }
                 }
                 .frame(height: 200)
 
@@ -776,8 +755,7 @@ struct HomeView: View {
                 DreamSpiritView(
                     pet: petForMood(.calm),
                     size: 150,
-                    interactive: true,
-                    onTap: { handleOwlTap() }
+                    interactive: true
                 )
                 .frame(height: 170)
 
@@ -787,7 +765,7 @@ struct HomeView: View {
                             .tint(MooniColor.accentSoft)
                         Text("READING YOUR NIGHT")
                             .font(MooniFont.caption(10))
-                            .foregroundColor(MooniColor.accentSoft)
+                            .foregroundColor(MooniColor.accentText)
                             .tracking(1.2)
                     }
                     Text("One moment…")
@@ -821,17 +799,9 @@ struct HomeView: View {
                     DreamSpiritView(
                         pet: petForMood(.sleepy),
                         size: 150,
-                        interactive: true,
-                        onTap: { handleOwlTap() }
+                        interactive: true
                     )
                         .shadow(color: MooniColor.petGlow.opacity(0.35), radius: 22, y: 10)
-                        .overlay(alignment: .top) {
-                            if let line = heroSpeech {
-                                PetSpeechBubble(text: line, maxWidth: 240)
-                                    .offset(y: -28)
-                                    .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .bottom)))
-                            }
-                        }
                 }
                 .frame(height: 180)
 
@@ -877,10 +847,10 @@ struct HomeView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "lock.fill")
                         .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                     Text("UNLOCK AUTO-TRACKING")
                         .font(MooniFont.caption(10))
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                         .tracking(1.2)
                 }
                 .padding(.horizontal, 10)
@@ -969,7 +939,7 @@ struct HomeView: View {
                                     .fill(MooniColor.accentSoft.opacity(0.18))
                                     .frame(width: 36, height: 36)
                                 Image(systemName: "bed.double.fill")
-                                    .foregroundColor(MooniColor.accentSoft)
+                                    .foregroundColor(MooniColor.accentText)
                                     .font(.system(size: 14, weight: .semibold))
                             }
                             VStack(alignment: .leading, spacing: 2) {
@@ -1059,7 +1029,7 @@ struct HomeView: View {
                                  : "Connect Apple Health — Pro feature")
                                 .font(MooniFont.caption(12))
                         }
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background(MooniColor.card)
@@ -1200,7 +1170,7 @@ struct HomeView: View {
                     .foregroundColor(MooniColor.textMuted)
                 Text("·  Set real times")
                     .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.accentSoft)
+                    .foregroundColor(MooniColor.accentText)
                 Spacer(minLength: 0)
             }
         }
@@ -1423,7 +1393,7 @@ struct HomeView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Growth")
                             .font(MooniFont.caption(10))
-                            .foregroundColor(MooniColor.accentSoft)
+                            .foregroundColor(MooniColor.accentText)
                             .tracking(0.6)
                             .textCase(.uppercase)
                         Text("Next: \(appState.pet.name) becomes \(nextStageName)")
@@ -1458,7 +1428,7 @@ struct HomeView: View {
                         Button { showPaywall = true } label: {
                             Text("See full path")
                                 .font(MooniFont.caption(12))
-                                .foregroundColor(MooniColor.accentSoft)
+                                .foregroundColor(MooniColor.accentText)
                         }
                         .buttonStyle(.plain)
                     }
@@ -1692,7 +1662,7 @@ private struct WindDownSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                 }
             }
             .onAppear {
@@ -1743,6 +1713,17 @@ private struct HabitRow: View {
                 }
 
                 Spacer()
+
+                // Make the reward explicit so the wind-down checklist reads as a
+                // set of XP-earning challenges, not just chores.
+                if !isDone && !appState.routine.rewardedToday.contains(habit.id) {
+                    Text("+15 XP")
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundColor(MooniColor.accentText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(MooniColor.accent.opacity(0.14)))
+                }
             }
             .padding(14)
             .background(isDone ? MooniColor.cardStrong : MooniColor.card)
@@ -1813,7 +1794,7 @@ private struct StartSleepSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                 }
             }
         }
@@ -1892,7 +1873,7 @@ private struct MorningWhySheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                 }
             }
         }
@@ -1969,7 +1950,7 @@ private struct RecoveryPlanSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                 }
             }
         }
@@ -2279,7 +2260,7 @@ private struct AutoWakeUpSheet: View {
                     // Only show Done once the user is past the story.
                     if phase == .summary {
                         Button("Done") { dismiss() }
-                            .foregroundColor(MooniColor.accent)
+                            .foregroundColor(MooniColor.accentText)
                     }
                 }
             }
@@ -2300,7 +2281,7 @@ private struct AutoWakeUpSheet: View {
                 VStack(spacing: 10) {
                     Text.iconHeader("🦉", "WE TRACKED YOUR NIGHT")
                         .font(.system(size: 12, weight: .heavy, design: .rounded))
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                         .tracking(2)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
@@ -2411,7 +2392,7 @@ private struct AutoWakeUpSheet: View {
                             Text("Edit times")
                                 .font(.system(size: 13, weight: .heavy, design: .rounded))
                         }
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
                         .background(MooniColor.accent.opacity(0.14))
@@ -2677,7 +2658,7 @@ private struct AutoWakeUpSheet: View {
                 EmojiIcon(emoji: "☀", size: 13, tint: MooniColor.warning)
                 Text("GOOD MORNING")
                     .font(MooniFont.caption(11))
-                    .foregroundColor(MooniColor.accentSoft)
+                    .foregroundColor(MooniColor.accentText)
                     .tracking(2)
             }
 
@@ -2779,7 +2760,7 @@ private struct AutoWakeUpSheet: View {
                             .font(MooniFont.caption(11))
                             .foregroundColor(MooniColor.warning)
                             .tracking(2)
-                        Text("Level \(level) · \(appState.pet.levelTitle)")
+                        Text("Level \(level)")
                             .font(MooniFont.title(18))
                             .foregroundColor(MooniColor.textPrimary)
                     }
@@ -2789,7 +2770,7 @@ private struct AutoWakeUpSheet: View {
                 HStack(spacing: 8) {
                     Image(systemName: "snowflake")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                     Text("+1 streak freeze unlocked")
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.textSecondary)
@@ -2891,7 +2872,7 @@ private struct AutoWakeUpSheet: View {
                                 Text("\(stats.freezesRemaining)")
                                     .font(MooniFont.caption(11))
                             }
-                            .foregroundColor(MooniColor.accentSoft)
+                            .foregroundColor(MooniColor.accentText)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
                             .background(MooniColor.accent.opacity(0.14))
@@ -2922,7 +2903,7 @@ private struct AutoWakeUpSheet: View {
                         HStack(alignment: .firstTextBaseline, spacing: 4) {
                             Text("+\(stats.energyEarned)")
                                 .font(MooniFont.display(28))
-                                .foregroundColor(MooniColor.accent)
+                                .foregroundColor(MooniColor.accentText)
                             Text("XP")
                                 .font(MooniFont.caption(12))
                                 .foregroundColor(MooniColor.textSecondary)
@@ -2930,14 +2911,14 @@ private struct AutoWakeUpSheet: View {
                         }
                     }
                     Spacer()
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("LEVEL \(appState.pet.level)")
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("LEVEL")
                             .font(MooniFont.caption(10))
                             .foregroundColor(MooniColor.textMuted)
                             .tracking(1.5)
-                        Text(appState.pet.levelTitle)
-                            .font(MooniFont.title(14))
-                            .foregroundColor(MooniColor.accentSoft)
+                        Text("\(appState.pet.level)")
+                            .font(MooniFont.title(18))
+                            .foregroundColor(MooniColor.accentText)
                     }
                 }
 
@@ -2974,15 +2955,6 @@ private struct AutoWakeUpSheet: View {
                         .foregroundColor(MooniColor.textMuted)
                         .tracking(1.5)
                     Spacer()
-                    if s.isEstimated {
-                        Text("Modeled")
-                            .font(MooniFont.caption(10))
-                            .foregroundColor(MooniColor.textMuted)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(MooniColor.card)
-                            .clipShape(Capsule())
-                    }
                 }
 
                 GeometryReader { geo in
@@ -3160,7 +3132,7 @@ private struct AutoWakeUpSheet: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(petName)
                         .font(MooniFont.caption(11))
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                         .tracking(1.2)
                     Text(stats.petMessage(petName: petName))
                         .font(MooniFont.body(14))

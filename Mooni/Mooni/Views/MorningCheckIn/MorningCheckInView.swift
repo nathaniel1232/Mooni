@@ -150,10 +150,10 @@ struct MorningCheckInView: View {
                     .background(
                         Rectangle()
                             .fill(.ultraThinMaterial)
-                            .environment(\.colorScheme, .dark)
+                            .environment(\.colorScheme, ThemeManager.currentMode == .light ? .light : .dark)
                             .overlay(alignment: .top) {
                                 Rectangle()
-                                    .fill(Color.white.opacity(0.08))
+                                    .fill(MooniColor.hairline)
                                     .frame(height: 1)
                             }
                             .ignoresSafeArea(edges: .bottom)
@@ -203,12 +203,28 @@ struct MorningCheckInView: View {
 
     private var backgroundLayer: some View {
         let t = backgroundT
-        let top = Color(red: lerp(0.03, 0.30, t),
+        let top: Color
+        let bottom: Color
+        if ThemeManager.currentMode == .light {
+            // Light "morning" theme: a soft cool-lavender that warms toward a
+            // gentle cream dawn as the flow progresses. Stays light so the
+            // adaptive (dark-in-light) text stays readable — never the old
+            // forced-dark gradient that swallowed it.
+            top = Color(red: lerp(0.93, 1.00, t),
+                        green: lerp(0.93, 0.95, t),
+                        blue: lerp(1.00, 0.92, t))
+            bottom = Color(red: lerp(0.88, 1.00, t),
+                           green: lerp(0.90, 0.89, t),
+                           blue: lerp(1.00, 0.84, t))
+        } else {
+            // Night theme: the original deep-night → warm-dawn ramp.
+            top = Color(red: lerp(0.03, 0.30, t),
                         green: lerp(0.04, 0.18, t),
                         blue: lerp(0.16, 0.34, t))
-        let bottom = Color(red: lerp(0.08, 0.80, t),
+            bottom = Color(red: lerp(0.08, 0.80, t),
                            green: lerp(0.08, 0.46, t),
                            blue: lerp(0.24, 0.42, t))
+        }
         return LinearGradient(colors: [top, bottom], startPoint: .top, endPoint: .bottom)
             .ignoresSafeArea()
             .animation(.easeInOut(duration: 0.7), value: scene)
@@ -256,7 +272,7 @@ struct MorningCheckInView: View {
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 26))
-                    .foregroundColor(.white.opacity(0.55))
+                    .foregroundColor(MooniColor.textSecondary)
             }
         }
     }
@@ -273,7 +289,7 @@ struct MorningCheckInView: View {
                 VStack(spacing: 6) {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
-                            Capsule().fill(Color.white.opacity(0.16))
+                            Capsule().fill(MooniColor.hairline)
                             Capsule()
                                 .fill(MooniColor.warning)
                                 .frame(width: geo.size.width * fill(for: ch))
@@ -380,7 +396,7 @@ struct MorningCheckInView: View {
                     .foregroundColor(MooniColor.textPrimary)
                 Text("\(petDisplayName) watched over you while you slept.")
                     .font(MooniFont.body(16))
-                    .foregroundColor(MooniColor.accentSoft)
+                    .foregroundColor(MooniColor.accentText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 20)
             }
@@ -726,7 +742,7 @@ struct MorningCheckInView: View {
             Spacer()
             DatePicker("", selection: binding, displayedComponents: .hourAndMinute)
                 .labelsHidden()
-                .colorScheme(.dark)
+                .colorScheme(ThemeManager.currentMode == .light ? .light : .dark)
         }
     }
 
@@ -740,7 +756,7 @@ struct MorningCheckInView: View {
         .foregroundColor(MooniColor.textMuted)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(Color.white.opacity(0.06))
+        .background(MooniColor.hairline)
         .clipShape(Capsule())
     }
 
@@ -794,10 +810,10 @@ struct MorningCheckInView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(selected ? Color.white.opacity(0.22) : Color.white.opacity(0.08))
+            .background(selected ? MooniColor.cardStrong : MooniColor.card)
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(selected ? MooniColor.warning : .white.opacity(0.08),
+                    .stroke(selected ? MooniColor.warning : MooniColor.hairline,
                             lineWidth: selected ? 1.5 : 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))

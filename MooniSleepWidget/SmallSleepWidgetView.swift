@@ -1,21 +1,21 @@
 import SwiftUI
 
-/// Small widget — typographic "score card" design (2×2).
-/// A complete redesign away from the old owl-in-ring: a brand row, one big
-/// gradient score with a quality-bar underneath, and a single duration chip.
-/// Clean, data-forward, and legible at a glance — no mascot, no ring.
+/// Small widget — a calm "score gauge" card. A single open-bottom arc gauge is
+/// the hero (premium, instantly readable, like a readiness ring), with a quiet
+/// brand line above and one duration line below. A deliberate, uncluttered
+/// redesign away from the old flat number-card.
 struct SmallSleepWidgetView: View {
     let data: SleepWidgetData
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // ── Top: brand + quality
+        VStack(spacing: 0) {
+            // Brand + quality
             HStack(spacing: 3) {
                 Image(systemName: "moon.stars.fill")
-                    .font(.system(size: 8, weight: .black))
+                    .font(.system(size: 9, weight: .black))
                     .foregroundStyle(data.scoreTint)
                 Text("SleepOwl")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.system(size: 9.5, weight: .black, design: .rounded))
                     .foregroundStyle(SleepWidgetPalette.textSecondary)
                     .lineLimit(1)
                     .fixedSize()
@@ -23,58 +23,25 @@ struct SmallSleepWidgetView: View {
                 qualityPill
             }
 
-            Spacer(minLength: 0)
+            Spacer(minLength: 4)
 
-            // ── Hero score
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("\(data.score)")
-                    .font(.system(size: 54, weight: .black, design: .rounded))
-                    .foregroundStyle(scoreGradient)
-                    .shadow(color: data.scoreTint.opacity(0.35), radius: 8)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                Text("/100")
-                    .font(.system(size: 13, weight: .heavy, design: .rounded))
-                    .foregroundStyle(SleepWidgetPalette.textTertiary)
-            }
-            Text("LAST NIGHT")
-                .font(.system(size: 8, weight: .heavy, design: .rounded))
-                .tracking(1.4)
-                .foregroundStyle(SleepWidgetPalette.textTertiary)
+            SleepGauge(score: data.score, tint: data.scoreTint, size: 92, lineWidth: 9)
 
-            Spacer(minLength: 6)
+            Spacer(minLength: 4)
 
-            // ── Quality bar (replaces the ring as the progress motif)
-            qualityBar
-                .padding(.bottom, 8)
-
-            // ── Bottom: one duration chip, full width — can't truncate
+            // Duration footer
             HStack(spacing: 4) {
                 Image(systemName: "bed.double.fill")
                     .font(.system(size: 9, weight: .heavy))
                     .foregroundStyle(data.scoreTint)
                 Text(data.sleepDuration)
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .font(.system(size: 12.5, weight: .heavy, design: .rounded))
                     .foregroundStyle(SleepWidgetPalette.textPrimary)
-                    .lineLimit(1)
                     .fixedSize()
                 Text("asleep")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(SleepWidgetPalette.textTertiary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(SleepWidgetPalette.chipBackground)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(data.scoreTint.opacity(0.18), lineWidth: 0.6)
-            )
         }
     }
 
@@ -89,27 +56,59 @@ struct SmallSleepWidgetView: View {
             .padding(.vertical, 2)
             .background(Capsule().fill(data.scoreTint.opacity(0.22)))
     }
+}
 
-    private var qualityBar: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(SleepWidgetPalette.ringTrack)
-                Capsule()
-                    .fill(LinearGradient(
-                        colors: [data.scoreTint.opacity(0.65), data.scoreTint],
-                        startPoint: .leading, endPoint: .trailing))
-                    .frame(width: max(8, geo.size.width * data.ringProgress))
-                    .shadow(color: data.scoreTint.opacity(0.45), radius: 4)
+// MARK: - Shared gauge
+
+/// Open-bottom (270°) arc gauge with the score centered. Shared by the small &
+/// medium widgets so the whole set reads as one design language.
+struct SleepGauge: View {
+    let score: Int
+    let tint: Color
+    var size: CGFloat = 90
+    var lineWidth: CGFloat = 9
+    var showCaption: Bool = true
+
+    private var progress: Double { max(0, min(1, Double(score) / 100)) }
+
+    var body: some View {
+        ZStack {
+            // Track — 270° arc, gap centered at the bottom.
+            Circle()
+                .trim(from: 0, to: 0.75)
+                .stroke(SleepWidgetPalette.ringTrack,
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(135))
+
+            // Progress fill.
+            Circle()
+                .trim(from: 0, to: 0.75 * progress)
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(colors: [tint.opacity(0.55), tint]),
+                        center: .center,
+                        startAngle: .degrees(135),
+                        endAngle: .degrees(135 + 270)
+                    ),
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                )
+                .rotationEffect(.degrees(135))
+                .shadow(color: tint.opacity(0.45), radius: 4)
+
+            VStack(spacing: 0) {
+                Text("\(score)")
+                    .font(.system(size: size * 0.36, weight: .black, design: .rounded))
+                    .foregroundStyle(SleepWidgetPalette.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                if showCaption {
+                    Text("SCORE")
+                        .font(.system(size: max(7, size * 0.085), weight: .heavy, design: .rounded))
+                        .tracking(1.4)
+                        .foregroundStyle(SleepWidgetPalette.textTertiary)
+                }
             }
         }
-        .frame(height: 8)
-    }
-
-    private var scoreGradient: LinearGradient {
-        LinearGradient(
-            colors: [SleepWidgetPalette.textPrimary, data.scoreTint],
-            startPoint: .top, endPoint: .bottom
-        )
+        .frame(width: size, height: size)
     }
 }

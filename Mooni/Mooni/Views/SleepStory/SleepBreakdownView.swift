@@ -7,7 +7,12 @@ enum StagePalette {
     static let deep  = MooniColor.accent
     static let rem   = MooniColor.accent.opacity(0.74)
     static let light = MooniColor.accent.opacity(0.42)
-    static let awake = Color.white.opacity(0.22)
+    /// Neutral "awake" stage — adaptive so it stays visible on the cream
+    /// morning surface (a faint white vanishes there). Computed, not `let`, so
+    /// it re-reads the theme instead of freezing at first access.
+    static var awake: Color {
+        MooniColor.dyn(light: Color.black.opacity(0.20), dark: MooniColor.hairline)
+    }
 
     static func color(_ name: String) -> Color {
         switch name.lowercased() {
@@ -70,7 +75,7 @@ struct SleepBreakdownView: View {
                                 stageStat(seg.name, seg.seconds)
                                 if seg.name != segments.last?.name {
                                     Divider()
-                                        .background(Color.white.opacity(0.07))
+                                        .background(MooniColor.hairline)
                                         .frame(height: 30)
                                 }
                             }
@@ -118,7 +123,7 @@ struct SleepBreakdownView: View {
                                 legendRow(seg.name, seg.seconds)
                                 if idx < segments.count - 1 {
                                     Divider()
-                                        .background(Color.white.opacity(0.06))
+                                        .background(MooniColor.hairline)
                                         .padding(.vertical, 2)
                                 }
                             }
@@ -139,7 +144,7 @@ struct SleepBreakdownView: View {
                         MetricDisclosure(card: card)
                         if idx < metricCards.count - 1 {
                             Divider()
-                                .background(Color.white.opacity(0.06))
+                                .background(MooniColor.hairline)
                                 .padding(.vertical, 4)
                         }
                     }
@@ -151,7 +156,7 @@ struct SleepBreakdownView: View {
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "sunrise.fill")
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(MooniColor.accent)
+                            .foregroundColor(MooniColor.accentText)
                             .frame(width: 26)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("TONIGHT")
@@ -264,7 +269,7 @@ private struct MetricDisclosure: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.white.opacity(0.045))
+                    .background(MooniColor.hairline)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(.bottom, 10)
                     .transition(.opacity)

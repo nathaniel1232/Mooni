@@ -22,7 +22,7 @@ struct WindDownSystemTaskCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Tonight's tip")
                             .font(MooniFont.caption(11))
-                            .foregroundColor(MooniColor.accentSoft)
+                            .foregroundColor(MooniColor.accentText)
                             .textCase(.uppercase)
                         Text(task.title)
                             .font(MooniFont.title(17))
@@ -64,7 +64,7 @@ struct WindDownSystemTaskCard: View {
                             Image(systemName: "arrow.up.right")
                                 .font(.system(size: 11, weight: .bold))
                         }
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                     }
                     .buttonStyle(.plain)
                 }

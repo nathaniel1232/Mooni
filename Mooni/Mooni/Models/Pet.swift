@@ -164,24 +164,22 @@ struct Pet: Codable {
 
     // MARK: - Derived
     var energyForNextLevel: Int {
-        // Slightly steeper curve so higher levels feel earned.
-        100 + (level - 1) * 75
+        // Deliberately SHALLOW and front-loaded: a brand-new user should rocket
+        // through the first couple dozen levels in week one. Fast, visible
+        // progress is what builds attachment and keeps trials from cancelling —
+        // an engaged first week lands around level 30+. The curve only gently
+        // steepens so it never turns into a grind.
+        switch level {
+        case ..<5:    return 20     // first levels are almost instant
+        case 5..<15:  return 35
+        case 15..<30: return 60
+        case 30..<50: return 100
+        default:      return 150
+        }
     }
 
     var levelProgress: Double {
         min(1.0, Double(dreamEnergy) / Double(energyForNextLevel))
-    }
-
-    /// Friendly title shown next to level number.
-    var levelTitle: String {
-        switch level {
-        case ..<3:   return "Drowsy"
-        case 3..<6:  return "Restful"
-        case 6..<10: return "Dreamer"
-        case 10..<15: return "Night Owl"
-        case 15..<22: return "Sleep Sage"
-        default:     return "Moonlit Legend"
-        }
     }
 
     /// Returns the highest stage reached for the given consistency-day count.

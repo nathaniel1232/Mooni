@@ -39,7 +39,7 @@ struct BedtimeQuestView: View {
                             .blur(radius: 20)
                         Image(systemName: "lock.fill")
                             .font(.system(size: 44, weight: .semibold))
-                            .foregroundColor(MooniColor.accentSoft)
+                            .foregroundColor(MooniColor.accentText)
                     }
 
                     VStack(spacing: 10) {
@@ -271,7 +271,7 @@ struct BedtimeQuestView: View {
             HStack(spacing: 14) {
                 Image(systemName: program.icon)
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(MooniColor.accentSoft)
+                    .foregroundColor(MooniColor.accentText)
                     .frame(width: 42, height: 42)
                     .background(MooniColor.accent.opacity(0.14))
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -463,7 +463,7 @@ private struct QuestFlowView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                 }
             }
             .onAppear {
@@ -845,7 +845,7 @@ private struct SampleWindDownSheet: View {
             VStack(spacing: 20) {
                 Image(systemName: "wind")
                     .font(.system(size: 46, weight: .semibold))
-                    .foregroundColor(MooniColor.accentSoft)
+                    .foregroundColor(MooniColor.accentText)
                     .frame(width: 92, height: 92)
                     .background(MooniColor.accent.opacity(0.16))
                     .clipShape(Circle())

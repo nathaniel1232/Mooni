@@ -27,7 +27,7 @@ struct RoutineView: View {
                         showBuilder = true
                     } label: {
                         Image(systemName: "slider.horizontal.3")
-                            .foregroundColor(MooniColor.accent)
+                            .foregroundColor(MooniColor.accentText)
                     }
                 }
             }
@@ -41,7 +41,7 @@ struct RoutineView: View {
         MooniCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Image(systemName: "moon.stars.fill").foregroundColor(MooniColor.accent)
+                    Image(systemName: "moon.stars.fill").foregroundColor(MooniColor.accentText)
                     Text("Tonight's wind-down")
                         .font(MooniFont.title(17))
                         .foregroundColor(MooniColor.textPrimary)
@@ -96,7 +96,7 @@ struct RoutineView: View {
                         .foregroundColor(MooniColor.textPrimary)
                     Spacer()
                     Button("Edit") { showBuilder = true }
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                         .font(MooniFont.caption(13))
                 }
 
@@ -107,7 +107,7 @@ struct RoutineView: View {
                 } else {
                     ForEach(appState.routine.habits) { habit in
                         HStack {
-                            Image(systemName: habit.icon).foregroundColor(MooniColor.accent).frame(width: 22)
+                            Image(systemName: habit.icon).foregroundColor(MooniColor.accentText).frame(width: 22)
                             Text(habit.title)
                                 .font(MooniFont.body(15))
                                 .foregroundColor(MooniColor.textPrimary)
@@ -146,7 +146,7 @@ struct RoutineView: View {
             }
             .padding(.vertical, 10)
             .padding(.horizontal, 12)
-            .background(done ? Color.white.opacity(0.10) : Color.white.opacity(0.04))
+            .background(done ? MooniColor.hairline : MooniColor.hairline)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -165,7 +165,7 @@ struct RoutineView: View {
     private func progressBar(value: Double) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.08))
+                Capsule().fill(MooniColor.hairline)
                 Capsule()
                     .fill(LinearGradient(colors: [MooniColor.accentSoft, MooniColor.accent], startPoint: .leading, endPoint: .trailing))
                     .frame(width: geo.size.width * CGFloat(value))

@@ -41,7 +41,7 @@ struct NightAnalyticsView: View {
                 Text("NIGHT ANALYTICS")
                     .font(MooniFont.caption(11))
                     .tracking(1.8)
-                    .foregroundColor(MooniColor.accentSoft)
+                    .foregroundColor(MooniColor.accentText)
                 Text(entry.wakeTime, format: .dateTime.weekday(.wide).day().month())
                     .font(MooniFont.title(18))
                     .foregroundColor(MooniColor.textPrimary)
@@ -54,7 +54,7 @@ struct NightAnalyticsView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 26))
-                        .foregroundColor(.white.opacity(0.55))
+                        .foregroundColor(MooniColor.textSecondary)
                 }
             }
         }
@@ -221,7 +221,7 @@ struct NightAnalyticsContent: View {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "arrow.right.circle.fill")
                             .font(.system(size: 13))
-                            .foregroundColor(MooniColor.accentSoft)
+                            .foregroundColor(MooniColor.accentText)
                             .padding(.top, 1)
                         Text(note)
                             .font(MooniFont.body(14))
@@ -243,7 +243,7 @@ struct NightAnalyticsContent: View {
                     HStack {
                         Label("Unlock the full read-out", systemImage: "sparkles")
                             .font(MooniFont.title(15))
-                            .foregroundColor(MooniColor.accent)
+                            .foregroundColor(MooniColor.accentText)
                         Spacer()
                         Image(systemName: "lock.fill")
                             .foregroundColor(MooniColor.textMuted)
@@ -286,7 +286,7 @@ struct NightAnalyticsContent: View {
     }
 
     private var divider: some View {
-        Divider().background(Color.white.opacity(0.06)).padding(.vertical, 2)
+        Divider().background(MooniColor.hairline).padding(.vertical, 2)
     }
 }
 
@@ -398,7 +398,7 @@ struct NightTimelineCard: View {
                 let w = geo.size.width
                 let bandW = max(4, w * (animate ? max(0, end - start) : 0))
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.06)).frame(height: 13)
+                    Capsule().fill(MooniColor.hairline).frame(height: 13)
                     Capsule()
                         .fill(color.opacity(0.85))
                         .frame(width: bandW, height: 13)
@@ -421,7 +421,7 @@ struct NightTimelineCard: View {
             GeometryReader { geo in
                 let w = geo.size.width
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.06)).frame(height: 13)
+                    Capsule().fill(MooniColor.hairline).frame(height: 13)
                     Circle()
                         .fill(color)
                         .frame(width: 11, height: 11)
@@ -514,7 +514,7 @@ struct FactRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.white.opacity(0.045))
+                    .background(MooniColor.hairline)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(.bottom, 8)
                     .transition(.opacity)
@@ -545,7 +545,7 @@ struct StatRing: View {
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
-                Circle().stroke(Color.white.opacity(0.07), lineWidth: 9)
+                Circle().stroke(MooniColor.hairline, lineWidth: 9)
                 Circle()
                     .trim(from: 0, to: animate ? min(max(progress, 0), 1) : 0)
                     .stroke(color, style: StrokeStyle(lineWidth: 9, lineCap: .round))
@@ -583,7 +583,7 @@ struct CycleRibbon: View {
                     .fill(i < count
                           ? LinearGradient(colors: [MooniColor.accent, MooniColor.accentSoft],
                                            startPoint: .leading, endPoint: .trailing)
-                          : LinearGradient(colors: [Color.white.opacity(0.08)],
+                          : LinearGradient(colors: [MooniColor.hairline],
                                            startPoint: .leading, endPoint: .trailing))
                     .frame(maxWidth: .infinity)
                     .scaleEffect(x: animate ? 1 : 0.2, anchor: .leading)

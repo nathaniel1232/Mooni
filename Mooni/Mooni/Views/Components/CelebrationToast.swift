@@ -10,7 +10,7 @@ struct CelebrationToast: View {
     struct Payload: Equatable, Identifiable {
         enum Kind: Equatable {
             case streakMilestone(days: Int)
-            case levelUp(newLevel: Int, title: String)
+            case levelUp(newLevel: Int)
             case questComplete(rewardStars: Int)
             case custom
         }
@@ -114,7 +114,7 @@ struct CelebrationToast: View {
                 StreakFireBadge(count: days, state: .active, size: .large)
                     .scaleEffect(iconPulse)
             }
-        case .levelUp(let newLevel, _):
+        case .levelUp(let newLevel):
             ZStack {
                 Circle()
                     .fill(LinearGradient.xpFill)
@@ -141,7 +141,7 @@ struct CelebrationToast: View {
             } else {
                 Image(systemName: "sparkles")
                     .font(.system(size: 56, weight: .bold))
-                    .foregroundColor(MooniColor.accentSoft)
+                    .foregroundColor(MooniColor.accentText)
                     .scaleEffect(iconPulse)
             }
         }
@@ -153,13 +153,13 @@ struct CelebrationToast: View {
         case .questComplete(let stars):
             HStack(spacing: 4) {
                 Image(systemName: "moon.stars.fill")
-                    .foregroundColor(MooniColor.accentSoft)
+                    .foregroundColor(MooniColor.accentText)
                 Text("+\(stars) Dream Stars")
                     .font(MooniFont.title(15))
                     .foregroundColor(MooniColor.textPrimary)
             }
-        case .levelUp(_, let title):
-            Text(title.uppercased())
+        case .levelUp:
+            Text("LEVEL UP")
                 .font(MooniFont.caption(12))
                 .tracking(1.2)
                 .foregroundColor(MooniColor.xpGreenSoft)
@@ -239,9 +239,9 @@ extension View {
                     }
                     PrimaryButton(title: "Level up") {
                         payload = .init(
-                            kind: .levelUp(newLevel: 5, title: "Restful"),
+                            kind: .levelUp(newLevel: 5),
                             title: "Level up!",
-                            subtitle: "You've reached level 5 — Restful. New colors unlocked.",
+                            subtitle: "You've reached level 5. New colors unlocked.",
                             ctaTitle: "See unlocks"
                         )
                     }

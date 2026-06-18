@@ -57,6 +57,14 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.4), value: appState.hasCompletedOnboarding)
         .animation(.easeInOut(duration: 0.4), value: subscription.isPro)
         .animation(.easeInOut(duration: 0.4), value: appState.isSleeping)
+        // Full-screen level-up takeover — fires from ANY screen the instant the
+        // pet levels up (its own window sits above every sheet/cover), not just
+        // when the user lands on Home.
+        .onChange(of: appState.levelUpCelebration) { _, newValue in
+            guard let level = newValue, level > 1 else { return }
+            LevelUpPresenter.shared.present(level: level, petName: appState.pet.name)
+            appState.levelUpCelebration = nil
+        }
         .onAppear { theme.apply(forMainApp: showingMainApp) }
         .onChange(of: showingMainApp) { _, v in theme.apply(forMainApp: v) }
         // Feed scenePhase to the activity estimator at the root level so we
@@ -247,12 +255,14 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $selection) {
             HomeView(showPaywall: $showPaywall)
-                .tabItem { Label("Home", systemImage: "moon.stars.fill") }
+                .tabItem { Image(systemName: "moon.stars.fill") }
                 .tag(Tab.home)
+                .accessibilityLabel("Home")
 
             SleepReportView(showPaywall: $showPaywall)
-                .tabItem { Label("Sleep", systemImage: "chart.xyaxis.line") }
+                .tabItem { Image(systemName: "chart.xyaxis.line") }
                 .tag(Tab.sleep)
+                .accessibilityLabel("Sleep")
 
             // Quest tab hidden until the BedtimeQuest feature ships — it
             // currently only shows a "Coming Soon" stub, and the Home view
@@ -263,12 +273,14 @@ struct MainTabView: View {
             //       .tag(Tab.quest)
 
             FallAsleepView()
-                .tabItem { Label("Sounds", systemImage: "waveform") }
+                .tabItem { Image(systemName: "waveform") }
                 .tag(Tab.sounds)
+                .accessibilityLabel("Sounds")
 
             ProfileView(showPaywall: $showPaywall)
-                .tabItem { Label("Me", systemImage: "person.crop.circle.fill") }
+                .tabItem { Image(systemName: "person.crop.circle.fill") }
                 .tag(Tab.me)
+                .accessibilityLabel("Me")
         }
         .tint(MooniColor.accent)
         .onChange(of: selection) { _, _ in Haptics.tap() }
@@ -345,15 +357,12 @@ struct MainTabView: View {
             ? UIColor(red: 0.40, green: 0.36, blue: 0.55, alpha: 1)
             : UIColor.white.withAlphaComponent(0.56)
 
+        // Icons-only tab bar: the tab items render just the SF Symbol (see the
+        // `.tabItem { Image(...) }` calls below), so the glyph centers cleanly
+        // with no label. We only need the icon tints here. (Hiding a real title
+        // via an off-screen title offset crashes CoreAnimation on iOS 26, so we
+        // drop the title at the source instead.)
         let itemAppearance = UITabBarItemAppearance()
-        itemAppearance.normal.titleTextAttributes = [
-            .font: UIFont.systemFont(ofSize: 10, weight: .medium),
-            .foregroundColor: normalInk
-        ]
-        itemAppearance.selected.titleTextAttributes = [
-            .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
-            .foregroundColor: UIColor(MooniColor.accent)
-        ]
         itemAppearance.normal.iconColor = normalInk
         itemAppearance.selected.iconColor = UIColor(MooniColor.accent)
 

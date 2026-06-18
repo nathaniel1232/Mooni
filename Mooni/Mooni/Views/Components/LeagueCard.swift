@@ -98,7 +98,7 @@ struct LeagueCard: View {
         .background(
             ZStack {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.white.opacity(0.07))
+                    .fill(MooniColor.hairline)
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .stroke(tier.medalColor.opacity(0.32), lineWidth: 1)
             }
@@ -161,7 +161,7 @@ struct LeagueCard: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.08))
+                .fill(MooniColor.hairline)
         )
     }
 
@@ -220,7 +220,7 @@ struct LeagueCard: View {
                 ForEach(0..<3, id: \.self) { i in
                     ZStack {
                         Circle()
-                            .fill(Color.white.opacity(0.06))
+                            .fill(MooniColor.hairline)
                             .frame(width: 36, height: 36)
                         Image(systemName: "person.fill.questionmark")
                             .font(.system(size: 14, weight: .bold))

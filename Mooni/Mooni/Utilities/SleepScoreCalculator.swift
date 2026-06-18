@@ -84,10 +84,13 @@ enum SleepScoreCalculator {
 
     /// Calculate hidden growth points for a sleep entry.
     static func energyReward(for entry: SleepEntry, score: Int) -> Int {
-        var energy = 10 // base for logging
-        if entry.hours >= 7 { energy += 15 }
-        if score >= 80 { energy += 10 }
-        if entry.routineCompleted { energy += 10 }
+        // Generous by design — logging a night should always feel like a big
+        // chunk of progress. Pairs with the shallow level curve in
+        // `Pet.energyForNextLevel` to drive fast week-one leveling.
+        var energy = 30 // base, just for logging the night
+        if entry.hours >= 6 { energy += 20 }
+        if score >= 75 { energy += 20 }
+        if entry.routineCompleted { energy += 15 }
         return energy
     }
 }

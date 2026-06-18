@@ -187,7 +187,7 @@ struct MorningHookCard: View {
                     }
                 }
 
-                Divider().background(Color.white.opacity(0.07))
+                Divider().background(MooniColor.hairline)
 
                 HStack(alignment: .top, spacing: 8) {
                     Text("💤")
@@ -263,7 +263,7 @@ struct SleepStatsStrip: View {
     }
 
     private var sep: some View {
-        Divider().background(Color.white.opacity(0.08)).frame(height: 34)
+        Divider().background(MooniColor.hairline).frame(height: 34)
     }
 
     private func tile(_ value: String, _ label: String, _ tint: Color) -> some View {

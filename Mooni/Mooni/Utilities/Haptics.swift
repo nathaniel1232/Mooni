@@ -79,13 +79,14 @@ enum Haptics {
         playKeyMomentSound(1025) // short, soft positive chime
     }
 
-    /// Level-up / unlock — slightly punchier than `celebrate`.
+    /// Level-up / unlock — a punchy, haptics-only payoff. No system sound: the
+    /// old "pupupu" (`AudioServicesPlaySystemSound(1025)`) was replaced by the
+    /// full-screen `LevelUpCelebrationView`, which carries its own build-up
+    /// ticks + success haptic.
     static func levelUp() {
-        if hapticsEnabled {
-            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-        }
-        playKeyMomentSound(1025)
+        guard hapticsEnabled else { return }
+        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     /// System UI sounds respect the hardware silent switch by design, so

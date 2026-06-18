@@ -136,7 +136,7 @@ struct MorningCardCarousel: View {
             HStack(spacing: 6) {
                 ForEach(0..<cards.count, id: \.self) { i in
                     Capsule()
-                        .fill(i == index ? cards[index].kind.color : Color.white.opacity(0.18))
+                        .fill(i == index ? cards[index].kind.color : MooniColor.hairline)
                         .frame(width: i == index ? 16 : 6, height: 6)
                         .animation(.spring(response: 0.35), value: index)
                 }

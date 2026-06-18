@@ -162,7 +162,10 @@ struct MooniProgressBar: View {
     var backgroundOpacity: Double = 0.10
     /// Kept for call-site compatibility; only the first colour is used so
     /// every progress bar in the app renders as one flat fill (no gradient).
-    var colors: [Color] = [MooniColor.accent]
+    /// Defaults to `accentFill` (not `accent`) so the bar stays visible on the
+    /// bright morning theme instead of washing out — on the night theme the two
+    /// resolve to the same lavender.
+    var colors: [Color] = [MooniColor.accentFill]
 
     private var clampedValue: Double {
         min(max(value, 0), 1)
@@ -204,7 +207,7 @@ struct MooniPremiumLockCard: View {
                                 .frame(width: 48, height: 48)
                             Image(systemName: icon)
                                 .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(MooniColor.accentSoft)
+                                .foregroundColor(MooniColor.accentText)
                         }
 
                         VStack(alignment: .leading, spacing: 5) {

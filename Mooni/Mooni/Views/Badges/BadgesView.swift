@@ -52,7 +52,7 @@ struct BadgesView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                 }
             }
         }
@@ -70,7 +70,7 @@ struct BadgesView: View {
                     Spacer()
                     Text("Level \(level)")
                         .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(MooniColor.accent.opacity(0.18))
@@ -114,11 +114,11 @@ struct BadgesView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.05))
+        .background(MooniColor.hairline)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(isUnlocked ? MooniColor.accent.opacity(0.3) : Color.white.opacity(0.06), lineWidth: 1)
+                .stroke(isUnlocked ? MooniColor.accent.opacity(0.3) : MooniColor.hairline, lineWidth: 1)
         )
         .opacity(isUnlocked ? 1 : 0.85)
     }

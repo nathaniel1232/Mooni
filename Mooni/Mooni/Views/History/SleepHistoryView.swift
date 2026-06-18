@@ -44,8 +44,11 @@ struct SleepHistoryView: View {
                 }
                 .responsiveContainer()
             }
-            .navigationTitle("History")
-            .navigationBarTitleDisplayMode(.large)
+            // No big "History" banner — the calendar + "Your nights" list make
+            // the screen self-evident. Keep an empty inline bar for the back
+            // button / status-bar tint only.
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .navigationDestination(item: $selected) { entry in
                 NightDetailView(entry: entry)
@@ -73,7 +76,7 @@ struct SleepHistoryView: View {
         MooniCard {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Image(systemName: "bed.double.fill").foregroundColor(MooniColor.accent)
+                    Image(systemName: "bed.double.fill").foregroundColor(MooniColor.accentText)
                     Text("Log a night")
                         .font(MooniFont.title(18))
                         .foregroundColor(MooniColor.textPrimary)
@@ -144,7 +147,7 @@ struct SleepHistoryView: View {
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                 }
             }
         }
@@ -193,9 +196,9 @@ struct MonthCalendar: View {
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .bold))
-                .foregroundColor(MooniColor.accent)
+                .foregroundColor(MooniColor.accentText)
                 .frame(width: 36, height: 36)
-                .background(Color.white.opacity(0.06))
+                .background(MooniColor.hairline)
                 .clipShape(Circle())
         }
         .buttonStyle(.plain)
@@ -236,7 +239,7 @@ struct MonthCalendar: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(entry != nil
                           ? nightScoreTint(entry!.score).opacity(0.30)
-                          : Color.white.opacity(0.04))
+                          : MooniColor.hairline)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .stroke(isToday ? MooniColor.accent : (entry != nil ? nightScoreTint(entry!.score).opacity(0.55) : .clear),
@@ -414,7 +417,7 @@ struct NightDetailView: View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 13))
-                .foregroundColor(MooniColor.accentSoft)
+                .foregroundColor(MooniColor.accentText)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 1) {
                 Text(label)
@@ -429,7 +432,7 @@ struct NightDetailView: View {
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(Color.white.opacity(0.05))
+        .background(MooniColor.hairline)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
@@ -506,12 +509,14 @@ struct LogSleepSheet: View {
                     .padding(20)
                 }
             }
-            .navigationTitle("Log sleep")
+            // No "Log sleep" title — the bedtime/wake/quality fields make the
+            // sheet self-evident. Empty inline bar keeps the Cancel/Save chrome.
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.foregroundColor(MooniColor.accent)
+                    Button("Cancel") { dismiss() }.foregroundColor(MooniColor.accentText)
                 }
             }
             .onAppear {
@@ -527,7 +532,7 @@ struct LogSleepSheet: View {
         MooniCard {
             VStack(spacing: 14) {
                 timeRow(title: "Bedtime",  icon: "moon.fill",    selection: $bedtime)
-                Divider().background(Color.white.opacity(0.1))
+                Divider().background(MooniColor.hairline)
                 timeRow(title: "Wake up",  icon: "sun.max.fill", selection: $wakeTime)
 
                 HStack {
@@ -544,7 +549,7 @@ struct LogSleepSheet: View {
 
     private func timeRow(title: String, icon: String, selection: Binding<Date>) -> some View {
         HStack {
-            Image(systemName: icon).foregroundColor(MooniColor.accent).frame(width: 24)
+            Image(systemName: icon).foregroundColor(MooniColor.accentText).frame(width: 24)
             Text(title)
                 .font(MooniFont.title(15))
                 .foregroundColor(MooniColor.textPrimary)
@@ -612,7 +617,7 @@ struct LogSleepSheet: View {
                     .foregroundColor(MooniColor.textPrimary)
                     .lineLimit(2...4)
                     .padding(10)
-                    .background(Color.white.opacity(0.05))
+                    .background(MooniColor.hairline)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
         }
@@ -628,7 +633,7 @@ struct LogSleepSheet: View {
                 .padding(.vertical, 10)
                 .padding(.horizontal, 10)
                 .frame(maxWidth: .infinity)
-                .background(selected ? MooniColor.accent : Color.white.opacity(0.07))
+                .background(selected ? MooniColor.accent : MooniColor.hairline)
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -642,9 +647,26 @@ struct LogSleepSheet: View {
     }
 
     private func normalizeOrder() {
-        guard bedtime >= wakeTime else { return }
+        // The .hourAndMinute pickers only edit the clock time — they leave each
+        // date's day component at its default (bedtime defaults to yesterday,
+        // wake to today). Re-anchor bedtime onto wake's day so the night is
+        // always a single span of 0 < duration ≤ 24h. Without this, picking
+        // bed 00:00 + wake 08:00 reads as 32h (a full day + 8h).
         let cal = Calendar.current
-        bedtime = cal.date(byAdding: .day, value: -1, to: bedtime) ?? bedtime
+        let bedClock = cal.dateComponents([.hour, .minute], from: bedtime)
+        var newBed = cal.date(
+            bySettingHour: bedClock.hour ?? 23,
+            minute: bedClock.minute ?? 0,
+            second: 0,
+            of: wakeTime
+        ) ?? bedtime
+        // Bedtime belongs to the previous calendar day unless its clock time is
+        // strictly before wake (e.g. a same-morning nap).
+        if newBed >= wakeTime {
+            newBed = cal.date(byAdding: .day, value: -1, to: newBed) ?? newBed
+        }
+        // Guard the assignment so the onChange(bedtime) observer doesn't loop.
+        if newBed != bedtime { bedtime = newBed }
     }
 }
 

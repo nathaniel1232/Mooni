@@ -1,79 +1,65 @@
 import SwiftUI
 
-/// Slim animated XP / progress bar shaped to sit at the top of the Home view
-/// next to the streak badge. Set `value` to a 0…1 fraction; the bar animates
-/// from its previous value to the new one, and a floating "+12 XP" chip
-/// appears for ~1.4s whenever `recentDelta` flips to a positive number.
+/// Slim level / XP progress bar shown at the top of Home. A rounded level badge
+/// + "LEVEL n" label sit above a clean gradient progress track; a floating
+/// "+12 XP" chip pops for ~1.4s whenever `recentDelta` flips positive.
 ///
-/// Caller-side pattern (see HomeView in Phase 3):
+/// Level *names* were removed deliberately — a higher number already reads as
+/// "better", so the extra "Restful / Dreamer" labels were just noise.
+///
 ///   XPBar(
 ///       value: pet.levelProgress,
 ///       level: pet.level,
-///       title: pet.levelTitle,
 ///       recentDelta: appState.lastEarnedEnergy
 ///   )
-///
-/// `recentDelta` reads `AppState.lastEarnedEnergy` which is already published
-/// from the scoring pipeline. Clear it after consumption so the chip can re-fire
-/// the next time a night is scored.
 struct XPBar: View {
     let value: Double
     var level: Int = 1
-    var title: String = ""
     var recentDelta: Int? = nil
-    var height: CGFloat = 14
+    var height: CGFloat = 12
 
     @State private var animatedValue: Double = 0
     @State private var showDelta: Bool = false
     @State private var deltaAmount: Int = 0
 
-    init(value: Double, level: Int = 1, title: String = "", recentDelta: Int? = nil, height: CGFloat = 14) {
+    init(value: Double, level: Int = 1, recentDelta: Int? = nil, height: CGFloat = 12) {
         self.value = value
         self.level = level
-        self.title = title
         self.recentDelta = recentDelta
         self.height = height
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                levelChip
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 9) {
+                levelBadge
+                Text("LEVEL \(level)")
+                    .font(MooniFont.caption(12))
+                    .tracking(1.4)
+                    .foregroundColor(MooniColor.textSecondary)
+
                 Spacer(minLength: 8)
+
                 if showDelta {
                     deltaChip
                         .transition(.scale(scale: 0.4).combined(with: .opacity))
+                } else {
+                    Text("\(Int((animatedValue * 100).rounded()))%")
+                        .font(MooniFont.caption(12))
+                        .foregroundColor(MooniColor.textMuted)
+                        .contentTransition(.numericText())
                 }
             }
 
             GeometryReader { geo in
                 let width = geo.size.width
                 ZStack(alignment: .leading) {
-                    // Track
-                    Capsule()
-                        .fill(Color.white.opacity(0.08))
-                        .overlay(
-                            Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1)
-                        )
+                    Capsule().fill(MooniColor.hairline)
 
-                    // Fill
                     Capsule()
                         .fill(LinearGradient.xpFill)
-                        .frame(width: max(8, width * clamped(animatedValue)))
-                        .shadow(color: MooniColor.xpGreen.opacity(0.55), radius: 6, y: 0)
-
-                    // Glossy highlight on top half of the fill
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.35), .clear],
-                                startPoint: .top,
-                                endPoint: .center
-                            )
-                        )
-                        .frame(width: max(8, width * clamped(animatedValue)), height: height * 0.55)
-                        .offset(y: -height * 0.225)
-                        .allowsHitTesting(false)
+                        .frame(width: max(height, width * clamped(animatedValue)))
+                        .shadow(color: MooniColor.xpGreen.opacity(0.45), radius: 5, y: 0)
                 }
             }
             .frame(height: height)
@@ -82,46 +68,33 @@ struct XPBar: View {
             withAnimation(.easeOut(duration: 0.6)) { animatedValue = value }
         }
         .onChange(of: value) { _, new in
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.82)) {
-                animatedValue = new
-            }
+            withAnimation(.spring(response: 0.7, dampingFraction: 0.82)) { animatedValue = new }
         }
         .onChange(of: recentDelta) { _, new in
             guard let new, new > 0 else { return }
             deltaAmount = new
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                showDelta = true
-            }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { showDelta = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
                 withAnimation(.easeOut(duration: 0.35)) { showDelta = false }
             }
         }
     }
 
-    private var levelChip: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "sparkle")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(MooniColor.xpGreenSoft)
-            Text("Lvl \(level)")
-                .font(MooniFont.caption(12))
-                .foregroundColor(MooniColor.textPrimary)
-            if !title.isEmpty {
-                Text("·")
-                    .foregroundColor(MooniColor.textMuted)
-                Text(title)
-                    .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.textSecondary)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(
-            Capsule().fill(Color.white.opacity(0.08))
-        )
-        .overlay(
-            Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
+    /// Rounded badge carrying the level number — the visual anchor of the row.
+    private var levelBadge: some View {
+        Text("\(level)")
+            .font(.system(size: 13, weight: .heavy, design: .rounded))
+            .foregroundColor(MooniColor.background)
+            .frame(width: 26, height: 26)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(LinearGradient.xpFill)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.white.opacity(0.25), lineWidth: 0.5)
+            )
+            .shadow(color: MooniColor.xpGreen.opacity(0.4), radius: 4, y: 1)
     }
 
     private var deltaChip: some View {
@@ -135,12 +108,8 @@ struct XPBar: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(
-            Capsule().fill(MooniColor.xpGreen.opacity(0.12))
-        )
-        .overlay(
-            Capsule().stroke(MooniColor.xpGreen.opacity(0.45), lineWidth: 1)
-        )
+        .background(Capsule().fill(MooniColor.xpGreen.opacity(0.14)))
+        .overlay(Capsule().stroke(MooniColor.xpGreen.opacity(0.45), lineWidth: 1))
     }
 
     private func clamped(_ v: Double) -> CGFloat { CGFloat(max(0, min(1, v))) }
@@ -150,9 +119,9 @@ struct XPBar: View {
     ZStack {
         MooniGradient.night.ignoresSafeArea()
         VStack(spacing: 28) {
-            XPBar(value: 0.35, level: 3, title: "Restful", recentDelta: nil)
-            XPBar(value: 0.78, level: 7, title: "Dreamer", recentDelta: 42)
-            XPBar(value: 1.0,  level: 12, title: "Night Owl")
+            XPBar(value: 0.35, level: 3, recentDelta: nil)
+            XPBar(value: 0.78, level: 7, recentDelta: 42)
+            XPBar(value: 1.0,  level: 12)
         }
         .padding(24)
     }

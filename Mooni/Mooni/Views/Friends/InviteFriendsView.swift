@@ -43,7 +43,7 @@ struct InviteFriendsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                 }
             }
         }
@@ -80,7 +80,7 @@ struct InviteFriendsView: View {
                 .padding(.vertical, 18)
                 .background(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(Color.white.opacity(0.08))
+                        .fill(MooniColor.hairline)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -144,11 +144,11 @@ struct InviteFriendsView: View {
                     .padding(.vertical, 12)
                     .background(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color.white.opacity(0.08))
+                            .fill(MooniColor.hairline)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            .stroke(MooniColor.hairline, lineWidth: 1)
                     )
                     .submitLabel(.go)
                     .onSubmit(addFromInput)
@@ -173,11 +173,11 @@ struct InviteFriendsView: View {
         .padding(18)
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.white.opacity(0.05))
+                .fill(MooniColor.hairline)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(MooniColor.hairline, lineWidth: 1)
         )
     }
 
@@ -235,11 +235,11 @@ struct InviteFriendsView: View {
         .padding(18)
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.white.opacity(0.05))
+                .fill(MooniColor.hairline)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(MooniColor.hairline, lineWidth: 1)
         )
     }
 
@@ -274,7 +274,7 @@ struct InviteFriendsView: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundColor(MooniColor.textMuted)
                     .padding(8)
-                    .background(Circle().fill(Color.white.opacity(0.06)))
+                    .background(Circle().fill(MooniColor.hairline))
             }
             .buttonStyle(.plain)
         }

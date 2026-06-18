@@ -75,7 +75,7 @@ struct FallAsleepView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Sounds")
                 .font(MooniFont.caption(13))
-                .foregroundColor(MooniColor.accentSoft)
+                .foregroundColor(MooniColor.accentText)
                 .textCase(.uppercase)
             Text(player.current?.title ?? "Pick a sound")
                 .font(MooniFont.display(28))
@@ -122,7 +122,7 @@ struct FallAsleepView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Image(systemName: "speaker.wave.2.fill")
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                     Text("Volume")
                         .font(MooniFont.title(15))
                         .foregroundColor(MooniColor.textPrimary)

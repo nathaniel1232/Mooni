@@ -2361,12 +2361,12 @@ struct AutoTrackPhoneOnlyScreen: View {
             Spacer(minLength: 8)
 
             VStack(spacing: 10) {
-                Text("Set it once.\nForget it forever.")
-                    .font(MooniFont.display(26))
+                Text("No watch. No ring.\nJust your phone.")
+                    .font(MooniFont.display(27))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
-                Text("Your sleep tracks itself. You wake up — the report is already there.")
+                Text("It tracks every night on its own — nothing to wear, charge, or remember.")
                     .font(MooniFont.body(14))
                     .foregroundColor(.white.opacity(0.65))
                     .multilineTextAlignment(.center)
@@ -2476,7 +2476,7 @@ struct AutoTrackPhoneOnlyScreen: View {
                         .padding(.vertical, 2)
                         .background(Capsule().fill(accentTint.opacity(0.16)))
                 }
-                Text("Wearable-grade tracking. No watch, no ring, no strap — it's already on your nightstand.")
+                Text("Wearable-grade tracking — already on your nightstand.")
                     .font(.system(size: 12))
                     .foregroundColor(.white.opacity(0.65))
                     .fixedSize(horizontal: false, vertical: true)
@@ -4019,122 +4019,148 @@ struct ViceSpendScreen: View {
 
     private var accent: Color { Color(red: 0.62, green: 0.62, blue: 1.00) }
 
+    /// SleepOwl's effective weekly price — the single anchor we compare the
+    /// user's own habit against (annual plan ÷ 52).
     private let sleepOwlWeekly: Double = 0.77
 
-    /// Everyday costs to anchor against — all dwarf SleepOwl's weekly price.
-    private let anchors: [(emoji: String, label: String, cost: String)] = [
-        ("☕️", "A daily coffee", "$35"),
-        ("🍔", "Eating out", "$105"),
-        ("📺", "Streaming apps", "$6"),
-    ]
+    /// Everyday habits the user picks from. Sourced from the shared Vice model
+    /// so label / emoji / weekly cost all live in one place.
+    private let options: [OnboardingProfile.Vice] =
+        [.coffee, .eatingOut, .energyDrinks, .streaming, .gaming]
 
     var body: some View {
-        VStack(spacing: 22) {
-            Spacer(minLength: 8)
+        VStack(spacing: 18) {
+            Spacer(minLength: 4)
 
-            VStack(spacing: 12) {
-                Text("WHAT IT REALLY COSTS")
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
-                    .tracking(2)
-                    .foregroundColor(accent)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(accent.opacity(0.14))
-                    .clipShape(Capsule())
-
-                Text("Less than a coffee\na week.")
-                    .font(MooniFont.display(29))
+            VStack(spacing: 10) {
+                Text("Where does your money\nalready go?")
+                    .font(MooniFont.display(27))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text("You already spend more on small habits. SleepOwl is the cheapest thing in your week — and the only one that fixes your nights.")
+                Text(selection == nil
+                     ? "Pick the one that's most you — we'll line it up against SleepOwl."
+                     : "Here's how that stacks up against SleepOwl.")
                     .font(MooniFont.body(14))
                     .foregroundColor(.white.opacity(0.65))
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 14)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared ? 0 : 10)
 
-            // Everyday costs — muted, all clearly bigger.
-            VStack(spacing: 0) {
-                ForEach(Array(anchors.enumerated()), id: \.offset) { idx, a in
-                    if idx > 0 { Divider().overlay(Color.white.opacity(0.08)) }
-                    anchorRow(emoji: a.emoji, label: a.label, cost: a.cost)
-                        .padding(.vertical, 13)
+            // The pick-list (always tappable, current pick highlighted).
+            VStack(spacing: 10) {
+                ForEach(options) { option in
+                    optionRow(option)
                 }
             }
-            .padding(.horizontal, 16)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white.opacity(0.04)))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1))
             .opacity(appeared ? 1 : 0)
 
-            // SleepOwl — the standout.
-            HStack(spacing: 12) {
-                Text("🦉")
-                    .font(.system(size: 24))
-                    .frame(width: 46, height: 46)
-                    .background(accent.opacity(0.20))
-                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("SleepOwl")
-                        .font(.system(size: 16, weight: .heavy, design: .rounded))
-                        .foregroundColor(.white)
-                    Text("fixes your sleep, every night")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(.white.opacity(0.6))
-                }
-                Spacer(minLength: 0)
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text(String(format: "$%.2f", sleepOwlWeekly))
-                        .font(.system(size: 24, weight: .black, design: .rounded))
-                        .foregroundStyle(LinearGradient(
-                            colors: [MooniColor.accentSoft, accent],
-                            startPoint: .top, endPoint: .bottom))
-                    Text("/wk")
-                        .font(.system(size: 12, weight: .heavy, design: .rounded))
-                        .foregroundColor(accent.opacity(0.8))
-                }
+            // Comparison reveals once they've picked — their habit vs SleepOwl,
+            // bars scaled to the real weekly costs so the gap is obvious.
+            if let v = selection {
+                comparisonCard(for: v)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
-            .padding(16)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(accent.opacity(0.16)))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(accent.opacity(0.5), lineWidth: 1.5))
-            .scaleEffect(appeared ? 1 : 0.95)
-            .opacity(appeared ? 1 : 0)
 
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)
+        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: selection)
         .onAppear {
-            // Keep the downstream gate satisfied without asking the user to
-            // pick — the screen is now a confident price anchor, not a quiz.
-            if selection == nil { selection = .coffee }
             withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { appeared = true }
         }
     }
 
-    private func anchorRow(emoji: String, label: String, cost: String) -> some View {
-        HStack(spacing: 12) {
-            Text(emoji).font(.system(size: 18))
-            Text(label)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundColor(.white.opacity(0.8))
-            Spacer(minLength: 4)
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(cost)
-                    .font(.system(size: 15, weight: .heavy, design: .rounded))
-                    .foregroundColor(.white.opacity(0.7))
-                Text("/wk")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .foregroundColor(.white.opacity(0.4))
+    private func optionRow(_ v: OnboardingProfile.Vice) -> some View {
+        let isSel = selection == v
+        return Button {
+            Haptics.tap()
+            selection = v
+        } label: {
+            HStack(spacing: 13) {
+                Text(v.emoji)
+                    .font(.system(size: 22))
+                    .frame(width: 30)
+                Text(v.label)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                Spacer(minLength: 8)
+                Text(v.costLabel)
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundColor(isSel ? accent : .white.opacity(0.5))
+                ZStack {
+                    Circle()
+                        .strokeBorder(isSel ? accent : Color.white.opacity(0.25), lineWidth: 2)
+                        .frame(width: 22, height: 22)
+                    if isSel {
+                        Circle().fill(accent).frame(width: 12, height: 12)
+                    }
+                }
             }
+            .padding(.vertical, 13)
+            .padding(.horizontal, 15)
+            .background(RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .fill(isSel ? accent.opacity(0.14) : Color.white.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .stroke(isSel ? accent.opacity(0.55) : Color.white.opacity(0.08), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func comparisonCard(for v: OnboardingProfile.Vice) -> some View {
+        let theirs = max(v.weeklyCost, sleepOwlWeekly)
+        let owlFraction = max(0.035, CGFloat(sleepOwlWeekly / theirs))
+        return VStack(spacing: 13) {
+            barRow(emoji: v.emoji, label: v.label,
+                   amount: v.weeklyCost,
+                   tint: Color(red: 1.0, green: 0.55, blue: 0.55),
+                   fraction: 1.0)
+            barRow(emoji: "🦉", label: "SleepOwl",
+                   amount: sleepOwlWeekly, tint: accent,
+                   fraction: owlFraction)
+
+            Text("Same kind of money you already spend — but this is the one that actually fixes your nights.")
+                .font(MooniFont.caption(12))
+                .foregroundColor(.white.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 6)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(Color.white.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .stroke(accent.opacity(0.3), lineWidth: 1))
+    }
+
+    private func barRow(emoji: String, label: String, amount: Double,
+                        tint: Color, fraction: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(emoji).font(.system(size: 15))
+                Text(label)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.85))
+                Spacer(minLength: 4)
+                Text(amount >= 1
+                     ? String(format: "$%.0f/wk", amount)
+                     : String(format: "$%.2f/wk", amount))
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundColor(tint)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.06)).frame(height: 8)
+                    Capsule().fill(tint)
+                        .frame(width: max(8, geo.size.width * fraction), height: 8)
+                }
+            }
+            .frame(height: 8)
         }
     }
 }

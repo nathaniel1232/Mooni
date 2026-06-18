@@ -33,7 +33,10 @@ struct ProfileView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         lunaSummaryCard
-                        if subscriptionManager.isPro {
+                        // Only offer the Sleep Story once there's a real night
+                        // to tell a story about — never let a brand-new user
+                        // "preview" a fabricated night before their first sleep.
+                        if subscriptionManager.isPro && appState.lastRealEntry != nil {
                             sleepStoryPreviewCard
                         }
                         levelCard
@@ -109,7 +112,7 @@ struct ProfileView: View {
                 HStack(spacing: 14) {
                     Image(systemName: "hammer.fill")
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                         .frame(width: 36, height: 36)
                         .background(MooniColor.accent.opacity(0.16))
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -146,7 +149,7 @@ struct ProfileView: View {
                         .foregroundColor(MooniColor.textSecondary)
                     Text("\(appState.petPersonality.label): \(shortPersonalityCopy)")
                         .font(MooniFont.caption(12))
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -155,9 +158,9 @@ struct ProfileView: View {
         }
     }
 
-    /// Always-visible entry point so the morning Sleep Story can be opened
-    /// on demand for review — works in Release, no logged night required
-    /// (falls back to a representative sample night).
+    /// Entry point to re-open the morning Sleep Story on demand. Only shown
+    /// once the user has at least one real tracked night (see the gate in the
+    /// body) — there's nothing honest to show before the first sleep.
     private var sleepStoryPreviewCard: some View {
         Button {
             Haptics.tap()
@@ -170,7 +173,7 @@ struct ProfileView: View {
                         .frame(width: 46, height: 46)
                     Image(systemName: "sparkles")
                         .font(.system(size: 19, weight: .bold))
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Preview Sleep Story")
@@ -183,7 +186,7 @@ struct ProfileView: View {
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(MooniColor.accent)
+                    .foregroundColor(MooniColor.accentText)
             }
             .padding(16)
             .frame(maxWidth: .infinity)
@@ -197,38 +200,26 @@ struct ProfileView: View {
         .buttonStyle(.plain)
     }
 
-    /// Uses the most recent real night if there is one; otherwise builds a
-    /// representative 7h12m night so the story always has something to show.
+    /// Builds the story from the most recent REAL night. The card that
+    /// presents this is gated on `lastRealEntry != nil`, so there is always a
+    /// genuine night here — we never fabricate a sample to show off a story
+    /// the user hasn't earned yet. Falls back to `lastEntry` defensively.
     private func previewStoryContext() -> SleepStoryContext {
-        let entry: SleepEntry
-        if let last = appState.lastEntry {
-            entry = last
-        } else {
-            let cal = Calendar.current
+        let entry = appState.lastRealEntry ?? appState.lastEntry ?? {
+            // Defensive only — unreachable while the gate holds. Keeps the
+            // signature non-optional without inventing a "real" night.
             let now = Date()
-            let wake = cal.date(bySettingHour: 7, minute: 12, second: 0, of: now) ?? now
-            let bed = cal.date(byAdding: .hour, value: -7, to: wake)
-                ?? now.addingTimeInterval(-7 * 3600)
-            var sample = SleepEntry(
-                bedtime: bed,
-                wakeTime: wake,
+            return SleepEntry(
+                bedtime: now.addingTimeInterval(-7 * 3600),
+                wakeTime: now,
                 quality: .good,
                 mood: .okay,
                 notes: "[preview]",
-                isEstimated: false,
-                timeInBed: wake.timeIntervalSince(bed),
+                isEstimated: true,
+                timeInBed: 7 * 3600,
                 source: .appActivityEstimate
             )
-            SleepScoringManager.update(
-                entry: &sample,
-                goalHours: appState.goalHours,
-                targetBedtime: appState.targetBedtime,
-                consistencyDays: appState.bedtimeConsistencyDays,
-                checkIn: nil,
-                age: appState.profile.age
-            )
-            entry = sample
-        }
+        }()
         return SleepStoryContext(
             entry: entry,
             pet: appState.pet,
@@ -256,15 +247,15 @@ struct ProfileView: View {
                             .frame(width: 52, height: 52)
                         Text("\(p.level)")
                             .font(MooniFont.display(22))
-                            .foregroundColor(MooniColor.accentSoft)
+                            .foregroundColor(MooniColor.accentText)
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Level \(p.level)")
                             .font(MooniFont.title(20))
                             .foregroundColor(MooniColor.textPrimary)
-                        Text(p.levelTitle)
+                        Text("\(Int(p.levelProgress * 100))% to level \(p.level + 1)")
                             .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.accentSoft)
+                            .foregroundColor(MooniColor.accentText)
                     }
                     Spacer()
                     StreakFlameChip(current: streak.current, freezes: streak.freezesRemaining)
@@ -300,7 +291,7 @@ struct ProfileView: View {
                     } label: {
                         Text("Edit")
                             .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.accent)
+                            .foregroundColor(MooniColor.accentText)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .background(MooniColor.accent.opacity(0.14))
@@ -390,7 +381,7 @@ struct ProfileView: View {
                     }
                 }
 
-                Divider().background(Color.white.opacity(0.08))
+                Divider().background(MooniColor.hairline)
 
                 settingsButton(icon: "bell.fill", title: "Bedtime reminder", value: notificationStatusText) {
                     Task {
@@ -402,25 +393,25 @@ struct ProfileView: View {
                     }
                 }
 
-                Divider().background(Color.white.opacity(0.08))
+                Divider().background(MooniColor.hairline)
 
                 feedbackToggleRow(icon: "hand.tap.fill",
                                   title: "Haptics",
                                   isOn: $hapticsOn)
 
-                Divider().background(Color.white.opacity(0.08))
+                Divider().background(MooniColor.hairline)
 
                 feedbackToggleRow(icon: "speaker.wave.2.fill",
                                   title: "Sounds",
                                   isOn: $soundOn)
 
-                Divider().background(Color.white.opacity(0.08))
+                Divider().background(MooniColor.hairline)
 
                 Link(destination: URL(string: "https://sleepowlapp.vercel.app/privacy")!) {
                     HStack(spacing: 12) {
                         Image(systemName: "hand.raised.fill")
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(MooniColor.accent)
+                            .foregroundColor(MooniColor.accentText)
                             .frame(width: 30, height: 30)
                             .background(MooniColor.accent.opacity(0.14))
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -453,21 +444,21 @@ struct ProfileView: View {
                                title: "Terms of Use (EULA)", trailing: "arrow.up.right")
                 }
 
-                Divider().background(Color.white.opacity(0.08))
+                Divider().background(MooniColor.hairline)
 
                 Link(destination: URL(string: "https://sleepowlapp.vercel.app/privacy")!) {
                     accountRow(icon: "lock.shield.fill", color: MooniColor.accentSoft,
                                title: "Privacy Policy", trailing: "arrow.up.right")
                 }
 
-                Divider().background(Color.white.opacity(0.08))
+                Divider().background(MooniColor.hairline)
 
                 Link(destination: URL(string: "https://sleepowlapp.vercel.app/support")!) {
                     accountRow(icon: "lifepreserver", color: MooniColor.accent,
                                title: "Support", trailing: "arrow.up.right")
                 }
 
-                Divider().background(Color.white.opacity(0.08))
+                Divider().background(MooniColor.hairline)
 
                 Button { showDeleteConfirm = true } label: {
                     accountRow(icon: "trash.fill", color: MooniColor.danger,
@@ -539,7 +530,7 @@ struct ProfileView: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(MooniColor.accent)
+                .foregroundColor(MooniColor.accentText)
                 .frame(width: 30, height: 30)
                 .background(MooniColor.accent.opacity(0.14))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -571,7 +562,7 @@ struct ProfileView: View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(MooniColor.accent)
+                    .foregroundColor(MooniColor.accentText)
                     .frame(width: 30, height: 30)
                     .background(MooniColor.accent.opacity(0.14))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -613,7 +604,7 @@ struct ProfileView: View {
                             .foregroundColor(MooniColor.textPrimary)
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .foregroundColor(MooniColor.accentSoft)
+                            .foregroundColor(MooniColor.accentText)
                     }
 
                     Text("Unlock \(appState.pet.name)'s full evolution path, rare rooms, guided wind-downs, programs, and deeper sleep insights.")
@@ -720,7 +711,7 @@ private struct SleepGoalEditorSheet: View {
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(MooniColor.textSecondary)
                                 .frame(width: 30, height: 30)
-                                .background(Color.white.opacity(0.10))
+                                .background(MooniColor.hairline)
                                 .clipShape(Circle())
                         }
                         .buttonStyle(.plain)
@@ -792,7 +783,7 @@ private struct SleepGoalEditorSheet: View {
                 Label {
                     Text("Sleep window").font(MooniFont.body(15)).foregroundColor(MooniColor.textPrimary)
                 } icon: {
-                    Image(systemName: "moon.zzz.fill").foregroundColor(MooniColor.accentSoft)
+                    Image(systemName: "moon.zzz.fill").foregroundColor(MooniColor.accentText)
                 }
                 Spacer()
                 Text(windowText)

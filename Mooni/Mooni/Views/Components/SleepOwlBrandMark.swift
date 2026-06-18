@@ -68,8 +68,8 @@ struct SleepOwlBrandMark: View {
             Group {
                 if hasCapsule {
                     Capsule()
-                        .fill(Color.white.opacity(0.06))
-                        .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 0.5))
+                        .fill(MooniColor.hairline)
+                        .overlay(Capsule().stroke(MooniColor.hairline, lineWidth: 0.5))
                 }
             }
         )
@@ -87,7 +87,7 @@ struct SleepOwlBrandMark: View {
             .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                    .stroke(MooniColor.hairline, lineWidth: 0.5)
             )
             .shadow(color: MooniColor.accent.opacity(size == .prominent ? 0.55 : 0.35),
                     radius: size == .prominent ? 9 : 5, y: 1)

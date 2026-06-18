@@ -33,6 +33,28 @@ enum MooniColor {
     static let accent = Color(red: 0.65, green: 0.62, blue: 1.0)
     static let accentSoft = Color(red: 0.85, green: 0.83, blue: 1.0)
 
+    /// Accent used as TEXT or icon ink on the screen/card background.
+    /// The plain `accent`/`accentSoft` are light lavenders tuned to read on the
+    /// dark night theme and to sit *under* dark ink on accent-filled buttons —
+    /// but as foreground text on the bright morning theme they wash out and
+    /// fail contrast. This token keeps the exact night-theme accent at night
+    /// and swaps to a deeper, AA-readable violet in the light theme. Use it for
+    /// `.foregroundColor` / `.foregroundStyle`, never for fills (fills should
+    /// stay `accent` so their dark ink keeps its contrast).
+    static var accentText: Color {
+        dyn(light: Color(red: 0.40, green: 0.33, blue: 0.78), dark: accent)
+    }
+
+    /// Accent for bare FILLS that must read against the screen/card background —
+    /// progress-bar fills, indicators, meters. Button fills keep the light
+    /// `accent` (their dark ink needs that contrast), but a bare lavender bar
+    /// disappears on the bright morning theme, leaving "barely-there" progress
+    /// bars. This keeps the night accent at night and deepens to a visible
+    /// violet in the light theme.
+    static var accentFill: Color {
+        dyn(light: Color(red: 0.42, green: 0.35, blue: 0.82), dark: accent)
+    }
+
     static let success = Color(red: 0.55, green: 0.85, blue: 0.7)
     static let warning = Color(red: 1.0, green: 0.78, blue: 0.55)
     static let danger = Color(red: 1.0, green: 0.6, blue: 0.7)

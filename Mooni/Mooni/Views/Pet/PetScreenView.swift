@@ -118,7 +118,7 @@ struct PetScreenView: View {
                     Spacer()
 
                     Image(systemName: "sparkles")
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                         .frame(width: 38, height: 38)
                         .background(MooniColor.accent.opacity(0.14))
                         .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
@@ -165,7 +165,7 @@ struct PetScreenView: View {
                 VStack(spacing: 6) {
                     ZStack {
                         Circle()
-                            .fill(index <= currentIndex ? MooniColor.accent.opacity(0.28) : Color.white.opacity(0.07))
+                            .fill(index <= currentIndex ? MooniColor.accent.opacity(0.28) : MooniColor.hairline)
                             .frame(width: 42, height: 42)
 
                         if isPremiumStage(stage), !subscriptionManager.isPro {
@@ -197,7 +197,7 @@ struct PetScreenView: View {
             HStack(spacing: 14) {
                 Image(systemName: personality.icon)
                     .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(MooniColor.accentSoft)
+                    .foregroundColor(MooniColor.accentText)
                     .frame(width: 48, height: 48)
                     .background(MooniColor.accent.opacity(0.14))
                     .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
@@ -261,9 +261,9 @@ struct PetScreenView: View {
                     .background(
                         ZStack {
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .fill(active ? MooniColor.accentSoft : Color.white.opacity(0.06))
+                                .fill(active ? MooniColor.accentSoft : MooniColor.hairline)
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(active ? Color.clear : Color.white.opacity(0.08), lineWidth: 1)
+                                .stroke(active ? Color.clear : MooniColor.hairline, lineWidth: 1)
                         }
                     )
                 }
@@ -384,7 +384,7 @@ struct PetScreenView: View {
                 HStack(spacing: 12) {
                     Image(systemName: icon)
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(MooniColor.accentSoft)
+                        .foregroundColor(MooniColor.accentText)
                         .frame(width: 38, height: 38)
                         .background(MooniColor.accent.opacity(0.14))
                         .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
@@ -397,7 +397,7 @@ struct PetScreenView: View {
                             .minimumScaleFactor(0.78)
                         Text(subtitle)
                             .font(MooniFont.caption(10))
-                            .foregroundColor(MooniColor.accentSoft)
+                            .foregroundColor(MooniColor.accentText)
                             .lineLimit(1)
                     }
 
@@ -425,7 +425,7 @@ struct PetScreenView: View {
                         LinearGradient(
                             colors: isSelected
                                 ? [MooniColor.accent.opacity(0.22), MooniColor.accentSoft.opacity(0.10)]
-                                : [Color.white.opacity(0.08), Color.white.opacity(0.03)],
+                                : [MooniColor.hairline, MooniColor.hairline],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -474,10 +474,10 @@ struct PetScreenView: View {
             .frame(maxWidth: .infinity)
         }
         .padding(10)
-        .background(Color.white.opacity(isSelected ? 0.10 : 0.04))
+        .background(isSelected ? MooniColor.cardStrong : MooniColor.card)
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(isSelected ? MooniColor.accent : Color.white.opacity(0.07), lineWidth: 1.4)
+                .stroke(isSelected ? MooniColor.accent : MooniColor.hairline, lineWidth: 1.4)
         )
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
@@ -639,7 +639,7 @@ private struct EvolutionPathSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(MooniColor.accent)
+                        .foregroundColor(MooniColor.accentText)
                 }
             }
         }
@@ -661,7 +661,7 @@ private struct EvolutionPathSheet: View {
                 HStack(spacing: 14) {
                     ZStack {
                         Circle()
-                            .fill(isReached ? MooniColor.accent.opacity(0.24) : Color.white.opacity(0.07))
+                            .fill(isReached ? MooniColor.accent.opacity(0.24) : MooniColor.hairline)
                             .frame(width: 50, height: 50)
                         Image(systemName: isLocked ? "lock.fill" : (isReached ? "sparkles" : "moon.fill"))
                             .foregroundColor(isLocked ? MooniColor.textMuted : MooniColor.accentSoft)

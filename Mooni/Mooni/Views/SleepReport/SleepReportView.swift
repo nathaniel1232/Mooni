@@ -85,10 +85,10 @@ struct SleepReportView: View {
                     Text("History")
                         .font(MooniFont.title(14))
                 }
-                .foregroundColor(MooniColor.accent)
+                .foregroundColor(MooniColor.accentText)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(Color.white.opacity(0.06))
+                .background(MooniColor.hairline)
                 .clipShape(Capsule())
                 .overlay(Capsule().stroke(MooniColor.accent.opacity(0.3), lineWidth: 1))
             }
@@ -104,7 +104,7 @@ struct SleepReportView: View {
             HStack(spacing: 10) {
                 Image(systemName: "waveform.path.ecg")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(MooniColor.accentSoft)
+                    .foregroundColor(MooniColor.accentText)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("See your full night analysis")
                         .font(MooniFont.title(15))
@@ -116,7 +116,7 @@ struct SleepReportView: View {
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(MooniColor.accent)
+                    .foregroundColor(MooniColor.accentText)
             }
             .padding(16)
             .frame(maxWidth: .infinity)
@@ -252,7 +252,7 @@ struct SleepReportView: View {
                             .padding(.vertical, 3)
                             .background(MooniColor.surface)
                             .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+                            .overlay(Capsule().stroke(MooniColor.hairline, lineWidth: 1))
                     )
                 timePillar(icon: "sunrise.fill",
                            time: entry.wakeTime.hourMinuteString,
@@ -262,7 +262,7 @@ struct SleepReportView: View {
             HStack(spacing: 10) {
                 miniMeter(icon: "target", label: "Goal",
                           value: "\(Int(durationPct * 100))%",
-                          progress: durationPct, tint: MooniColor.accent)
+                          progress: durationPct, tint: MooniColor.accentFill)
                 miniMeter(icon: "bolt.fill", label: energy,
                           value: "\(readiness(entry))%",
                           progress: Double(readiness(entry)) / 100,
@@ -312,7 +312,7 @@ struct SleepReportView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.05))
+        .background(MooniColor.hairline)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
@@ -368,7 +368,7 @@ struct SleepReportView: View {
                 // attention away from the stage breakdown above.
                 Text("Modeled from motion & Health data — not a medical diagnosis.")
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white.opacity(0.45))
+                    .foregroundColor(MooniColor.textMuted)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 6)
@@ -380,7 +380,7 @@ struct SleepReportView: View {
                              pct: Double, color: Color) -> some View {
         VStack(spacing: 6) {
             ZStack {
-                Circle().stroke(Color.white.opacity(0.08), lineWidth: 4)
+                Circle().stroke(MooniColor.hairline, lineWidth: 4)
                 Circle()
                     .trim(from: 0, to: appeared ? pct : 0)
                     .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
@@ -577,7 +577,7 @@ struct SleepReportView: View {
                         ForEach(0..<max(0, 7 - recent.count), id: \.self) { _ in
                             VStack(spacing: 5) {
                                 RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.white.opacity(0.05))
+                                    .fill(MooniColor.hairline)
                                     .frame(height: 16)
                                 Text("–")
                                     .font(MooniFont.caption(10))
@@ -629,7 +629,7 @@ struct SleepReportView: View {
             HStack {
                 Label("Pro insights", systemImage: "sparkles")
                     .font(MooniFont.title(15))
-                    .foregroundColor(MooniColor.accent)
+                    .foregroundColor(MooniColor.accentText)
                 Spacer()
             }
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 14),
@@ -655,7 +655,7 @@ struct SleepReportView: View {
         MooniCard(padding: 18) {
             HStack(spacing: 16) {
                 ZStack {
-                    Circle().stroke(Color.white.opacity(0.08), lineWidth: 6)
+                    Circle().stroke(MooniColor.hairline, lineWidth: 6)
                     Circle()
                         .trim(from: 0, to: appeared ? Double(predicted) / 100 : 0)
                         .stroke(MooniColor.accentSoft,
@@ -689,7 +689,7 @@ struct SleepReportView: View {
                     HStack {
                         Label("Unlock Pro insights", systemImage: "sparkles")
                             .font(MooniFont.title(15))
-                            .foregroundColor(MooniColor.accent)
+                            .foregroundColor(MooniColor.accentText)
                         Spacer()
                         Image(systemName: "lock.fill")
                             .foregroundColor(MooniColor.textMuted)
@@ -699,10 +699,10 @@ struct SleepReportView: View {
                                  "target", "heart.fill"], id: \.self) { ic in
                             Image(systemName: ic)
                                 .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(MooniColor.accentSoft)
+                                .foregroundColor(MooniColor.accentText)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 56)
-                                .background(Color.white.opacity(0.05))
+                                .background(MooniColor.hairline)
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .blur(radius: 1.2)
                         }
@@ -730,7 +730,7 @@ struct SleepReportView: View {
             VStack(spacing: 12) {
                 Image(systemName: "moon.zzz")
                     .font(.system(size: 40))
-                    .foregroundColor(MooniColor.accentSoft)
+                    .foregroundColor(MooniColor.accentText)
                 Text("No sleep yet")
                     .font(MooniFont.title(18))
                     .foregroundColor(MooniColor.textPrimary)
@@ -759,7 +759,7 @@ private struct ScoreRing: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.07), lineWidth: 13)
+                .stroke(MooniColor.hairline, lineWidth: 13)
             Circle()
                 .trim(from: 0, to: animate ? pct : 0)
                 .stroke(color, style: StrokeStyle(lineWidth: 13, lineCap: .round))
@@ -793,7 +793,7 @@ private struct BigMetricRing: View {
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
-                Circle().stroke(Color.white.opacity(0.07), lineWidth: 8)
+                Circle().stroke(MooniColor.hairline, lineWidth: 8)
                 Circle()
                     .trim(from: 0, to: animate ? min(max(progress, 0), 1) : 0)
                     .stroke(color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
@@ -987,7 +987,7 @@ private struct StageQualityRow: View {
             GeometryReader { geo in
                 let w = geo.size.width
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule().fill(MooniColor.hairline)
                     // Ideal band
                     Capsule()
                         .fill(MooniColor.success.opacity(0.18))

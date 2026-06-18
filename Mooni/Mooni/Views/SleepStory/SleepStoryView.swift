@@ -429,7 +429,7 @@ struct SleepStoryView: View {
         HStack(spacing: 5) {
             ForEach(cards.indices, id: \.self) { i in
                 Capsule()
-                    .fill(i <= index ? Color.white.opacity(0.9) : Color.white.opacity(0.18))
+                    .fill(i <= index ? MooniColor.accent : MooniColor.hairline)
                     .frame(height: 3)
                     .frame(maxWidth: .infinity)
                     .animation(.easeInOut(duration: 0.3), value: index)
@@ -447,7 +447,7 @@ struct SleepStoryView: View {
                 .foregroundColor(MooniColor.textSecondary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
-                .background(Color.white.opacity(0.08))
+                .background(MooniColor.hairline)
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -489,7 +489,7 @@ struct SleepStoryView: View {
             VStack(spacing: 10) {
                 Text("GOOD MORNING")
                     .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.accentSoft)
+                    .foregroundColor(MooniColor.accentText)
                     .tracking(3)
                 Text(context.petName)
                     .font(MooniFont.display(30))
@@ -653,10 +653,10 @@ struct SleepStoryView: View {
                         .foregroundColor(MooniColor.textPrimary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(Color.white.opacity(0.10))
+                        .background(MooniColor.hairline)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(Color.white.opacity(0.14), lineWidth: 1))
+                            .stroke(MooniColor.hairline, lineWidth: 1))
                     }
                     .simultaneousGesture(TapGesture().onEnded { Haptics.tap() })
                 }
@@ -700,7 +700,7 @@ struct SleepStoryView: View {
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(14)
-                    .background(Color.white.opacity(0.05))
+                    .background(MooniColor.hairline)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
@@ -798,7 +798,14 @@ private struct ShareCard: View {
         }
         .padding(40)
         .frame(width: 420, height: 520)
-        .background(MooniGradient.night)
+        // A shared image must look the same no matter the user's current
+        // theme — pin it to the dark brand gradient (the .white text above is
+        // correct on this fixed-dark card), never the adaptive gradient which
+        // would render cream-on-white when shared during the day.
+        .background(
+            LinearGradient(colors: [MooniColor.bgTop, MooniColor.bgBottom],
+                           startPoint: .top, endPoint: .bottom)
+        )
     }
 }
 
