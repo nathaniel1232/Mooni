@@ -30,8 +30,11 @@ enum MooniColor {
     static let bgTop = Color(red: 0.045, green: 0.05, blue: 0.12)
     static let bgBottom = Color(red: 0.02, green: 0.025, blue: 0.065)
 
-    static let accent = Color(red: 0.65, green: 0.62, blue: 1.0)
-    static let accentSoft = Color(red: 0.85, green: 0.83, blue: 1.0)
+    // App accent — shifted from the old lavender to the redesign's blue so the
+    // whole app matches the new Home. (Light-theme values are dormant: the
+    // theme is forced dark during the redesign.)
+    static let accent = Color(red: 0.23, green: 0.56, blue: 1.0)
+    static let accentSoft = Color(red: 0.58, green: 0.80, blue: 1.0)
 
     /// Accent used as TEXT or icon ink on the screen/card background.
     /// The plain `accent`/`accentSoft` are light lavenders tuned to read on the
@@ -42,7 +45,7 @@ enum MooniColor {
     /// `.foregroundColor` / `.foregroundStyle`, never for fills (fills should
     /// stay `accent` so their dark ink keeps its contrast).
     static var accentText: Color {
-        dyn(light: Color(red: 0.40, green: 0.33, blue: 0.78), dark: accent)
+        dyn(light: Color(red: 0.16, green: 0.42, blue: 0.86), dark: Color(red: 0.50, green: 0.76, blue: 1.0))
     }
 
     /// Accent for bare FILLS that must read against the screen/card background —
@@ -52,7 +55,7 @@ enum MooniColor {
     /// bars. This keeps the night accent at night and deepens to a visible
     /// violet in the light theme.
     static var accentFill: Color {
-        dyn(light: Color(red: 0.42, green: 0.35, blue: 0.82), dark: accent)
+        dyn(light: Color(red: 0.20, green: 0.50, blue: 0.95), dark: accent)
     }
 
     static let success = Color(red: 0.55, green: 0.85, blue: 0.7)
@@ -175,8 +178,10 @@ enum MooniGradient {
                 colors: [Color.white.opacity(0.9), Color.white.opacity(0.6)],
                 startPoint: .topLeading, endPoint: .bottomTrailing)
         case .dark:
+            // Solid navy card to match the redesigned Home's NightCard.
             return LinearGradient(
-                colors: [Color.white.opacity(0.10), Color.white.opacity(0.04)],
+                colors: [Color(red: 0.085, green: 0.115, blue: 0.22),
+                         Color(red: 0.06, green: 0.085, blue: 0.17)],
                 startPoint: .topLeading, endPoint: .bottomTrailing)
         }
     }

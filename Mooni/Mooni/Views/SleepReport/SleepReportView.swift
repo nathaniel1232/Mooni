@@ -24,8 +24,7 @@ struct SleepReportView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MooniGradient.night.ignoresSafeArea()
-                StarsBackground(count: 32).ignoresSafeArea()
+                NightUI.background.ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -49,7 +48,7 @@ struct SleepReportView: View {
                     }
                     .padding(18)
                     .padding(.top, 8)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 40)
                 }
                 // iPad: cap content column; background stays full-bleed.
                 .responsiveContainer()
@@ -71,7 +70,7 @@ struct SleepReportView: View {
 
     private var sectionHeader: some View {
         HStack(alignment: .center) {
-            Text("Sleep")
+            Text("Stats")
                 .font(MooniFont.display(30))
                 .foregroundColor(MooniColor.textPrimary)
             Spacer()
@@ -136,7 +135,7 @@ struct SleepReportView: View {
 
     private func scoreColor(_ score: Int) -> Color {
         switch score {
-        case 85...:   return MooniColor.success
+        case 85...:   return MooniColor.accent
         case 70..<85: return MooniColor.accent
         case 50..<70: return MooniColor.warning
         default:      return MooniColor.danger
@@ -266,7 +265,7 @@ struct SleepReportView: View {
                 miniMeter(icon: "bolt.fill", label: energy,
                           value: "\(readiness(entry))%",
                           progress: Double(readiness(entry)) / 100,
-                          tint: MooniColor.success)
+                          tint: MooniColor.accent)
             }
         }
     }
@@ -467,7 +466,7 @@ struct SleepReportView: View {
                     Spacer()
                     Text(energyWord)
                         .font(MooniFont.title(14))
-                        .foregroundColor(MooniColor.success)
+                        .foregroundColor(MooniColor.accent)
                 }
 
                 HStack(alignment: .lastTextBaseline, spacing: 6) {
@@ -481,7 +480,7 @@ struct SleepReportView: View {
 
                 if series.count > 1 {
                     LineChart(values: series, labels: labels, average: avg,
-                              color: MooniColor.success, animate: appeared)
+                              color: MooniColor.accent, animate: appeared)
                         .frame(height: 132)
                 } else {
                     Text("Track a few nights to see your energy trend.")
@@ -515,7 +514,7 @@ struct SleepReportView: View {
                     BigMetricRing(title: "Recovery",
                                   value: "\(r)%",
                                   progress: Double(r) / 100,
-                                  color: MooniColor.success,
+                                  color: MooniColor.accent,
                                   animate: appeared)
                     BigMetricRing(title: "Consistency",
                                   value: "\(appState.bedtimeConsistencyDays)d",
@@ -643,7 +642,7 @@ struct SleepReportView: View {
                 InsightTile(icon: "target", tint: MooniColor.accent,
                             title: "Best window", value: winStr,
                             progress: 0.78)
-                InsightTile(icon: "checklist", tint: MooniColor.success,
+                InsightTile(icon: "checklist", tint: MooniColor.accent,
                             title: "Wind-down lift", value: lift > 0 ? "+\(lift)m" : "0m",
                             progress: min(1, Double(lift) / 60))
             }
@@ -950,7 +949,7 @@ private struct StageQualityRow: View {
         var label: String { self == .good ? "Healthy" : (self == .low ? "Low" : "High") }
         var color: Color {
             switch self {
-            case .good: return MooniColor.success
+            case .good: return MooniColor.accent
             case .low:  return MooniColor.warning
             case .high: return MooniColor.warning
             }
@@ -990,7 +989,7 @@ private struct StageQualityRow: View {
                     Capsule().fill(MooniColor.hairline)
                     // Ideal band
                     Capsule()
-                        .fill(MooniColor.success.opacity(0.18))
+                        .fill(MooniColor.accent.opacity(0.18))
                         .frame(width: max(2, w * CGFloat((idealHi - idealLo) / scale)))
                         .offset(x: w * CGFloat(idealLo / scale))
                     // Value fill

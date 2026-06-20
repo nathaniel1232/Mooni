@@ -27,22 +27,14 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MooniGradient.night.ignoresSafeArea()
-                StarsBackground(count: 28)
+                NightUI.background.ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 16) {
                         lunaSummaryCard
-                        // Only offer the Sleep Story once there's a real night
-                        // to tell a story about — never let a brand-new user
-                        // "preview" a fabricated night before their first sleep.
-                        if subscriptionManager.isPro && appState.lastRealEntry != nil {
-                            sleepStoryPreviewCard
-                        }
                         levelCard
                         sleepGoalCard
                         progressCard
-                        unlocksCard
                         settingsCard
                         if developerMode.isUnlocked {
                             developerCard
@@ -135,25 +127,36 @@ struct ProfileView: View {
     }
 
     private var lunaSummaryCard: some View {
-        MooniCard {
+        MooniCard(padding: 18) {
             HStack(spacing: 16) {
-                DreamSpiritView(pet: appState.pet, size: 86)
-                    .frame(width: 96, height: 96)
+                // Owl held still in a fixed circular tile so it doesn't float
+                // around or overflow the card.
+                ZStack {
+                    Circle().fill(MooniColor.accent.opacity(0.12))
+                    DreamSpiritView(pet: appState.pet, size: 50, idleAnimation: false)
+                }
+                .frame(width: 72, height: 72)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(MooniColor.accent.opacity(0.25), lineWidth: 1))
 
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(appState.pet.name)
-                        .font(MooniFont.display(24))
+                        .font(MooniFont.title(22))
                         .foregroundColor(MooniColor.textPrimary)
-                    Text("\(appState.pet.species.displayName) • \(appState.pet.stage.label)")
+                    Text("\(appState.pet.species.displayName) · \(appState.pet.stage.label)")
                         .font(MooniFont.caption(12))
                         .foregroundColor(MooniColor.textSecondary)
-                    Text("\(appState.petPersonality.label): \(shortPersonalityCopy)")
-                        .font(MooniFont.caption(12))
+                    Text(appState.petPersonality.label)
+                        .font(MooniFont.caption(11))
                         .foregroundColor(MooniColor.accentText)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(MooniColor.accent.opacity(0.14))
+                        .clipShape(Capsule())
+                        .padding(.top, 2)
                 }
 
-                Spacer()
+                Spacer(minLength: 0)
             }
         }
     }
@@ -236,43 +239,32 @@ struct ProfileView: View {
     private var levelCard: some View {
         let p = appState.pet
         return MooniCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 16) {
+                    // Level badge with a progress ring around it.
                     ZStack {
+                        Circle().fill(MooniColor.accent.opacity(0.14)).frame(width: 58, height: 58)
+                        Circle().stroke(MooniColor.hairline, lineWidth: 4).frame(width: 58, height: 58)
                         Circle()
-                            .fill(MooniColor.accent.opacity(0.18))
-                            .frame(width: 52, height: 52)
-                        Circle()
-                            .stroke(MooniColor.accent.opacity(0.45), lineWidth: 1.5)
-                            .frame(width: 52, height: 52)
+                            .trim(from: 0, to: CGFloat(p.levelProgress))
+                            .stroke(MooniColor.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .frame(width: 58, height: 58)
                         Text("\(p.level)")
                             .font(MooniFont.display(22))
-                            .foregroundColor(MooniColor.accentText)
+                            .foregroundColor(MooniColor.textPrimary)
                     }
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("Level \(p.level)")
                             .font(MooniFont.title(20))
                             .foregroundColor(MooniColor.textPrimary)
-                        Text("\(Int(p.levelProgress * 100))% to level \(p.level + 1)")
+                        Text("\(p.dreamEnergy) / \(p.energyForNextLevel) XP to Level \(p.level + 1)")
                             .font(MooniFont.caption(12))
-                            .foregroundColor(MooniColor.accentText)
+                            .foregroundColor(MooniColor.textSecondary)
                     }
-                    Spacer()
-                    StreakFlameChip(current: streak.current, freezes: streak.freezesRemaining)
+                    Spacer(minLength: 0)
                 }
-                MooniProgressBar(
-                    value: p.levelProgress,
-                    height: 10,
-                    colors: [MooniColor.warning, MooniColor.accent]
-                )
-                Text("\(p.dreamEnergy) / \(p.energyForNextLevel) XP toward Level \(p.level + 1)")
-                    .font(MooniFont.caption(12))
-                    .foregroundColor(MooniColor.textSecondary)
-                if streak.freezesRemaining > 0 {
-                    Text("You have \(streak.freezesRemaining) streak freeze\(streak.freezesRemaining == 1 ? "" : "s") — each level unlocks another.")
-                        .font(MooniFont.caption(11))
-                        .foregroundColor(MooniColor.textMuted)
-                }
+                MooniProgressBar(value: p.levelProgress, height: 8, colors: [MooniColor.accent])
             }
         }
     }
@@ -289,15 +281,15 @@ struct ProfileView: View {
                         Haptics.tap()
                         showSleepGoalEditor = true
                     } label: {
-                        Text("Edit")
-                            .font(MooniFont.caption(12))
+                        Image(systemName: "pencil")
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(MooniColor.accentText)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
+                            .frame(width: 34, height: 34)
                             .background(MooniColor.accent.opacity(0.14))
-                            .clipShape(Capsule())
+                            .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Edit sleep goal")
                 }
 
                 MooniInfoRow(icon: "moon.zzz.fill", title: "Goal", value: String(format: "%.1fh", appState.goalHours))
@@ -317,18 +309,44 @@ struct ProfileView: View {
     private var progressCard: some View {
         MooniCard {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Personal progress")
+                Text("Your progress")
                     .font(MooniFont.title(20))
                     .foregroundColor(MooniColor.textPrimary)
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    MooniStatPill(icon: "flame.fill", value: "\(streak.current)", label: "Streak (days)", color: MooniColor.warning)
-                    MooniStatPill(icon: "calendar", value: "\(appState.entries.count)", label: "Nights tracked", color: MooniColor.accent)
-                    MooniStatPill(icon: "moon.fill", value: averageSleepText, label: "Average sleep")
-                    MooniStatPill(icon: "snowflake", value: "\(streak.freezesRemaining)", label: "Streak freezes", color: MooniColor.accentSoft)
+                    progressStat("flame.fill", "\(streak.current)", "Day streak", MooniColor.warning)
+                    progressStat("calendar", "\(appState.entries.count)", "Nights tracked", MooniColor.accent)
+                    progressStat("moon.fill", averageSleepText, "Average sleep", MooniColor.accent)
+                    progressStat("trophy.fill", "\(streak.longest)", "Best streak", MooniColor.accent)
                 }
             }
         }
+    }
+
+    private func progressStat(_ icon: String, _ value: String, _ label: String, _ tint: Color) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(tint)
+                .frame(width: 38, height: 38)
+                .background(tint.opacity(0.16))
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value)
+                    .font(MooniFont.title(17))
+                    .foregroundColor(MooniColor.textPrimary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Text(label)
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MooniColor.cardStrong)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var unlocksCard: some View {
@@ -698,7 +716,7 @@ private struct SleepGoalEditorSheet: View {
 
     var body: some View {
         ZStack {
-            MooniGradient.night.ignoresSafeArea()
+            NightUI.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {

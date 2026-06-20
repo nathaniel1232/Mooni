@@ -97,6 +97,37 @@ struct DeveloperMenuView: View {
                             }
                         }
 
+                        section("Voice tracking") {
+                            NavigationLink {
+                                SleepSessionsDebugView()
+                            } label: {
+                                MooniCard(padding: 14) {
+                                    HStack(spacing: 14) {
+                                        Image(systemName: "waveform")
+                                            .font(.system(size: 15, weight: .bold))
+                                            .foregroundColor(MooniColor.accent)
+                                            .frame(width: 38, height: 38)
+                                            .background(MooniColor.accent.opacity(0.16))
+                                            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Captured nights")
+                                                .font(MooniFont.title(15))
+                                                .foregroundColor(MooniColor.textPrimary)
+                                            Text("Inspect saved sessions, envelopes & play clips")
+                                                .font(MooniFont.caption(12))
+                                                .foregroundColor(MooniColor.textSecondary)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
+                                        Spacer(minLength: 0)
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundColor(MooniColor.textMuted)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+
                         section("State") {
                             devRow(subscriptionManager.isPro ? "lock.open.fill" : "crown.fill",
                                    subscriptionManager.isPro ? "Turn Pro OFF" : "Turn Pro ON",

@@ -6,34 +6,42 @@ enum MooniFont {
     /// UI routes through this one enum, so the family can be swapped in a single
     /// place — no call site changes. Override at runtime via the
     /// "mooni.fontStyle" UserDefaults key for A/B-ing looks:
-    ///   "outfit"  → bundled Outfit (default)
+    ///   "poppins" → bundled Poppins (default)
+    ///   "outfit"  → bundled Outfit
     ///   "rounded" → SF Rounded   (soft, friendly — system, no bundled file)
     ///   "serif"   → New York     (elegant editorial — system)
     ///   "system"  → SF Pro       (neutral system default)
-    enum Family: String { case outfit, rounded, serif, system }
+    enum Family: String { case poppins, outfit, rounded, serif, system }
 
     static var family: Family {
-        Family(rawValue: UserDefaults.standard.string(forKey: "mooni.fontStyle") ?? "") ?? .outfit
+        Family(rawValue: UserDefaults.standard.string(forKey: "mooni.fontStyle") ?? "") ?? .poppins
     }
 
-    /// Outfit is a geometric sans bundled with the app. Falls back to the
-    /// system rounded design if the family hasn't been registered yet
-    /// (first launch in some simulators, missing Info.plist registration, etc).
+    /// Bundled geometric sans families, registered at runtime in `MooniApp`.
+    /// Each falls back to the system font if it hasn't registered yet.
     private static let isOutfitAvailable: Bool = {
-        UIFont.familyNames.contains("Outfit")
-            || UIFont(name: "Outfit-Regular", size: 12) != nil
+        UIFont.familyNames.contains("Outfit") || UIFont(name: "Outfit-Regular", size: 12) != nil
+    }()
+    private static let isPoppinsAvailable: Bool = {
+        UIFont.familyNames.contains("Poppins") || UIFont(name: "Poppins-Regular", size: 12) != nil
     }()
 
-    /// Routes to the active family. Outfit keeps its hand-built emoji cascade;
-    /// the system designs (rounded/serif/system) cascade to colour emoji
-    /// natively, so they can return SwiftUI's `.system` font directly.
+    /// Routes to the active family. Bundled families keep a hand-built emoji
+    /// cascade; the system designs cascade to colour emoji natively.
     private static func resolved(_ size: CGFloat, weight: Font.Weight) -> Font {
         switch family {
-        case .outfit:  return outfit(size, weight: weight)
+        case .poppins: return bundled("Poppins", available: isPoppinsAvailable, size, weight: weight)
+        case .outfit:  return bundled("Outfit", available: isOutfitAvailable, size, weight: weight)
         case .rounded: return .system(size: size, weight: weight, design: .rounded)
         case .serif:   return .system(size: size, weight: weight, design: .serif)
         case .system:  return .system(size: size, weight: weight, design: .default)
         }
+    }
+
+    /// Arbitrary size+weight in the active family — for views that need a
+    /// specific scale outside the display/title/body/caption ramp.
+    static func custom(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        resolved(size, weight: weight)
     }
 
     /// Cached cascaded fonts per (name, size). Without a cascade list to
@@ -42,19 +50,20 @@ enum MooniFont {
     /// font that explicitly cascades to the colour-emoji family.
     private static var cache: [String: Font] = [:]
 
-    private static func outfit(_ size: CGFloat, weight: Font.Weight) -> Font {
-        let key = "outfit-\(weight)-\(size)"
+    private static func bundled(_ prefix: String, available: Bool,
+                                _ size: CGFloat, weight: Font.Weight) -> Font {
+        let key = "\(prefix)-\(weight)-\(size)"
         if let cached = cache[key] { return cached }
 
         let psName: String
         let uiWeight: UIFont.Weight
         switch weight {
-        case .black:    psName = "Outfit-Bold"; uiWeight = .black
-        case .heavy:    psName = "Outfit-Bold"; uiWeight = .heavy
-        case .bold:     psName = "Outfit-Bold"; uiWeight = .bold
-        case .semibold: psName = "Outfit-SemiBold"; uiWeight = .semibold
-        case .medium:   psName = "Outfit-Medium"; uiWeight = .medium
-        default:        psName = "Outfit-Regular"; uiWeight = .regular
+        case .black:    psName = "\(prefix)-Bold"; uiWeight = .black
+        case .heavy:    psName = "\(prefix)-Bold"; uiWeight = .heavy
+        case .bold:     psName = "\(prefix)-Bold"; uiWeight = .bold
+        case .semibold: psName = "\(prefix)-SemiBold"; uiWeight = .semibold
+        case .medium:   psName = "\(prefix)-Medium"; uiWeight = .medium
+        default:        psName = "\(prefix)-Regular"; uiWeight = .regular
         }
 
         // Base = Outfit at this weight when it loaded; otherwise the system
@@ -72,7 +81,7 @@ enum MooniFont {
             }
             return sys
         }()
-        let base = (isOutfitAvailable ? UIFont(name: psName, size: size) : nil)
+        let base = (available ? UIFont(name: psName, size: size) : nil)
             ?? systemFallback
 
         var cascade: [UIFontDescriptor] = []

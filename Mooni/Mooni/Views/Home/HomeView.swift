@@ -60,27 +60,24 @@ struct HomeView: View {
 
     var body: some View {
         ZStack {
-            MooniGradient.night.ignoresSafeArea()
-            StarsBackground(count: 48)
+            NightUI.background.ignoresSafeArea()
 
             ScrollView {
-                LazyVStack(spacing: 22) {
+                LazyVStack(spacing: 20) {
                     headerBar
 
-                    heroCard
+                    // Redesigned, score-centric Home: a 7-day strip, the night
+                    // score + timing, a sleep-stage chart, and quick stats. The
+                    // pet/owl lives on its own screens now, not here.
+                    weekScoreStrip
 
-                    // Action-first: tonight's plan and (in the evening) a
-                    // sounds shortcut come right under the hero. Deep dives
-                    // like SleepBreakdown / DayPlan / week strip / history
-                    // live on the Sleep tab — Home stays a short, fun page.
-                    tonightPlanCard
-
-                    fallAsleepShortcutSection
-
-                    // League / friends section hidden until backend sleep-sync
-                    // ships. Without it friends' scores stay "—" forever, which
-                    // reads as broken to anyone who adds a friend.
-                    //   leagueSection
+                    if let entry = displayEntry {
+                        scoreSummaryRow(entry)
+                        stageChartCard(entry)
+                        nightStatsGrid(entry)
+                    } else {
+                        emptyNightCard
+                    }
 
                     if shouldShowMotionReaskCard {
                         motionReaskCard
@@ -93,7 +90,7 @@ struct HomeView: View {
                     Color.clear.frame(height: 24)
                 }
                 .padding(.horizontal, 20)
-                .padding(.bottom, 96)
+                .padding(.bottom, 16)
             }
             // iPad: cap content width so the iPhone-shaped layout doesn't
             // stretch absurdly wide. Background gradient still full-bleed.
@@ -429,56 +426,20 @@ struct HomeView: View {
         }
     }
 
+    /// Minimal header: just the wordmark/logo and the streak. (Value-prop,
+    /// greeting and XP bar were intentionally removed for a cleaner top.)
     private var headerBar: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 10) {
-                SleepOwlBrandMark(size: .prominent)
-                    .contentShape(Rectangle())
-                    .onTapGesture { registerBrandTap() }
-                Spacer(minLength: 8)
-                // Duolingo-style streak: tappable, opens streak detail / freeze
-                // info via the existing lost-streak alert plumbing.
-                StreakFireBadge(
-                    count: streak.current,
-                    state: streakBadgeState,
-                    size: .compact,
-                    tappable: true
-                )
-            }
-
-            // One-line value prop right under the wordmark — names the core
-            // feature so a 3-second screen recording / UGC clip immediately
-            // reads what SleepOwl does, not just its name.
-            Text("Automatic sleep tracking, scored every morning")
-                .font(MooniFont.caption(12))
-                .foregroundColor(MooniColor.accentText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .padding(.top, -6)
-
-            HStack(alignment: .center, spacing: 4) {
-                Text(greeting + ",")
-                    .font(MooniFont.body(15))
-                    .foregroundColor(MooniColor.textSecondary)
-                Text(appState.pet.name)
-                    .font(MooniFont.title(16))
-                    // accentText keeps the night-theme lavender but drops to a
-                    // deeper, readable violet on the cream morning surface.
-                    .foregroundColor(MooniColor.accentText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Spacer(minLength: 0)
-            }
-
-            // XP / level progress — sits just under the greeting so the
-            // gamification loop reads at-a-glance every time the user opens
-            // the app.
-            XPBar(
-                value: appState.pet.levelProgress,
-                level: appState.pet.level,
-                recentDelta: appState.lastEarnedEnergy
+        HStack(alignment: .center, spacing: 10) {
+            SleepOwlBrandMark(size: .prominent)
+                .contentShape(Rectangle())
+                .onTapGesture { registerBrandTap() }
+            Spacer(minLength: 8)
+            StreakFireBadge(
+                count: streak.current,
+                state: streakBadgeState,
+                size: .compact,
+                tappable: true
             )
-            .padding(.top, 2)
         }
         .padding(.top, 6)
     }
@@ -544,6 +505,127 @@ struct HomeView: View {
                 showInviteFriends = true
             }
         )
+    }
+
+    // MARK: - Redesigned home sections
+
+    /// 7-day score strip, today centred. Past days show a score-filled ring;
+    /// future days are empty placeholders. Tapping a tracked day selects it.
+    private var weekScoreStrip: some View {
+        let cal = Calendar.current
+        let days = (-3...3).compactMap { cal.date(byAdding: .day, value: $0, to: Date()) }
+        return HStack(spacing: 4) {
+            ForEach(days, id: \.self) { day in
+                let key = day.dayKey
+                let entry = appState.entries.first { $0.dayKey == key && !$0.isScheduleBackfill }
+                let isToday = cal.isDateInToday(day)
+                let isSelected = (selectedDayKey ?? appState.lastRealEntry?.dayKey) == key
+                Button {
+                    guard entry != nil else { return }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        selectedDayKey = key
+                    }
+                } label: {
+                    DayScoreCircle(
+                        letter: String(weekdayLetter(day).prefix(1)),
+                        score: entry?.score,
+                        isToday: isToday,
+                        isSelected: isSelected
+                    )
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    /// Two equal halves: a big score ring centered in the left half, the timing
+    /// stats in the right half — no dead gap, and the ring isn't shoved left.
+    private func scoreSummaryRow(_ entry: SleepEntry) -> some View {
+        HStack(spacing: 10) {
+            ScoreRingView(score: entry.score, size: 148)
+                .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 20) {
+                summaryItem(icon: "bed.double.fill", label: "Time in bed",
+                            value: "\(entry.bedtime.hourMinuteString) – \(entry.wakeTime.hourMinuteString)")
+                summaryItem(icon: "moon.zzz.fill", label: "Time asleep",
+                            value: entry.formattedDuration)
+                summaryItem(icon: "waveform", label: "Snored",
+                            value: "\(NightSynth.snoreCount(score: entry.score, bedtime: entry.bedtime)) times")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 12)
+    }
+
+    private func summaryItem(icon: String, label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(MooniFont.custom(11, weight: .semibold))
+                Text(label).font(MooniFont.custom(12, weight: .medium))
+            }
+            .foregroundColor(NightUI.textMuted)
+            Text(value)
+                .font(MooniFont.custom(19, weight: .bold))
+                .foregroundColor(NightUI.textPrimary)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func stageChartCard(_ entry: SleepEntry) -> some View {
+        NightCard {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text("Sleep stages")
+                        .font(MooniFont.custom(15, weight: .semibold))
+                        .foregroundColor(NightUI.textPrimary)
+                    Spacer()
+                    Text("\(entry.bedtime.hourMinuteString) → \(entry.wakeTime.hourMinuteString)")
+                        .font(MooniFont.custom(12, weight: .medium))
+                        .foregroundColor(NightUI.textMuted)
+                }
+                SleepStageChartView(
+                    bedtime: entry.bedtime,
+                    wakeTime: entry.wakeTime,
+                    stages: entry.stages,
+                    score: entry.score
+                )
+            }
+        }
+    }
+
+    private func nightStatsGrid(_ entry: SleepEntry) -> some View {
+        let deepMin = Int((entry.stages?.deepSleep ?? entry.totalSleepDuration * 0.18) / 60)
+        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            NightStatTile(icon: "bolt.fill", title: "Energy",
+                          value: entry.energyLevel ?? scoreLabel(entry.score), unit: "")
+            NightStatTile(icon: "timer", title: "Asleep after",
+                          value: "\(NightSynth.asleepAfterMin(score: entry.score, bedtime: entry.bedtime))", unit: "min")
+            NightStatTile(icon: "moon.fill", title: "Deep sleep",
+                          value: "\(deepMin)", unit: "min")
+            NightStatTile(icon: "eye.fill", title: "Woke up",
+                          value: "\(NightSynth.wokeCount(score: entry.score, bedtime: entry.bedtime))", unit: "times")
+        }
+    }
+
+    private var emptyNightCard: some View {
+        NightCard(padding: 24) {
+            VStack(spacing: 12) {
+                Image(systemName: "moon.stars.fill")
+                    .font(.system(size: 40))
+                    .foregroundColor(NightUI.accent)
+                Text("No night tracked yet")
+                    .font(MooniFont.custom(18, weight: .semibold))
+                    .foregroundColor(NightUI.textPrimary)
+                Text("Tap the Sleep button below when you get into bed — Mooni listens overnight and scores your night by morning.")
+                    .font(MooniFont.custom(14, weight: .regular))
+                    .foregroundColor(NightUI.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity)
+        }
     }
 
     // MARK: - Hero card (varies by mode)

@@ -231,59 +231,45 @@ struct MainTabView: View {
     @State private var selection: Tab
     @State private var showPaywall = false
     @State private var showDiscountPaywall = false
+    @State private var showVoiceTracking = false
 
     init() {
-        Self.configureTabBarAppearance()
         // DEBUG: allow screenshot tooling to set the initial tab via a
         // UserDefaults key. No effect in production unless that key is set.
         let raw = UserDefaults.standard.string(forKey: "debug.initialTab") ?? "home"
         let initial: Tab
         switch raw {
-        case "sleep":  initial = .sleep
-        case "quest":  initial = .quest
-        case "sounds": initial = .sounds
-        case "me":     initial = .me
-        default:       initial = .home
+        case "sleep", "stats": initial = .stats
+        case "sounds":         initial = .sounds
+        case "me":             initial = .me
+        default:               initial = .home
         }
         self._selection = State(initialValue: initial)
     }
 
     enum Tab: Hashable {
-        case home, sleep, quest, sounds, me
+        case home, stats, sounds, me
     }
 
     var body: some View {
-        TabView(selection: $selection) {
-            HomeView(showPaywall: $showPaywall)
-                .tabItem { Image(systemName: "moon.stars.fill") }
-                .tag(Tab.home)
-                .accessibilityLabel("Home")
-
-            SleepReportView(showPaywall: $showPaywall)
-                .tabItem { Image(systemName: "chart.xyaxis.line") }
-                .tag(Tab.sleep)
-                .accessibilityLabel("Sleep")
-
-            // Quest tab hidden until the BedtimeQuest feature ships — it
-            // currently only shows a "Coming Soon" stub, and the Home view
-            // also doesn't surface a quest progress strip, so the tab would
-            // just be dead UI.
-            //   BedtimeQuestView(showPaywall: $showPaywall)
-            //       .tabItem { Label("Quest", systemImage: "checklist") }
-            //       .tag(Tab.quest)
-
-            FallAsleepView()
-                .tabItem { Image(systemName: "waveform") }
-                .tag(Tab.sounds)
-                .accessibilityLabel("Sounds")
-
-            ProfileView(showPaywall: $showPaywall)
-                .tabItem { Image(systemName: "person.crop.circle.fill") }
-                .tag(Tab.me)
-                .accessibilityLabel("Me")
+        Group {
+            switch selection {
+            case .home:   HomeView(showPaywall: $showPaywall)
+            case .stats:  SleepReportView(showPaywall: $showPaywall)
+            case .sounds: FallAsleepView()
+            case .me:     ProfileView(showPaywall: $showPaywall)
+            }
         }
-        .tint(MooniColor.accent)
-        .onChange(of: selection) { _, _ in Haptics.tap() }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Custom bar with a raised center "Sleep" button that starts voice
+        // tracking, instead of being a normal tab destination.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            MooniTabBar(selection: $selection) {
+                Haptics.tap()
+                showVoiceTracking = true
+            }
+        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .fullScreenCover(isPresented: $appState.showMorningCheckIn) {
             MorningCheckInView()
         }
@@ -294,6 +280,9 @@ struct MainTabView: View {
                 onAccept: { showDiscountPaywall = false },
                 onDecline: { showDiscountPaywall = false }
             )
+        }
+        .fullScreenCover(isPresented: $showVoiceTracking) {
+            VoiceTrackingView()
         }
         .task {
             await appState.runAutomationMaintenance(reason: "launch task")
@@ -339,40 +328,74 @@ struct MainTabView: View {
         showDiscountPaywall = true
     }
 
-    private static func configureTabBarAppearance() {
-        let light = ThemeManager.currentMode == .light
-        let appearance = UITabBarAppearance()
-        appearance.configureWithTransparentBackground()
-        appearance.backgroundEffect = UIBlurEffect(
-            style: light ? .systemUltraThinMaterialLight : .systemUltraThinMaterialDark)
-        appearance.backgroundColor = light
-            ? UIColor.white.withAlphaComponent(0.7)
-            : UIColor(MooniColor.background).withAlphaComponent(0.86)
-        appearance.shadowColor = light
-            ? UIColor.black.withAlphaComponent(0.08)
-            : UIColor.white.withAlphaComponent(0.08)
+}
 
-        // Unselected label/icon ink — dark in the light theme, soft white at night.
-        let normalInk: UIColor = light
-            ? UIColor(red: 0.40, green: 0.36, blue: 0.55, alpha: 1)
-            : UIColor.white.withAlphaComponent(0.56)
+// MARK: - Custom bottom bar
 
-        // Icons-only tab bar: the tab items render just the SF Symbol (see the
-        // `.tabItem { Image(...) }` calls below), so the glyph centers cleanly
-        // with no label. We only need the icon tints here. (Hiding a real title
-        // via an off-screen title offset crashes CoreAnimation on iOS 26, so we
-        // drop the title at the source instead.)
-        let itemAppearance = UITabBarItemAppearance()
-        itemAppearance.normal.iconColor = normalInk
-        itemAppearance.selected.iconColor = UIColor(MooniColor.accent)
+/// Frosted bottom bar that "merges" with the phone (material + hairline,
+/// bleeding into the home-indicator area) with a raised center "Sleep" button
+/// that starts voice tracking instead of switching tabs.
+struct MooniTabBar: View {
+    @Binding var selection: MainTabView.Tab
+    var onSleep: () -> Void
 
-        appearance.stackedLayoutAppearance = itemAppearance
-        appearance.inlineLayoutAppearance = itemAppearance
-        appearance.compactInlineLayoutAppearance = itemAppearance
+    var body: some View {
+        HStack(spacing: 0) {
+            item(.home,   "house.fill",          "Home")
+            item(.stats,  "waveform.path.ecg",   "Stats")
+            Spacer().frame(width: 70)                // gap for the raised button
+            item(.sounds, "music.note",          "Sounds")
+            item(.me,     "person.fill",          "Profile")
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .background(
+            Rectangle()
+                .fill(Color(red: 0.055, green: 0.075, blue: 0.15))
+                .overlay(alignment: .top) {
+                    Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1)
+                }
+                .ignoresSafeArea(edges: .bottom)
+        )
+        .overlay(alignment: .top) {
+            sleepButton.offset(y: -22)
+        }
+    }
 
-        UITabBar.appearance().standardAppearance = appearance
-        UITabBar.appearance().scrollEdgeAppearance = appearance
-        UITabBar.appearance().isTranslucent = true
+    /// Raised center button — just the moon icon inside the filled circle.
+    private var sleepButton: some View {
+        Button(action: onSleep) {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(
+                        colors: [NightUI.accentBright, NightUI.accent, NightUI.accentDeep],
+                        startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 64, height: 64)
+                    .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
+                    .shadow(color: NightUI.accent.opacity(0.55), radius: 12, y: 4)
+                Image(systemName: "moon.stars.fill")
+                    .font(.system(size: 27, weight: .semibold))
+                    .foregroundColor(.white)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Start sleep tracking")
+    }
+
+    private func item(_ tab: MainTabView.Tab, _ icon: String, _ label: String) -> some View {
+        let selected = selection == tab
+        return Button {
+            selection = tab
+            Haptics.tap()
+        } label: {
+            VStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 22, weight: .semibold))
+                Text(label).font(MooniFont.custom(11, weight: .medium))
+            }
+            .foregroundColor(selected ? NightUI.accentBright : Color.white.opacity(0.42))
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
     }
 }
 

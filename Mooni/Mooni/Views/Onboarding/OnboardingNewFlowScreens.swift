@@ -92,11 +92,11 @@ struct LifeTimelineScreen: View {
     /// White-to-tint gradient for the With-Mooni curve. Matches the rest
     /// of the onboarding palette.
     private var mooniTint: Color {
-        Color(red: 0.78, green: 0.78, blue: 1.0)
+        MooniColor.accentSoft
     }
-    /// Saturated lavender used for the hero line glow + payoff pill.
+    /// Bright blue used for the hero line glow + payoff pill (matches Home).
     private var heroAccent: Color {
-        Color(red: 0.60, green: 0.56, blue: 1.0)
+        MooniColor.accent
     }
 
     private let chartYMin: Double = 40
@@ -620,7 +620,7 @@ struct TrackingCompareScreen: View {
                         }
                         VStack(spacing: 8) {
                             sideBySideHeader(label: "WITH SLEEPOWL",
-                                             tint: Color(red: 0.78, green: 0.78, blue: 1.0))
+                                             tint: MooniColor.accentSoft)
                             liveReport(compact: true)
                                 .frame(maxWidth: .infinity)
                         }
@@ -800,16 +800,16 @@ struct TrackingCompareScreen: View {
             // Stage breakdown bars.
             VStack(spacing: compact ? 6 : 8) {
                 stageRow("Deep",  duration: "1h 24m", weight: 0.40,
-                         color: Color(red: 0.65, green: 0.62, blue: 1.0),
+                         color: NightUI.stageDeep,
                          visible: metricsVisible >= 1)
                 stageRow("REM",   duration: "1h 48m", weight: 0.50,
-                         color: Color(red: 0.95, green: 0.65, blue: 0.85),
+                         color: NightUI.stageREM,
                          visible: metricsVisible >= 2)
                 stageRow("Light", duration: "3h 56m", weight: 1.00,
-                         color: Color(red: 0.85, green: 0.83, blue: 1.0),
+                         color: NightUI.stageLight,
                          visible: metricsVisible >= 3)
                 stageRow("Awake", duration: "10m",    weight: 0.08,
-                         color: Color(red: 1.0, green: 0.78, blue: 0.55),
+                         color: NightUI.stageAwake,
                          visible: metricsVisible >= 4)
             }
         }
@@ -869,10 +869,10 @@ struct TrackingCompareScreen: View {
             let rowH = geo.size.height / 3
             let colorFor: (Int) -> Color = { y in
                 switch y {
-                case 0:  return Color(red: 1.0, green: 0.78, blue: 0.55)
-                case 1:  return Color(red: 0.95, green: 0.65, blue: 0.85)
-                case 2:  return Color(red: 0.85, green: 0.83, blue: 1.0)
-                default: return Color(red: 0.65, green: 0.62, blue: 1.0)
+                case 0:  return NightUI.stageAwake
+                case 1:  return NightUI.stageREM
+                case 2:  return NightUI.stageLight
+                default: return NightUI.stageDeep
                 }
             }
             ZStack {
@@ -1391,7 +1391,7 @@ struct PlanComputingScreen: View {
         "wind"
     ]
 
-    private var accent: Color { Color(red: 0.62, green: 0.62, blue: 1.00) }
+    private var accent: Color { MooniColor.accent }
 
     var body: some View {
         VStack(spacing: 28) {
@@ -1562,7 +1562,7 @@ struct PlanRevealScreen: View {
 
     /// Accent tint pulled from the real SleepWidgetPalette — "great" range.
     private var scoreTint: Color {
-        Color(red: 0.62, green: 0.62, blue: 1.00)
+        MooniColor.accent
     }
 
     /// Diagnosis tint — red for the truly rough, orange otherwise.
@@ -2066,7 +2066,7 @@ struct AutoTrackHowScreen: View {
 
     /// Brand-aligned accent for the sleep band.
     private var sleepTint: Color {
-        Color(red: 0.62, green: 0.62, blue: 1.00)
+        MooniColor.accent
     }
 
     var body: some View {
@@ -2353,7 +2353,7 @@ struct AutoTrackPhoneOnlyScreen: View {
     @State private var iphoneVisible: Bool = false
 
     private var accentTint: Color {
-        Color(red: 0.62, green: 0.62, blue: 1.00)
+        MooniColor.accent
     }
 
     var body: some View {
@@ -2699,7 +2699,7 @@ struct SleepMetricsTeaseScreen: View {
     @State private var statsIn: Bool = false
     @State private var consistency: CGFloat = 0
 
-    private var accent: Color { Color(red: 0.62, green: 0.62, blue: 1.00) }
+    private var accent: Color { MooniColor.accent }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -2763,9 +2763,9 @@ struct SleepMetricsTeaseScreen: View {
                     .frame(width: 104, height: 104)
 
                 VStack(spacing: 11) {
-                    stageRow(label: "Deep",  minutes: "1h 22m", progress: deep,  color: Color(red: 0.55, green: 0.46, blue: 0.95))
-                    stageRow(label: "REM",   minutes: "1h 38m", progress: rem,   color: Color(red: 0.42, green: 0.66, blue: 0.96))
-                    stageRow(label: "Light", minutes: "4h 12m", progress: light, color: Color.white.opacity(0.55))
+                    stageRow(label: "Deep",  minutes: "1h 22m", progress: deep,  color: NightUI.stageDeep)
+                    stageRow(label: "REM",   minutes: "1h 38m", progress: rem,   color: NightUI.stageREM)
+                    stageRow(label: "Light", minutes: "4h 12m", progress: light, color: NightUI.stageLight)
                 }
             }
 
@@ -2997,13 +2997,13 @@ struct WidgetShowcaseScreen: View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color(red: 0.10, green: 0.09, blue: 0.24),
-                    Color(red: 0.16, green: 0.11, blue: 0.32),
-                    Color(red: 0.07, green: 0.06, blue: 0.18)
+                    Color(red: 0.09, green: 0.11, blue: 0.26),
+                    Color(red: 0.10, green: 0.14, blue: 0.32),
+                    Color(red: 0.06, green: 0.08, blue: 0.18)
                 ],
                 startPoint: .top, endPoint: .bottom)
             RadialGradient(
-                colors: [Color(red: 0.62, green: 0.62, blue: 1.00).opacity(0.22),
+                colors: [MooniColor.accent.opacity(0.22),
                          .clear],
                 center: .topTrailing, startRadius: 0, endRadius: 240)
         }
@@ -3090,7 +3090,7 @@ struct WidgetShowcaseScreen: View {
         HStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(red: 0.62, green: 0.62, blue: 1.00))
+                .foregroundColor(MooniColor.accent)
             Text(text)
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundColor(.white.opacity(0.75))
@@ -3146,7 +3146,7 @@ struct MotionAccessScreen: View {
     let petName: String
     @State private var appear = false
 
-    private var accent: Color { Color(red: 0.62, green: 0.62, blue: 1.00) }
+    private var accent: Color { MooniColor.accent }
 
     var body: some View {
         VStack(spacing: 24) {
@@ -3387,7 +3387,7 @@ struct SleepScienceMindScreen: View {
 
 /// On-brand accent shared by the two credibility screens (accuracy wall +
 /// score formula). Paired with a success-green "validated" seal.
-private let proofAccent = Color(red: 0.66, green: 0.62, blue: 1.0)
+private let proofAccent = MooniColor.accent
 
 private struct ProofStat: Identifiable {
     let id = UUID()
@@ -3743,7 +3743,7 @@ struct TrustedByExpertsScreen: View {
                   quote: "I treat sleep as a professional athletic endeavor."),
     ]
 
-    private var accent: Color { Color(red: 0.66, green: 0.62, blue: 1.0) }
+    private var accent: Color { MooniColor.accent }
 
     private let institutions = [
         "Harvard Medical School", "Stanford Medicine",
@@ -3905,7 +3905,7 @@ struct WhatWeImproveScreen: View {
     private let rows: [ImproveRow] = [
         ImproveRow(icon: "bolt.fill", tint: Color(red: 1.0, green: 0.78, blue: 0.4),
                    title: "Daytime energy", payoff: "Up to 3× steadier — no 2pm crash"),
-        ImproveRow(icon: "brain.head.profile", tint: Color(red: 0.66, green: 0.62, blue: 1.0),
+        ImproveRow(icon: "brain.head.profile", tint: MooniColor.accent,
                    title: "Focus & memory", payoff: "Think up to 40% sharper"),
         ImproveRow(icon: "face.smiling.inverse", tint: Color(red: 0.55, green: 0.85, blue: 0.7),
                    title: "Mood", payoff: "Far calmer — fewer irritable, anxious days"),
@@ -4017,7 +4017,7 @@ struct ViceSpendScreen: View {
 
     @State private var appeared: Bool = false
 
-    private var accent: Color { Color(red: 0.62, green: 0.62, blue: 1.00) }
+    private var accent: Color { MooniColor.accent }
 
     /// SleepOwl's effective weekly price — the single anchor we compare the
     /// user's own habit against (annual plan ÷ 52).

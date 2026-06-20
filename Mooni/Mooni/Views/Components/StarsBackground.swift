@@ -12,9 +12,17 @@ import SwiftUI
 /// (which spun up one `repeatForever` animation per star).
 struct StarsBackground: View {
     let count: Int
+    /// How many of the `count` stars are currently shown. Defaults to the full
+    /// `count` (so every existing caller is unchanged). Onboarding drives this
+    /// continuously DOWN as the user progresses so the sky thins out almost
+    /// imperceptibly — the stars beyond `visibleCount` fade out one-by-one
+    /// (fractional values cross-fade the boundary star), and because the field
+    /// is a stable prefix of a seeded sequence, nothing reshuffles.
+    let visibleCount: Double
 
-    init(count: Int = 60) {
+    init(count: Int = 60, visibleCount: Double? = nil) {
         self.count = count
+        self.visibleCount = visibleCount ?? Double(count)
         self.stars = Self.makeStars(count: count)
     }
 
@@ -37,16 +45,24 @@ struct StarsBackground: View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
             Canvas { ctx, size in
                 let t = timeline.date.timeIntervalSinceReferenceDate
-                for s in stars {
+                for (i, s) in stars.enumerated() {
+                    // Smooth boundary fade: stars past `visibleCount` are gone,
+                    // the one straddling it cross-fades. Keeps the thin-out
+                    // gradual instead of popping a star in/out per step.
+                    let presence = min(1.0, max(0.0, visibleCount - Double(i)))
+                    guard presence > 0.001 else { continue }
                     let twinkle = sin(t * s.speed * 2 * .pi + s.phase)      // -1...1
-                    let op = min(1, max(0, s.baseOpacity + twinkle * s.twinkleAmp))
+                    let op = min(1, max(0, s.baseOpacity + twinkle * s.twinkleAmp)) * presence
                     guard op > 0.01 else { continue }
 
                     let dy = CGFloat(sin(t * 0.06 + s.phase)) * s.drift
                     let cx = s.x * size.width
                     let cy = s.y * size.height + dy
+                    // Stars read clean white. A subset keeps a barely-there cool
+                    // tint for depth (never the old lavender, which pulled the
+                    // whole sky purple).
                     let tint = s.warm
-                        ? Color(red: 0.87, green: 0.85, blue: 1.0)
+                        ? Color(red: 0.92, green: 0.95, blue: 1.0)
                         : Color.white
 
                     if s.bloom {

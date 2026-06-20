@@ -41,10 +41,15 @@ final class ThemeManager: ObservableObject {
             if forced == "dark" { return .dark }
         }
         #endif
-        switch TimeOfDay.current {
-        case .morning, .day:    return .light
-        case .evening, .night:  return .dark
-        }
+        // Light / "white" theme is PAUSED during the UI redesign — it has too
+        // many contrast problems to ship right now. Force dark everywhere so
+        // every adaptive `MooniColor` token renders its night value. To bring
+        // the day theme back, restore the TimeOfDay switch below.
+        return .dark
+        //   switch TimeOfDay.current {
+        //   case .morning, .day:    return .light
+        //   case .evening, .night:  return .dark
+        //   }
     }
 
     /// Recompute from the clock. Call on launch / foreground / scene-active.

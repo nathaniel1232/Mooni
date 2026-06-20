@@ -16,7 +16,7 @@ struct PrimaryButton: View {
 
     private var foreground: Color {
         switch variant {
-        case .accent: return MooniColor.background
+        case .accent: return .white   // white ink on the blue fill
         case .white:  return .black
         }
     }

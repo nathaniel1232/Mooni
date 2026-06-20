@@ -33,7 +33,8 @@ struct MooniApp: App {
         let names = [
             "Outfit-Thin", "Outfit-ExtraLight", "Outfit-Light", "Outfit-Regular",
             "Outfit-Medium", "Outfit-SemiBold", "Outfit-Bold", "Outfit-ExtraBold",
-            "Outfit-Black"
+            "Outfit-Black",
+            "Poppins-Regular", "Poppins-Medium", "Poppins-SemiBold", "Poppins-Bold"
         ]
         for name in names {
             guard let url = Bundle.main.url(forResource: name, withExtension: "ttf") else { continue }

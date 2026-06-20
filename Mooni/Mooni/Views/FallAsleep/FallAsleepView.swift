@@ -22,8 +22,7 @@ struct FallAsleepView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MooniGradient.night.ignoresSafeArea()
-                StarsBackground(count: 38)
+                NightUI.background.ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 22) {

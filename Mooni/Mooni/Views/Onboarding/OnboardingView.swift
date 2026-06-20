@@ -210,6 +210,17 @@ struct OnboardingView: View {
 
     // MARK: - Body
 
+    /// Star count tapers as the flow progresses: a fuller sky on the early
+    /// hook screens, thinning almost imperceptibly to a calm low over the first
+    /// ~60% of the flow, then holding there. The `StarsBackground` cross-fades
+    /// the boundary star so each step's tiny drop is unnoticeable; shooting
+    /// stars keep firing throughout via `ShootingStarsOverlay`.
+    private var starVisibleCount: Double {
+        let progress = Double(step.index) / Double(max(1, Step.total - 1))
+        let eased = min(1.0, progress / 0.6)
+        return 18.0 - 11.0 * eased        // 18 → 7
+    }
+
     var body: some View {
         ZStack {
             // Single, calm constant background everywhere — no per-screen swaps.
@@ -219,8 +230,9 @@ struct OnboardingView: View {
                 colors: [Self.bgTop, Self.bgBottom],
                 startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
-            StarsBackground(count: 16)
+            StarsBackground(count: 22, visibleCount: starVisibleCount)
                 .opacity(0.8)
+                .animation(.easeInOut(duration: 0.9), value: starVisibleCount)
             ShootingStarsOverlay()
 
             if step == .prePaywall {
@@ -4962,7 +4974,7 @@ private struct WidgetPreviewScreen: View {
                 HStack(spacing: 6) {
                     mockMiniChip(icon: "bed.double.fill", value: "7h 24m", tint: tint)
                     mockMiniChip(icon: "bolt.fill", value: "72%",
-                                 tint: Color(red: 0.72, green: 0.62, blue: 1.00))
+                                 tint: MooniColor.accent)
                 }
 
                 // Sparkline
@@ -7577,8 +7589,8 @@ private struct DayCycleFactScreen: View {
         ("10am", "sun.max.fill",      "Peak focus",     Color.yellow,          true),
         ("2pm",  "sun.haze.fill",     "Afternoon dip",  Color(white: 0.6),     true),
         ("6pm",  "sunset.fill",       "Wind down begins", Color.orange,        true),
-        ("10pm", "moon.fill",         "Sleep window",   Color(red: 0.55, green: 0.45, blue: 0.95), false),
-        ("2am",  "moon.stars.fill",   "Deep sleep",     Color(red: 0.35, green: 0.30, blue: 0.80), false),
+        ("10pm", "moon.fill",         "Sleep window",   MooniColor.accent,    false),
+        ("2am",  "moon.stars.fill",   "Deep sleep",     NightUI.stageDeep,    false),
         ("6am",  "sunrise.fill",      "Wake — repeat",  Color.yellow,          true),
     ]
 

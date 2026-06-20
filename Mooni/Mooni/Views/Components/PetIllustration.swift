@@ -17,6 +17,11 @@ struct PetIllustration: View {
     /// non-interactive.
     var interactive: Bool = false
 
+    /// When false, the idle bob/breath/blink loops never start — the owl
+    /// renders calm and still. Used in compact spots (e.g. the profile header)
+    /// where a floating owl is distracting.
+    var idleAnimation: Bool = true
+
     /// Called once per tap when `interactive` is true. Use this to show a
     /// speech bubble, register the interaction, etc. Heart/bounce animation
     /// happens regardless.
@@ -33,12 +38,14 @@ struct PetIllustration: View {
         size: CGFloat = 200,
         forceClosedEyes: Bool = false,
         interactive: Bool = false,
+        idleAnimation: Bool = true,
         onTap: (() -> Void)? = nil
     ) {
         self.pet = pet
         self.size = size
         self.forceClosedEyes = forceClosedEyes
         self.interactive = interactive
+        self.idleAnimation = idleAnimation
         self.onTap = onTap
     }
 
@@ -117,6 +124,7 @@ struct PetIllustration: View {
             handleTap()
         }
         .onAppear {
+            guard idleAnimation else { return }
             withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) { bob = true }
             withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) { pulse = true }
             scheduleNextBlink()

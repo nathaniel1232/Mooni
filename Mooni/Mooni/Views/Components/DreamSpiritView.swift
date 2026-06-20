@@ -6,10 +6,12 @@ struct DreamSpiritView: View {
     let pet: Pet
     var size: CGFloat = 200
     var interactive: Bool = false
+    var idleAnimation: Bool = true
     var onTap: (() -> Void)? = nil
 
     var body: some View {
-        PetIllustration(pet: pet, size: size, interactive: interactive, onTap: onTap)
+        PetIllustration(pet: pet, size: size, interactive: interactive,
+                        idleAnimation: idleAnimation, onTap: onTap)
     }
 }
 

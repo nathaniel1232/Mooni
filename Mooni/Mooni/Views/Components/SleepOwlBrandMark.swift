@@ -54,12 +54,9 @@ struct SleepOwlBrandMark: View {
                 .font(.system(size: fontSize,
                               weight: size == .prominent ? .heavy : .semibold,
                               design: .rounded))
-                .foregroundStyle(size == .prominent
-                                 ? AnyShapeStyle(LinearGradient(
-                                     colors: [MooniColor.textPrimary, MooniColor.accentSoft],
-                                     startPoint: .leading,
-                                     endPoint: .trailing))
-                                 : AnyShapeStyle(MooniColor.textPrimary.opacity(0.92)))
+                .foregroundColor(size == .prominent
+                                 ? MooniColor.textPrimary
+                                 : MooniColor.textPrimary.opacity(0.92))
                 .tracking(tracking)
         }
         .padding(.horizontal, horizontalPadding)
