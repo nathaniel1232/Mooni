@@ -205,7 +205,7 @@ struct RevealView: View {
                 ShareLink(
                     item: img,
                     preview: SharePreview(
-                        "My Sleepowl Reveal — \(stats.windowLabel)",
+                        "My SleepOwl glow-up — \(stats.windowLabel)",
                         image: img
                     )
                 ) {

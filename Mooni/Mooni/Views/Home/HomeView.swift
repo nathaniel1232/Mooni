@@ -18,6 +18,7 @@ struct HomeView: View {
     @State private var showManualOptions = false
     @State private var showInviteFriends = false
     @State private var showFallAsleepSheet = false
+    @State private var showReveal = false
 
     /// Hidden developer unlock: 20 taps on the top-left wordmark opens the dev
     /// menu (mirrors the paywall owl gesture). No visible cue until it fires.
@@ -78,6 +79,15 @@ struct HomeView: View {
                     } else {
                         emptyNightCard
                     }
+
+                    // The coaching hero: one concrete move for tonight, derived
+                    // from real history. This is what turns "tracks sleep" into
+                    // "fixes your sleep."
+                    TonightFixCard(fix: tonightFix) { showWindDown = true }
+
+                    // The shareable proof of progress — before→after card built
+                    // for TikTok/Stories. Ready once there's a week to brag about.
+                    revealSection
 
                     if shouldShowMotionReaskCard {
                         motionReaskCard
@@ -163,6 +173,12 @@ struct HomeView: View {
         .sheet(isPresented: $showInviteFriends) {
             InviteFriendsView()
                 .environmentObject(appState)
+        }
+        .fullScreenCover(isPresented: $showReveal) {
+            if let stats = revealStats {
+                RevealView(stats: stats)
+                    .environmentObject(appState)
+            }
         }
         .sheet(isPresented: $showFallAsleepSheet) {
             FallAsleepView()
@@ -399,6 +415,40 @@ struct HomeView: View {
         }
 
         return entry.score < 60 ? .recovery(entry) : .morning(entry)
+    }
+
+    // MARK: - Reveal (shareable before→after proof)
+
+    /// Built once there are enough nights in the last week to show a real
+    /// before→after. nil before then.
+    private var revealStats: RevealStats? {
+        RevealStats.build(entries: appState.entries, pet: appState.pet, streakDays: streak.current)
+    }
+
+    /// Count of real (non-backfill) nights logged — drives the locked teaser.
+    private var realNightCount: Int {
+        appState.entries.filter { !$0.isScheduleBackfill }.count
+    }
+
+    @ViewBuilder
+    private var revealSection: some View {
+        if let stats = revealStats {
+            RevealTeaserCard(mode: .ready(stats, onTap: { showReveal = true }))
+        } else if realNightCount >= 1 {
+            RevealTeaserCard(mode: .locked(nightsTracked: realNightCount,
+                                           required: RevealStats.minNights))
+        }
+    }
+
+    /// Tonight's single highest-leverage fix, from the user's real history.
+    private var tonightFix: SleepCoach.TonightFix {
+        SleepCoach.tonightFix(
+            entries: appState.entries,
+            goalHours: appState.goalHours,
+            targetBedtime: appState.targetBedtime,
+            targetWakeTime: appState.targetWakeTime,
+            petName: appState.pet.name
+        )
     }
 
     private var morningBriefing: HomeIntelligence.Briefing? {

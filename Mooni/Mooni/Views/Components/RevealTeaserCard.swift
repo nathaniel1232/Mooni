@@ -76,7 +76,7 @@ struct RevealTeaserCard: View {
                                 .foregroundColor(.white.opacity(0.85))
                         }
 
-                        Text("Your Sleepowl evolved")
+                        Text("Your glow-up is ready")
                             .font(MooniFont.title(18))
                             .foregroundColor(.white)
                             .lineLimit(2)

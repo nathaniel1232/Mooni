@@ -80,20 +80,13 @@ struct SleepGauge: View {
                         style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(135))
 
-            // Progress fill.
+            // Progress fill — solid tint, round caps, no faded start or colored
+            // glow (FIX_PLAN §1: one consistent ring treatment everywhere).
             Circle()
                 .trim(from: 0, to: 0.75 * progress)
-                .stroke(
-                    AngularGradient(
-                        gradient: Gradient(colors: [tint.opacity(0.55), tint]),
-                        center: .center,
-                        startAngle: .degrees(135),
-                        endAngle: .degrees(135 + 270)
-                    ),
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                )
+                .stroke(tint,
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(135))
-                .shadow(color: tint.opacity(0.45), radius: 4)
 
             VStack(spacing: 0) {
                 Text("\(score)")

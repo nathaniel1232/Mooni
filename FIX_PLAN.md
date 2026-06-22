@@ -244,3 +244,42 @@ single highest-accuracy signal that works with zero user effort and no Watch.
 4. §5 fake-night removal
 5. §6 sleep brain (engine + motion analyzer + lock sampling + wake flow)
 6. §7 verify everything
+
+---
+
+## 8. Repositioning — "SleepOwl FIXED my sleep" (June 22)
+
+Direction: shift the product from *tracking* (we measure your sleep) to
+*fixing* (we make tomorrow night better, and you can prove it). Playful-bold
+voice; honest claims only (proof = the user's own real before→after data).
+See memory `repositioning-direction`.
+
+Shipped + build-verified:
+
+- [x] **Coaching spine.** New `Utilities/SleepCoach.swift` → `TonightFix`: the
+      single highest-leverage action for tonight, chosen from real history
+      (sleep debt → bank hours; wake variance → anchor wake; late drift →
+      earlier bedtime; wind-down lift → run the ritual; on-rhythm + strong →
+      hold the win; else anchor at target). New `Views/Components/TonightFixCard.swift`,
+      rendered on Home after the score block; its action opens the existing
+      (already-rich) `WindDownSheet`.
+- [x] **Shareable before→after proof.** The fully-built `RevealView` /
+      `RevealTeaserCard` (9:16, before→after score, streak/level/nights) were
+      ORPHANED — referenced nowhere. Wired into Home: `revealSection` shows the
+      ready teaser (or locked progress) → `showReveal` fullScreenCover →
+      `RevealView`. Teaser copy → "Your glow-up is ready"; share title →
+      "My SleepOwl glow-up — …".
+- [x] **Copy spine → outcome.** Onboarding welcome "Automate your sleep" →
+      "Fix your sleep."; paywall subtitle/timeline/4 pillars lead with the
+      nightly fix; widget tagline "latest sleep score, at a glance" → "Watch
+      your sleep score climb…". Honest, no fabricated stats.
+
+Triaged as deliberately-parked dead code — intentionally NOT touched:
+`BedtimeQuestView` (orphaned, in no tab), `MooniMascotView` glow (only the
+disabled FriendsSleepWidget uses it), DiscountPaywall finalizing (annotated
+dead), paywall social-proof (nil pending real numbers), Programs (stub catalog).
+
+Deferred (genuine but functional placeholders): onboarding story-screen visual
+polish (lifeTimeline / trackingCompare / targetReachable / progressBucket /
+autoTrackStoneAge) — copy already on-message; upgrade to full animated treatment
+per ONBOARDING_REDESIGN_PLAN.md Phase 3/9.

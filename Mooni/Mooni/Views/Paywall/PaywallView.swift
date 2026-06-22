@@ -411,9 +411,9 @@ struct PaywallView: View {
     /// so the header reads as a promise rather than a wall of numbers.
     private var headlineSubtitle: String {
         if let days = trialDays {
-            return "Auto-tracking, deep insights and every sound — free for \(days) days."
+            return "Your nightly fix, full insights and every sound — free for \(days) days."
         }
-        return "Auto-tracking, deep insights and every sound. Cancel anytime."
+        return "Your nightly fix, full insights and every sound. Cancel anytime."
     }
 
     // MARK: - Social proof (optional — REAL data only)
@@ -616,7 +616,7 @@ struct PaywallView: View {
                     icon: "lock.open.fill",
                     tint: MooniColor.accent,
                     title: "Today",
-                    body: "Unlock the full SleepOwl library — meditations, sleep sounds and deep insights.",
+                    body: "Unlock your nightly fix, full sleep insights, and every meditation and sound.",
                     showConnector: true,
                     connectorFill: 1.0
                 )
@@ -698,18 +698,18 @@ struct PaywallView: View {
     /// ratings, or testimonials — App Review forbids those. Just the features.
     private var proBenefits: some View {
         VStack(alignment: .leading, spacing: 14) {
-            benefitRow(icon: "waveform", tint: MooniColor.accent,
-                       title: "Auto sleep tracking",
-                       body: "Just sleep. SleepOwl scores your night while you rest.")
-            benefitRow(icon: "chart.bar.fill", tint: MooniColor.accentSoft,
-                       title: "Full history & deep insights",
-                       body: "Every night, with REM, sleep debt, and recovery trends.")
+            benefitRow(icon: "wand.and.stars", tint: MooniColor.accent,
+                       title: "A nightly fix for your sleep",
+                       body: "One concrete move every night — SleepOwl turns last night into tonight's plan.")
+            benefitRow(icon: "waveform", tint: MooniColor.accentSoft,
+                       title: "Tracked while you sleep",
+                       body: "Just sleep. SleepOwl reads the whole night on its own — no logging.")
+            benefitRow(icon: "chart.line.uptrend.xyaxis", tint: MooniColor.success,
+                       title: "Watch it actually improve",
+                       body: "Before→after trends in REM, sleep debt, and recovery.")
             benefitRow(icon: "sparkles", tint: MooniColor.warning,
-                       title: "All sounds & scenes",
-                       body: "Every meditation and soundscape, fully unlocked.")
-            benefitRow(icon: "moon.stars.fill", tint: MooniColor.accentSoft,
-                       title: "Your sleep companion",
-                       body: "Grow your companion as your sleep improves.")
+                       title: "Sounds, scenes & your owl",
+                       body: "Every meditation and soundscape, plus a companion that grows as you do.")
         }
     }
 

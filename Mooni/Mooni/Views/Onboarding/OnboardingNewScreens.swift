@@ -34,13 +34,13 @@ struct WelcomeScreen: View {
                 }
 
             VStack(spacing: 14) {
-                Text("Automate your sleep.")
+                Text("Fix your sleep.")
                     .font(MooniFont.display(34))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
 
-                Text("Your phone already knows when you sleep.\nWe just read it — and turn it into a plan.")
+                Text("Your phone already knows your nights.\nSleepOwl turns them into a plan that changes them.")
                     .font(MooniFont.body(15))
                     .foregroundColor(.white.opacity(0.7))
                     .multilineTextAlignment(.center)

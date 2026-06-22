@@ -70,7 +70,7 @@ struct MooniSleepWidget: Widget {
             MooniSleepWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("SleepOwl Sleep")
-        .description("Your latest sleep score, at a glance.")
+        .description("Watch your sleep score climb, right from your home screen.")
         .supportedFamilies([.systemSmall, .systemMedium])
         .contentMarginsDisabled()
     }
