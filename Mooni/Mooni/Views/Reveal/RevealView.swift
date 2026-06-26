@@ -43,13 +43,15 @@ struct RevealView: View {
             ConfettiView(trigger: $confettiTrigger)
                 .allowsHitTesting(false)
 
-            // Chrome
+            // Top chrome only. The bottom controls live in a safe-area inset
+            // (below) so the reveal content can size itself to the remaining
+            // space instead of overlapping the picker / share button.
             VStack {
                 topBar
                 Spacer()
-                bottomControls
             }
         }
+        .safeAreaInset(edge: .bottom) { bottomControls }
         .preferredColorScheme(.dark)
         .onAppear { runBuildUp() }
         .onChange(of: template) { _, _ in
@@ -79,7 +81,15 @@ struct RevealView: View {
         // we can animate it. The actual SHARED image uses RevealCard at
         // 1080×1920 (see ShareLink wiring in `bottomControls`).
         let w = deviceSize.width
+        let h = deviceSize.height
         let scale = w / 1080.0
+        // Hero sizes scale with the available height so the owl, score, and
+        // stats strip always fit ABOVE the bottom controls — even on shorter
+        // devices. (The SHARED image is rendered separately by RevealRenderer
+        // at full canvas size, so shrinking here only affects the on-screen
+        // preview.)
+        let owlSize = min(240, h * 0.30)
+        let scoreSize = min(96, h * 0.13)
 
         ZStack {
             if template.hasStars {
@@ -100,7 +110,7 @@ struct RevealView: View {
                 .blur(radius: 24 * scale)
 
             VStack(spacing: 0) {
-                Spacer().frame(height: 96)
+                Spacer().frame(height: min(88, h * 0.11))
 
                 // Header
                 VStack(spacing: 6) {
@@ -113,23 +123,28 @@ struct RevealView: View {
                             .tracking(3)
                             .foregroundColor(.white.opacity(0.85))
                     }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                     Text(stats.windowLabel.uppercased())
                         .font(MooniFont.caption(11))
                         .tracking(2)
                         .foregroundColor(.white.opacity(0.55))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
+                .padding(.horizontal, 24)
 
                 Spacer()
 
                 // Hero — big owl + counter
                 VStack(spacing: 14) {
-                    OnScreenOwl(pet: stats.pet, mood: stats.afterMood, size: 240)
+                    OnScreenOwl(pet: stats.pet, mood: stats.afterMood, size: owlSize)
                         .scaleEffect(heroVisible ? 1.0 : 0.6)
                         .opacity(heroVisible ? 1 : 0)
                         .shadow(color: template.accent.opacity(0.6), radius: 30, y: 6)
 
                     Text("\(animatedScore)")
-                        .font(.system(size: 96, weight: .black, design: .rounded))
+                        .font(.system(size: scoreSize, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                         .contentTransition(.numericText(value: Double(animatedScore)))
                         .shadow(color: template.accent.opacity(0.55), radius: 12, y: 3)
@@ -151,9 +166,14 @@ struct RevealView: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
 
-                Spacer().frame(height: 240) // leave room for bottom controls
+                Spacer().frame(height: 24)
             }
         }
+        // Pin the whole composition to the device size and center it. Without
+        // this the oversized glow Circle expands the ZStack past the screen
+        // width and GeometryReader pins it top-leading, shoving the header and
+        // owl off-center / off the right edge.
+        .frame(width: w, height: h)
     }
 
     private var onScreenStats: some View {
@@ -233,7 +253,9 @@ struct RevealView: View {
             }
         }
         .padding(.horizontal, 22)
-        .padding(.bottom, 30)
+        .padding(.top, 4)
+        // safeAreaInset already clears the home indicator; only a small gap.
+        .padding(.bottom, 8)
     }
 
     private var templatePicker: some View {
