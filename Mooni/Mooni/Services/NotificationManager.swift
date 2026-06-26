@@ -106,9 +106,11 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
 
     nonisolated static let mealReminderID = "mooni.reminder.lastMeal"
     nonisolated static let hydrationReminderID = "mooni.reminder.hydration"
-    /// Toggles (default ON). UI lives in the wind-down / routine settings.
-    static let mealEnabledKey = "mooni.reminder.mealEnabled"
-    static let hydrationEnabledKey = "mooni.reminder.hydrationEnabled"
+    /// Toggles (default ON). Surfaced + controlled from the "Wind-down
+    /// reminders" section in ProfileView. `nonisolated` so SwiftUI can bind
+    /// them via @AppStorage from a View initializer without an actor hop.
+    nonisolated static let mealEnabledKey = "mooni.reminder.mealEnabled"
+    nonisolated static let hydrationEnabledKey = "mooni.reminder.hydrationEnabled"
     /// How many minutes before bed each cutoff fires.
     static let mealLeadMinutes = 180     // last meal ~3h before bed
     static let hydrationLeadMinutes = 120 // ease off liquids ~2h before bed

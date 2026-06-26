@@ -24,6 +24,12 @@ struct ProfileView: View {
     @AppStorage(Haptics.hapticsKey) private var hapticsOn = true
     @AppStorage(Haptics.soundKey) private var soundOn = true
 
+    // Wind-down reminder toggles — bound to the same UserDefaults keys the
+    // scheduler reads (default ON), so flipping one here takes effect on the
+    // next reschedule below and is honored by the launch safety net.
+    @AppStorage(NotificationManager.mealEnabledKey) private var mealReminderOn = true
+    @AppStorage(NotificationManager.hydrationEnabledKey) private var hydrationReminderOn = true
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -34,6 +40,7 @@ struct ProfileView: View {
                         lunaSummaryCard
                         levelCard
                         sleepGoalCard
+                        windDownRemindersCard
                         progressCard
                         settingsCard
                         if developerMode.isUnlocked {
@@ -303,6 +310,101 @@ struct ProfileView: View {
                         .padding(.top, 2)
                 }
             }
+        }
+    }
+
+    /// Surfaces the two science-of-sleep cutoff nudges the app already sends
+    /// (timed off bedtime) and lets the user turn each off. Previously these
+    /// fired with no UI to control them — this makes the "we coach the night,
+    /// not just score it" help visible and consensual.
+    private var windDownRemindersCard: some View {
+        MooniCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Wind-down reminders")
+                    .font(MooniFont.title(20))
+                    .foregroundColor(MooniColor.textPrimary)
+
+                Text("Quiet nudges before your \(appState.targetBedtime.hourMinuteString) bedtime — the small habits that protect your deep sleep.")
+                    .font(MooniFont.caption(12))
+                    .foregroundColor(MooniColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                reminderToggleRow(
+                    icon: "fork.knife",
+                    title: "Last meal",
+                    subtitle: "Heads-up ~3h before bed",
+                    isOn: $mealReminderOn
+                )
+
+                Divider().background(MooniColor.hairline)
+
+                reminderToggleRow(
+                    icon: "drop.fill",
+                    title: "Ease off water",
+                    subtitle: "Heads-up ~2h before bed",
+                    isOn: $hydrationReminderOn
+                )
+
+                if notifications.authState == .denied {
+                    Text("Notifications are off — turn them on in Settings to receive these.")
+                        .font(MooniFont.caption(11))
+                        .foregroundColor(MooniColor.warning)
+                        .padding(.top, 2)
+                }
+            }
+        }
+    }
+
+    private func reminderToggleRow(icon: String, title: String, subtitle: String,
+                                   isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(MooniColor.accentText)
+                .frame(width: 30, height: 30)
+                .background(MooniColor.accent.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(MooniFont.body(15))
+                    .foregroundColor(MooniColor.textPrimary)
+                Text(subtitle)
+                    .font(MooniFont.caption(11))
+                    .foregroundColor(MooniColor.textSecondary)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .tint(MooniColor.accent)
+                .onChange(of: isOn.wrappedValue) { _, on in
+                    if on { Haptics.soft() }
+                    applyWindDownReminderChange(turnedOn: on)
+                }
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// Re-runs the scheduler so a toggle takes effect tonight. The scheduler
+    /// reads the (already-persisted) @AppStorage keys, so this both adds and
+    /// cancels. If notifications were never requested, enabling one prompts
+    /// for permission first — mirroring the "Bedtime reminder" row.
+    private func applyWindDownReminderChange(turnedOn: Bool) {
+        if turnedOn && notifications.authState == .notDetermined {
+            Task {
+                _ = await notifications.requestAuthorization()
+                notifications.scheduleWindDownReminders(
+                    petName: appState.pet.name,
+                    bedtime: appState.targetBedtime
+                )
+            }
+        } else {
+            notifications.scheduleWindDownReminders(
+                petName: appState.pet.name,
+                bedtime: appState.targetBedtime
+            )
         }
     }
 
